@@ -131,5 +131,12 @@
     "author": "AWdress",
     "description": "自动识别群内抽奖消息并参与，中奖记录与可选自动发奖。",
     "path": "plugins/auto_lottery/"
+  },
+  "zhuque_lottery": {
+    "name": "朱雀",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "朱雀PT站自动化：个人查询、大劫反击、红包雨、大转盘、转账、鳄鱼丼投注、魔法卡定时、倍投计算。",
+    "path": "plugins/zhuque_lottery/"
   }
 }
