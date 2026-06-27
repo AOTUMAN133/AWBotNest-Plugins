@@ -64,6 +64,8 @@ async def teardown(ctx):
 | Bot 发送 | `await ctx.bot.send(chat_id, text)` / `ctx.bot.send_photo(...)` |
 | 用户发送 | `await ctx.user.send(chat_id, text)` |
 | 全部用户账号 | `ctx.user_apps`（多账号场景） |
+| 通知平台主人 | `await ctx.notify(text, level=, category=, account=)`（平台自动加插件名/级别图标/账号名并投递；别自己拼格式或用 `ctx.bot.send`） |
+| 主人 ID | `ctx.owner_id`（平台主人 Telegram 数字 ID，无主账号为 0） |
 | 配置 | `ctx.config["字段名"]`（每次读取都是前端最新值） |
 | 键值存储 | `ctx.kv.get/set/delete/keys`（每插件独立 sqlite，互不干扰） |
 | 日志 | `ctx.log.info/debug/warning/error` |

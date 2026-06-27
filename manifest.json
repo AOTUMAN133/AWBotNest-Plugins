@@ -29,14 +29,14 @@
   },
   "keyword_auto_reply": {
     "name": "关键词自动回复",
-    "version": "2.0.0",
+    "version": "1.0.1",
     "author": "AW",
     "description": "群里有人说到关键词，自动回复一句。规则一行一条「关键词=回复」，支持冷却、限群、自动删除。",
     "path": "plugins/keyword_auto_reply.py"
   },
   "custom_auto_reply": {
     "name": "定时自动回复",
-    "version": "2.0.0",
+    "version": "1.0.3",
     "author": "AW",
     "description": "到点自动用你的账号往指定群/会话发一条消息。可选每天定点、每隔几小时、每隔几分钟。",
     "path": "plugins/custom_auto_reply.py"

@@ -8,7 +8,7 @@
 __plugin__ = {
     "name": "定时自动回复",
     "id": "custom_auto_reply",
-    "version": "2.0.0",
+    "version": "1.0.3",
     "author": "AW",
     "description": "到点自动用你的账号往指定群/会话发一条消息。可选每天定点、每隔几小时、每隔几分钟。",
     "scope": "user",
@@ -53,10 +53,10 @@ __plugin__ = {
         },
 
         # —— 可选 ——
-        "notify_chat_id": {
-            "type": "string", "default": "", "label": "结果通知到（可选）",
+        "notify_owner": {
+            "type": "boolean", "default": False, "label": "把结果通知给我",
             "section": "高级（可选）",
-            "help": "发送成功/失败后用机器人通知到这个会话；留空就不通知。",
+            "help": "每次发送成功/失败后，平台用机器人私聊你（或发到你账号的收藏夹）报一条。无需填ID。",
         },
     },
 }
@@ -106,7 +106,7 @@ def _make_action(ctx):
             ctx.log.error("[定时回复] 没有已连接的用户账号，跳过")
             return
 
-        notify_id = _normalize_chat_id(cfg.get("notify_chat_id"))
+        notify_owner = bool(cfg.get("notify_owner", False))
 
         for app in user_apps:
             me = getattr(app, "me", None)
@@ -119,23 +119,24 @@ def _make_action(ctx):
                 ctx.log.info("[定时回复] [%s] 发送成功 msg=%s", acct, sent.id)
             except Exception as send_err:  # noqa: BLE001
                 ctx.log.error("[定时回复] [%s] 发送失败: %r", acct, send_err)
-                if notify_id:
+                if notify_owner:
+                    # 级别/插件名/账号名由平台统一格式化，这里只给业务内容
                     try:
-                        await ctx.bot.send(
-                            notify_id,
-                            f"❌ **定时回复失败**\n\n👤 账号：{acct}\n🎯 目标：{target}\n⚠️ 错误：{send_err}",
+                        await ctx.notify(
+                            f"定时回复失败\n🎯 目标：{target}\n⚠️ 错误：{send_err}",
+                            level="error", category="定时回复", account=app,
                         )
                     except Exception:
                         pass
                 continue
 
-            if notify_id:
+            if notify_owner:
                 link = _build_message_link(target, sent.id)
                 preview = message_text[:100] + ("..." if len(message_text) > 100 else "")
                 try:
-                    await ctx.bot.send(
-                        notify_id,
-                        f"🎉 **定时回复已发送**\n\n👤 账号：{acct}\n🎯 目标：{target}\n📝 内容：\n{preview}\n\n🔗 {link}",
+                    await ctx.notify(
+                        f"定时回复已发送\n🎯 目标：{target}\n📝 内容：\n{preview}\n🔗 {link}",
+                        level="success", category="定时回复", account=app,
                         disable_web_page_preview=True,
                     )
                 except Exception:
