@@ -45,8 +45,8 @@ def parse_keywords(raw) -> list[str]:
 def parse_group_wait_overrides(raw) -> dict[int, tuple[int, int]]:
     """
     解析「按群组专属等待时间」配置。
-    每行一条：`群组ID 最小秒 最大秒`，例如：
-        -1001234567890 30 90
+    每行一条：`群组ID|最小秒|最大秒`，例如：
+        -1001234567890|30|90
     返回 {group_id: (wait_min, wait_max)}。
     """
     out: dict[int, tuple[int, int]] = {}
@@ -56,7 +56,9 @@ def parse_group_wait_overrides(raw) -> dict[int, tuple[int, int]]:
         line = line.strip()
         if not line:
             continue
-        parts = line.split()
+        # 兼容 `|` 分隔（首选）与空白分隔
+        parts = line.split("|") if "|" in line else line.split()
+        parts = [p.strip() for p in parts]
         if len(parts) < 3:
             continue
         try:
@@ -222,17 +224,65 @@ def parse_new_lottery(text: str, entities=None) -> dict:
 
 
 # ─── 奖品匹配 ────────────────────────────────────────────────────────────────
+# 对应原项目 config.config.PRIZE_LIST（每群组 → 奖品关键词列表）
+# + LOTTERY_PRIZE.universal_prize_match（通用匹配开关）
+# + PRIZE_MATCH_RULES.case_sensitive（区分大小写）。
 
-def prize_matches(prize_string: str, keywords: list[str], case_sensitive: bool = False) -> bool:
-    """奖品文本是否包含 keywords 中任一关键词。keywords 为空时返回 False。"""
-    if not keywords or not prize_string:
-        return False
+def parse_prize_list(raw) -> dict[int, list[str]]:
+    """
+    解析「奖品列表」配置（对应 PRIZE_LIST）。
+    每行 `群组ID|奖品1,奖品2,...`，例如：
+        -1001234567890|魔力,积分
+        -1001234567891|金币,💎币,GB,邀请
+    返回 {group_id: [关键词...]}。
+    """
+    out: dict[int, list[str]] = {}
+    if not raw:
+        return out
+    for line in str(raw).splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        gid_part, _, kw_part = line.partition("|")
+        try:
+            gid = int(gid_part.strip())
+        except ValueError:
+            continue
+        kws = [k.strip() for k in kw_part.split(",") if k.strip()]
+        if kws:
+            out.setdefault(gid, [])
+            out[gid].extend(kws)
+    return out
+
+
+def match_prize_group(prize_string: str, prize_list_map: dict[int, list[str]],
+                      chat_id: int, universal: bool = False,
+                      case_sensitive: bool = False):
+    """
+    奖品匹配（对应原 prize_check）。返回匹配到的群组ID，未匹配返回 None。
+      - universal=True（通用模式）：在所有群组的关键词里匹配，返回第一个命中的群组ID。
+      - universal=False（精确模式）：只用当前群组(chat_id)自己的关键词匹配。
+    """
+    if not prize_string or not prize_list_map:
+        return None
     target = prize_string if case_sensitive else prize_string.lower()
-    for kw in keywords:
-        k = kw if case_sensitive else kw.lower()
-        if k and k in target:
-            return True
-    return False
+
+    def _hit(kws: list[str]) -> bool:
+        for kw in kws:
+            k = kw if case_sensitive else kw.lower()
+            if k and k in target:
+                return True
+        return False
+
+    if universal:
+        for gid, kws in prize_list_map.items():
+            if _hit(kws):
+                return gid
+        return None
+    kws = prize_list_map.get(chat_id)
+    if kws and _hit(kws):
+        return chat_id
+    return None
 
 
 # ─── 奖品金额提取 ────────────────────────────────────────────────────────────
@@ -326,34 +376,29 @@ def extract_prize_amount(prize_name: str) -> int:
 # ─── 陷阱抽奖检测 ────────────────────────────────────────────────────────────
 
 def is_trap_lottery(message_text: str, lottery_info: dict, *,
-                    min_prize_amount: int = 0,
                     suspicious_keywords: list[str] | None = None,
                     blacklist_creator_ids: list[str] | None = None,
-                    block_single_participant: bool = True,
+                    enable_prize_pattern_check: bool = True,
+                    enable_creator_blacklist: bool = True,
+                    enable_participant_check: bool = True,
+                    max_participants: int = 1,
                     case_sensitive: bool = False) -> tuple[bool, str]:
     """
-    检测是否为陷阱抽奖。返回 (是否陷阱, 触发原因)。
+    检测是否为陷阱抽奖。返回 (是否陷阱, 触发原因)。对应原 TRAP_LOTTERY_DETECTION。
 
-    检测项（任一命中即判定为陷阱）：
-      - 奖品金额过低：所有奖品金额都 < min_prize_amount（min<=0 时跳过）。
-      - 可疑关键词：奖品/参与关键词/简介/整条消息命中 suspicious_keywords。
-      - 创建者黑名单：boss_ID 命中 blacklist_creator_ids。
-      - 单人抽奖：max_participants == 1 且 block_single_participant。
+    检测项（任一命中即判定为陷阱），各项受对应子开关控制：
+      - 可疑关键词(enable_prize_pattern_check)：奖品/参与关键词/简介/整条消息命中
+        suspicious_keywords。
+      - 创建者黑名单(enable_creator_blacklist)：boss_ID 命中 blacklist_creator_ids。
+      - 参与人数(enable_participant_check)：单人抽奖(max==1) 或 参与人数 <= max_participants
+        (且 max_participants>1) 判为陷阱。
     """
     suspicious_keywords = suspicious_keywords or []
     blacklist_creator_ids = [str(b) for b in (blacklist_creator_ids or [])]
     reasons: list[str] = []
 
-    # 1. 奖品金额检测
-    if min_prize_amount and min_prize_amount > 0:
-        all_prizes = lottery_info.get("all_prizes") or (
-            [lottery_info.get("prize", "")] if lottery_info.get("prize") else [])
-        amounts = [a for a in (parse_prize_amount(p) for p in all_prizes) if a is not None]
-        if amounts and all(a < min_prize_amount for a in amounts):
-            reasons.append(f"奖品金额过低: 最高 {max(amounts)} (阈值 {min_prize_amount})")
-
-    # 2. 可疑关键词检测
-    if suspicious_keywords:
+    # 1. 可疑关键词检测
+    if enable_prize_pattern_check and suspicious_keywords:
         haystacks = [
             lottery_info.get("prize", ""),
             lottery_info.get("keyword", ""),
@@ -368,20 +413,24 @@ def is_trap_lottery(message_text: str, lottery_info: dict, *,
                 reasons.append(f"命中可疑关键词: {kw}")
                 break
 
-    # 3. 创建者黑名单
-    boss_id = str(lottery_info.get("boss_ID", "") or "")
-    if boss_id and boss_id in blacklist_creator_ids:
-        reasons.append(f"创建者在黑名单: {boss_id}")
+    # 2. 创建者黑名单
+    if enable_creator_blacklist:
+        boss_id = str(lottery_info.get("boss_ID", "") or "")
+        if boss_id and boss_id in blacklist_creator_ids:
+            reasons.append(f"创建者在黑名单: {boss_id}")
 
-    # 4. 单人抽奖
-    if block_single_participant:
+    # 3. 参与人数检测
+    if enable_participant_check:
         max_p = lottery_info.get("max_participants")
         if max_p is None:
             m = re.search(r'中奖概率[：:]\s*\d+/(\d+)', message_text or "")
             if m:
                 max_p = int(m.group(1))
-        if max_p == 1:
-            reasons.append("单人抽奖（中奖概率 x/1）")
+        if max_p is not None:
+            if max_p == 1:
+                reasons.append("单人抽奖（中奖概率 x/1）")
+            elif max_participants > 1 and max_p <= max_participants:
+                reasons.append(f"参与人数过少: {max_p} (阈值 {max_participants})")
 
     if reasons:
         return True, "; ".join(reasons)
