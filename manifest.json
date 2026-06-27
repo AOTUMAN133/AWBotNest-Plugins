@@ -110,5 +110,19 @@
     "author": "AWdress",
     "description": "群内数字炸弹竞猜：开启后群友回复+金额参与组奖池，轮流猜数字，猜中/范围耗尽即爆炸，中奖者按比例分奖池。",
     "path": "plugins/bomb_game/"
+  },
+  "transfer": {
+    "name": "多站点转账",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "监听多个PT站群的转账bot，记录转入/转出并生成排行榜。站点可配置。",
+    "path": "plugins/transfer/"
+  },
+  "red_packet": {
+    "name": "抢红包",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "监控群红包并自动抢：按钮红包自动点击、口令红包自动发口令、图片口令OCR识别，含陷阱防护。",
+    "path": "plugins/red_packet/"
   }
 }
