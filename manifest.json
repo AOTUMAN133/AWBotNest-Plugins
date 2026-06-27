@@ -91,7 +91,7 @@
     "path": "plugins/trans115search.py"
   },
   "movie_monitor_115": {
-    "name": "影巢115媒体监控",
+    "name": "115媒体监控",
     "version": "1.0.0",
     "author": "AWdress",
     "description": "监控频道里的 115 分享，TMDB 识别后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。",
@@ -119,7 +119,7 @@
     "path": "plugins/transfer/"
   },
   "red_packet": {
-    "name": "抢红包",
+    "name": "影巢抢红包（测试）",
     "version": "1.0.0",
     "author": "AWdress",
     "description": "监控群红包并自动抢：按钮红包自动点击、口令红包自动发口令、图片口令OCR识别，含陷阱防护。",
@@ -159,5 +159,12 @@
     "author": "AWdress",
     "description": "用你的账号在群里发拼手气红包：群友回复参与，按拼手气随机分配并自动发放魔力。",
     "path": "plugins/red_packet_send/"
+  },
+  "common_lottery": {
+    "name": "通用抽奖",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "自动参与 @Lottery8Bot 等通用抽奖：解析口令、按需自动加群、随机等待后发口令。任意群可用。",
+    "path": "plugins/common_lottery.py"
   }
 }
