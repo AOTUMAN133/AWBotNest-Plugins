@@ -31,7 +31,7 @@ from ._snatch import (
 __plugin__ = {
     "name": "抢红包",
     "id": "red_packet",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -77,11 +77,6 @@ __plugin__ = {
             "section": "按钮红包(HDSKY)",
             "help": "检测「拼手气红包」消息并自动点击「抢红包」内联按钮。",
         },
-        "button_bot_id": {
-            "type": "string", "default": "8907007783", "label": "发包机器人ID",
-            "section": "按钮红包(HDSKY)", "show_if": {"button_enabled": True},
-            "help": "发拼手气红包的机器人用户ID（默认天空小秘 HDSKY）。",
-        },
         "button_groups": {
             "type": "string", "default": "", "label": "监听群组ID",
             "section": "按钮红包(HDSKY)", "show_if": {"button_enabled": True},
@@ -107,15 +102,6 @@ __plugin__ = {
             "section": "癫影积分红包",
             "help": "癫影小助手发的积分红包，逐个点击未抢数字按钮（✅1~✅9 已抢的跳过）。",
         },
-        "dyp_bot_id": {
-            "type": "string", "default": "8704462066", "label": "癫影机器人ID",
-            "section": "癫影积分红包", "show_if": {"dyp_enabled": True},
-        },
-        "dyp_group_id": {
-            "type": "string", "default": "-1003907877852", "label": "癫影监听群ID",
-            "section": "癫影积分红包", "show_if": {"dyp_enabled": True},
-            "help": "固定监听的群组ID，留空=所有群。",
-        },
         "dyp_delay": {
             "type": "slider", "default": 0, "label": "点击延迟(秒)",
             "min": 0, "max": 60, "step": 1, "section": "癫影积分红包",
@@ -132,6 +118,11 @@ __plugin__ = {
 # 按钮点击去重（进程内，TTL 清理）：key = "acct:chat:msg" → 时间戳
 _clicked: dict[str, float] = {}
 _CLICKED_TTL = 3600
+
+# 发包机器人 / 癫影群（原项目写死，非可配）
+_HDSKY_BOT_ID = 8907007783      # 天空小秘 HDSKY（拼手气红包）
+_DYP_BOT_ID = 8704462066        # 癫影小助手（积分红包）
+_DYP_GROUP_ID = -1003907877852  # 癫影积分红包固定群
 
 # 口令红包状态机（setup 时创建）
 _snatcher: TokenSnatcher | None = None
@@ -216,7 +207,7 @@ async def setup(ctx):
         if not cfg.get("button_enabled", False):
             return
         fu = message.from_user
-        bot_id = to_int(cfg.get("button_bot_id", "8907007783"))
+        bot_id = _HDSKY_BOT_ID  # 原项目写死
         if not (fu and getattr(fu, "is_bot", False) and fu.id == bot_id):
             return
         groups = parse_groups(cfg.get("button_groups", ""))
@@ -257,16 +248,13 @@ async def setup(ctx):
         if not cfg.get("dyp_enabled", False):
             return
         fu = message.from_user
-        bot_id = to_int(cfg.get("dyp_bot_id", "8704462066"))
+        bot_id = _DYP_BOT_ID  # 原项目写死
         if not (fu and getattr(fu, "is_bot", False) and fu.id == bot_id):
             return
         if "积分红包" not in extract_text(message):
             return
-        group_id = cfg.get("dyp_group_id", "")
-        if group_id:
-            gid = to_int(group_id)
-            if gid and message.chat.id != gid:
-                return
+        if message.chat.id != _DYP_GROUP_ID:
+            return
         if not _click_once(client, message):
             return
 

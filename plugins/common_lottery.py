@@ -16,16 +16,12 @@ from random import randint
 __plugin__ = {
     "name": "通用抽奖",
     "id": "common_lottery",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "自动参与 @Lottery8Bot 等通用抽奖：解析口令、按需自动加群、随机等待后发口令。任意群可用。",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
-        "bot_id": {
-            "type": "string", "default": "6420220651", "label": "抽奖机器人ID",
-            "section": "参数", "help": "通用抽奖机器人用户ID（默认 @Lottery8Bot）。",
-        },
         "groups": {
             "type": "text", "default": "", "label": "监听群组ID",
             "section": "参数", "help": "一行一个或逗号分隔。留空 = 所有群都参与。",
@@ -53,6 +49,7 @@ __plugin__ = {
 _lottery_list: dict = {}
 _added_at: dict = {}
 _ENTRY_TTL = 3 * 24 * 3600
+_BOT_ID = 6420220651  # @Lottery8Bot（原项目写死）
 
 
 def _make_key(chat_id, message_id) -> str:
@@ -190,12 +187,8 @@ async def setup(ctx):
     async def common_new_lottery(client, message):
         cfg = ctx.config
         text = message.text or message.caption or ""
-        try:
-            bot_id = int(cfg.get("bot_id", "6420220651"))
-        except (ValueError, TypeError):
-            return
         fu = message.from_user
-        if not (fu and fu.is_bot and fu.id == bot_id):
+        if not (fu and fu.is_bot and fu.id == _BOT_ID):
             return
         # 抽奖消息特征：含口令 + （人数/日期开奖）
         if "🔑" not in text or "抽奖口令" not in text:
@@ -282,12 +275,8 @@ async def setup(ctx):
     async def common_draw_result(client, message):
         cfg = ctx.config
         text = message.text or message.caption or ""
-        try:
-            bot_id = int(cfg.get("bot_id", "6420220651"))
-        except (ValueError, TypeError):
-            return
         fu = message.from_user
-        if not (fu and fu.is_bot and fu.id == bot_id):
+        if not (fu and fu.is_bot and fu.id == _BOT_ID):
             return
         if "开奖了" not in text or "本期总参与人数" not in text:
             return

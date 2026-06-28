@@ -15,20 +15,12 @@ from random import randint
 __plugin__ = {
     "name": "HDHive抽奖",
     "id": "hdhive_lottery",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "自动参与 HDHive 抽奖：监听抽奖消息，随机等待后发口令参与，开奖检测中奖并通知。",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
-        "group_id": {
-            "type": "string", "default": "-1001379449445", "label": "影巢群ID",
-            "section": "参数", "help": "HDHive 抽奖所在的群组ID。",
-        },
-        "bot_id": {
-            "type": "string", "default": "5831593155", "label": "抽奖机器人ID",
-            "section": "参数", "help": "发起抽奖的 HDHive 机器人用户ID。",
-        },
         "wait_min": {
             "type": "slider", "default": 25, "label": "参与前最短等待(秒)",
             "min": 0, "max": 300, "step": 5, "section": "参数",
@@ -44,6 +36,10 @@ __plugin__ = {
         },
     },
 }
+
+# 影巢群 + HDHive 抽奖机器人（原项目写死，非可配）
+_GROUP_ID = -1001379449445
+_BOT_ID = 5831593155
 
 # 进行中的抽奖：key = "chat_id:message_id"（进程内跟踪，无跨插件共享）
 _lottery_list: dict = {}
@@ -101,16 +97,11 @@ async def setup(ctx):
     async def hdhive_new_lottery(client, message):
         cfg = ctx.config
         text = message.text or message.caption or ""
-        # 群 + 机器人 + 抽奖文本 判定
-        try:
-            group_id = int(cfg.get("group_id", "-1001379449445"))
-            bot_id = int(cfg.get("bot_id", "5831593155"))
-        except (ValueError, TypeError):
-            return
-        if message.chat.id != group_id:
+        # 群 + 机器人 + 抽奖文本 判定（群/bot 写死）
+        if message.chat.id != _GROUP_ID:
             return
         fu = message.from_user
-        if not (fu and fu.is_bot and fu.id == bot_id):
+        if not (fu and fu.is_bot and fu.id == _BOT_ID):
             return
         if not _is_hdhive_msg(text):
             return
@@ -167,15 +158,10 @@ async def setup(ctx):
     async def hdhive_draw_result(client, message):
         cfg = ctx.config
         text = message.text or message.caption or ""
-        try:
-            group_id = int(cfg.get("group_id", "-1001379449445"))
-            bot_id = int(cfg.get("bot_id", "5831593155"))
-        except (ValueError, TypeError):
-            return
-        if message.chat.id != group_id:
+        if message.chat.id != _GROUP_ID:
             return
         fu = message.from_user
-        if not (fu and fu.is_bot and fu.id == bot_id):
+        if not (fu and fu.is_bot and fu.id == _BOT_ID):
             return
         if "抽奖结果" not in text or "中奖名单" not in text:
             return

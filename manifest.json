@@ -78,7 +78,7 @@
   },
   "hdhive_lottery": {
     "name": "HDHive抽奖",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "自动参与 HDHive 抽奖：监听抽奖消息，随机等待后发口令参与，开奖检测中奖并通知。",
     "path": "plugins/hdhive_lottery.py"
@@ -92,7 +92,7 @@
   },
   "movie_monitor_115": {
     "name": "影巢115媒体监控",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "监控频道里的 115 分享，TMDB 识别后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。",
     "path": "plugins/movie_monitor_115/"
@@ -120,7 +120,7 @@
   },
   "red_packet": {
     "name": "抢红包",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "监控群红包并自动抢：按钮红包自动点击、口令红包自动发口令、图片口令OCR识别，含陷阱防护。",
     "path": "plugins/red_packet/"
@@ -134,7 +134,7 @@
   },
   "zhuque_lottery": {
     "name": "朱雀",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "AWdress",
     "description": "朱雀PT站自动化：个人查询、大劫反击、红包雨、大转盘、转账、鳄鱼丼投注、魔法卡定时、倍投计算。",
     "path": "plugins/zhuque_lottery/"
@@ -162,7 +162,7 @@
   },
   "common_lottery": {
     "name": "通用抽奖",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "自动参与 @Lottery8Bot 等通用抽奖：解析口令、按需自动加群、随机等待后发口令。任意群可用。",
     "path": "plugins/common_lottery.py"

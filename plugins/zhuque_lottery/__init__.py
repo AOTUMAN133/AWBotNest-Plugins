@@ -34,7 +34,7 @@ from ._api import (
 )
 from ._helpers import (
     calc_starting_bet, extract_lingshi_amount, build_reply_messages,
-    parse_groups, parse_blacklist, safe_int,
+    parse_blacklist, safe_int,
 )
 from . import _ydx
 
@@ -42,7 +42,7 @@ from . import _ydx
 __plugin__ = {
     "name": "朱雀",
     "id": "zhuque_lottery",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -63,24 +63,6 @@ __plugin__ = {
             "type": "string", "default": "我", "label": "主人昵称",
             "section": "凭据",
             "help": "用于生成打劫反击文案（如「抢你X哥的钱」）。",
-        },
-        # ── 群组 ──────────────────────────────────────────────────────────
-        "zhuque_groups": {
-            "type": "text",
-            "default": "-1001833464786\n-1002262543959\n-1002522450068",
-            "label": "朱雀群组ID",
-            "section": "群组",
-            "help": "监听类功能（打劫/红包雨/转账/YDX）生效的群组，一行一个或逗号分隔。",
-        },
-        "zhuque_bot_id": {
-            "type": "number", "default": 5697370563, "label": "朱雀机器人ID",
-            "section": "群组",
-            "help": "群内朱雀官方 bot 的 Telegram 数字ID，用于识别其消息。",
-        },
-        "ydx_group": {
-            "type": "string", "default": "-1002262543959", "label": "YDX 鳄鱼丼群组ID",
-            "section": "群组",
-            "help": "鳄鱼丼投注只在此群生效（原项目单独群）。",
         },
         # ── 个人查询 ──────────────────────────────────────────────────────
         "enable_getinfo": {
@@ -270,6 +252,16 @@ __plugin__ = {
 }
 
 
+# ─── 写死常量（PT 站固定信息，照原项目，不做成可配字段）─────────────────────
+# 朱雀官方 bot 的 Telegram 数字ID（原 custom_filters.zhuque_bot）。
+_ZHUQUE_BOT_ID = 5697370563
+# 各子功能监听群组，各不相同，全部写死（原各 *_zhuque.py 的模块级 TARGET）。
+_RAID_GROUPS = [-1001833464786, -1002262543959, -1002522450068]      # raiding_zhuque.py
+_REDPOCKET_GROUPS = [-1001833464786, -1002262543959]                 # redpocket_pie_zhuque.py
+_YDX_GROUPS = [-1002262543959]                                       # ydx_zhuque.py
+_TRANSFORM_GROUPS = [-1001833464786, -1002262543959]                 # transform_zhuque.py
+
+
 # ─── 模块级运行态（每次 setup 重建）──────────────────────────────────────────
 def _new_state():
     return {
@@ -290,16 +282,9 @@ async def setup(ctx):
     def _api() -> ZhuqueAPI:
         return ZhuqueAPI(ctx.config.get("cookie", ""), ctx.config.get("xcsrf", ""), ctx.log)
 
-    def _groups() -> list[int]:
-        return parse_groups(ctx.config.get("zhuque_groups", ""))
-
-    def _bot_id() -> int:
-        return safe_int(ctx.config.get("zhuque_bot_id", 0), 0)
-
     def _is_zhuque_bot(message) -> bool:
         fu = getattr(message, "from_user", None)
-        bid = _bot_id()
-        return bool(fu and getattr(fu, "is_bot", False) and fu.id == bid)
+        return bool(fu and getattr(fu, "is_bot", False) and fu.id == _ZHUQUE_BOT_ID)
 
     def _reply_to_me(message) -> bool:
         r = getattr(message, "reply_to_message", None)
@@ -334,7 +319,7 @@ async def setup(ctx):
     async def on_raiding(client, message):
         if not ctx.config.get("enable_raiding", False):
             return
-        if message.chat.id not in _groups():
+        if message.chat.id not in _RAID_GROUPS:
             return
         if not _is_zhuque_bot(message):
             return
@@ -348,7 +333,7 @@ async def setup(ctx):
     async def on_redpocket(client, message):
         if not ctx.config.get("enable_redpocket", False):
             return
-        if message.chat.id not in _groups():
+        if message.chat.id not in _REDPOCKET_GROUPS:
             return
         if not _is_zhuque_bot(message):
             return
@@ -362,7 +347,7 @@ async def setup(ctx):
     async def on_transform(client, message):
         if not ctx.config.get("enable_transform", False):
             return
-        if message.chat.id not in _groups():
+        if message.chat.id not in _TRANSFORM_GROUPS:
             return
         if not _is_zhuque_bot(message):
             return
@@ -376,8 +361,7 @@ async def setup(ctx):
     async def on_ydx(client, message):
         if not ctx.config.get("enable_ydx", False):
             return
-        ydx_gid = safe_int(ctx.config.get("ydx_group", 0), 0)
-        if message.chat.id != ydx_gid:
+        if message.chat.id not in _YDX_GROUPS:
             return
         if not _is_zhuque_bot(message):
             return

@@ -18,7 +18,7 @@ from ._tmdb import TmdbApi, get_emby_tmdb_ids
 __plugin__ = {
     "name": "影巢115媒体监控",
     "id": "movie_monitor_115",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "监控频道里的 115 分享，TMDB 识别后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。",
     "scope": "user",
@@ -29,15 +29,6 @@ __plugin__ = {
             "section": "功能开关", "help": "关闭后只监听不转发（/getmedia 手动查仍可用）。",
         },
         # —— 监控范围 ——
-        "monitor_chats": {
-            "type": "text", "default": "-1002188663986\n-1002245898899\n-1002343015438",
-            "label": "监控频道ID", "section": "监控范围",
-            "help": "一行一个频道ID。这些频道里出现 115 链接消息就处理。",
-        },
-        "pan115_chat_id": {
-            "type": "string", "default": "-1002343015438", "label": "Pan115频道ID",
-            "section": "监控范围", "help": "该频道用不同的标题/大小解析规则（带【】或冒号 + 大小判断完结）。",
-        },
         "blockyword_list": {
             "type": "text", "default": "", "label": "屏蔽关键词",
             "section": "监控范围", "help": "一行一个。标题含这些词则不检索转发。",
@@ -75,14 +66,13 @@ def _lines(raw) -> list[str]:
     return [x.strip() for x in str(raw or "").splitlines() if x.strip()]
 
 
+# 监控频道（原项目 TARGET，写死）：分享群/瓜瓜乐/测试 + Pan115(特殊解析)
+_PAN115_CHAT_ID = -1002343015438
+_MONITOR_IDS = [-1002188663986, -1002245898899, -4200814739, _PAN115_CHAT_ID]
+
+
 def _monitor_ids(cfg) -> list[int]:
-    ids = []
-    for line in _lines(cfg.get("monitor_chats", "")):
-        try:
-            ids.append(int(line))
-        except ValueError:
-            pass
-    return ids
+    return _MONITOR_IDS
 
 
 def _normalize(raw):
@@ -170,7 +160,7 @@ async def setup(ctx):
         if not _LINK_PATTERN.search(caption):
             return
 
-        pan115_id = _normalize(cfg.get("pan115_chat_id"))
+        pan115_id = _PAN115_CHAT_ID
         block_words = _lines(cfg.get("blockyword_list", ""))
         title = year = ""
         complete_series = False
