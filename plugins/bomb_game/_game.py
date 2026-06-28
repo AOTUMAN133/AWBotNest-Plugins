@@ -56,11 +56,25 @@ class NumberBombGame:
         return self._processing_locks[chat_id]
 
     # ── 自动删除 ─────────────────────────────────────────────────────────────
-    def _should_auto_delete(self) -> bool:
-        return bool(self.config.get("auto_delete_enabled", True))
+    def _should_auto_delete(self, chat_id=None) -> bool:
+        if not self.config.get("auto_delete_enabled", True):
+            return False
+        # 按群覆盖：在停用列表里的群即使总开关开着也不删
+        if chat_id is not None:
+            raw = self.config.get("auto_delete_disabled_groups", "")
+            for part in str(raw or "").replace(",", "\n").split("\n"):
+                part = part.strip()
+                if part:
+                    try:
+                        if int(part) == chat_id:
+                            return False
+                    except ValueError:
+                        pass
+        return True
 
     async def _schedule_auto_delete(self, message, delay: int = 15):
-        if not self._should_auto_delete():
+        chat_id = getattr(getattr(message, "chat", None), "id", None)
+        if not self._should_auto_delete(chat_id):
             return
 
         async def _delete():

@@ -30,7 +30,7 @@ from decimal import Decimal
 import httpx
 
 from ._api import (
-    ZhuqueAPI, INFO_FIELDS, WHEEL_PRIZES, CARD_BONUS_VALUES, SPIN_COST,
+    ZhuqueAPI, INFO_FIELDS, WHEEL_PRIZES, CARD_BONUS_VALUES, CARD_NAMES, SPIN_COST,
 )
 from ._helpers import (
     calc_starting_bet, extract_lingshi_amount, build_reply_messages,
@@ -42,11 +42,11 @@ from . import _ydx
 __plugin__ = {
     "name": "朱雀",
     "id": "zhuque_lottery",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
-    "description": "朱雀PT站自动化：个人查询、大劫反击、红包雨、大转盘、转账、鳄鱼丼投注、魔法卡定时、倍投计算。",
+    "description": "朱雀PT站自动化：个人查询、大劫反击、红包雨、大转盘、转账、鳄鱼丼投注、魔法卡定时、道具卡回收、倍投计算。",
     "config_schema": {
         # ── 凭据 ──────────────────────────────────────────────────────────
         "cookie": {
@@ -177,6 +177,21 @@ __plugin__ = {
             "section": "转账记录",
             "help": "监听群内灵石转入/转出并记录到本插件存储。",
         },
+        "transform_notification": {
+            "type": "boolean", "default": False, "label": "转账通知",
+            "section": "转账记录", "show_if": {"enable_transform": True},
+            "help": "对应原项目 notification 开关：记录转账后在群里回一条通知（含累计/排名）。关闭则只记录不发消息。",
+        },
+        "transform_leaderboard": {
+            "type": "boolean", "default": False, "label": "转入榜(打赏总榜)",
+            "section": "转账记录", "show_if": {"enable_transform": True},
+            "help": "对应原项目 leaderboard 开关：收到他人转入(打赏)时，通知里附打赏总榜。需同时开启转账通知。",
+        },
+        "transform_payleaderboard": {
+            "type": "boolean", "default": False, "label": "转出榜(赏赐总榜)",
+            "section": "转账记录", "show_if": {"enable_transform": True},
+            "help": "对应原项目 payleaderboard 开关：转出灵石给他人(赏赐)时，通知里附赏赐总榜。需同时开启转账通知。",
+        },
         # ── 鳄鱼丼 YDX（复杂，默认关闭，需实盘校验）─────────────────────────
         "enable_ydx": {
             "type": "boolean", "default": False, "label": "启用鳄鱼丼YDX",
@@ -190,6 +205,11 @@ __plugin__ = {
         "ydx_dice_bet": {
             "type": "boolean", "default": False, "label": "自动下注",
             "section": "鳄鱼丼YDX", "show_if": {"enable_ydx": True},
+        },
+        "ydx_wwd_switch": {
+            "type": "boolean", "default": False, "label": "下注二级开关(wwd)",
+            "section": "鳄鱼丼YDX", "show_if": {"enable_ydx": True},
+            "help": "对应原项目 ZHUQUE_<id> 的 ydx_wwd_switch（默认 off）。作为自动下注分支的二级保险：关闭时即使满足下注条件也只计算不实际点击下注按钮。需实盘校验。",
         },
         "ydx_start_count": {
             "type": "number", "default": 5, "label": "几连开始下注", "min": 0, "max": 9,
@@ -212,6 +232,33 @@ __plugin__ = {
                 {"value": "s", "label": "S KDJ指标"},
             ],
             "section": "鳄鱼丼YDX", "show_if": {"enable_ydx": True},
+        },
+        # ── 道具卡回收 ────────────────────────────────────────────────────
+        "enable_card": {
+            "type": "boolean", "default": False, "label": "启用道具卡回收",
+            "section": "道具卡回收",
+            "help": "用 .card 命令回收朱雀背包道具卡换灵石。API 端点/字段按原项目迁移，需实盘校验，故默认关闭。",
+        },
+        "card_command": {
+            "type": "string", "default": "card", "label": "回收命令词",
+            "section": "道具卡回收", "show_if": {"enable_card": True},
+            "help": "自己发 /<命令词> [卡号] [数量]。卡号 1~4，省略数量则回收背包全部该卡；省略卡号则回收全部 4 种卡的背包库存。",
+        },
+        "card_id_1": {
+            "type": "string", "default": "1", "label": "改名卡 card_id",
+            "section": "道具卡回收", "show_if": {"enable_card": True},
+        },
+        "card_id_2": {
+            "type": "string", "default": "2", "label": "神佑7天卡 card_id",
+            "section": "道具卡回收", "show_if": {"enable_card": True},
+        },
+        "card_id_3": {
+            "type": "string", "default": "3", "label": "邀请卡 card_id",
+            "section": "道具卡回收", "show_if": {"enable_card": True},
+        },
+        "card_id_4": {
+            "type": "string", "default": "4", "label": "释放7天卡 card_id",
+            "section": "道具卡回收", "show_if": {"enable_card": True},
         },
         # ── 通知 ──────────────────────────────────────────────────────────
         "owner_notify": {
@@ -277,6 +324,8 @@ async def setup(ctx):
                 await _handle_prizewheel(ctx, _api, client, message, args)
             elif c.get("enable_betbonus", True) and cmd == (c.get("betbonus_command", "betbonus") or "betbonus").lower():
                 await _handle_betbonus(ctx, message, args)
+            elif c.get("enable_card", False) and cmd == (c.get("card_command", "card") or "card").lower():
+                await _handle_card(ctx, _api, message, args)
         except Exception as e:
             ctx.log.error("命令处理出错 cmd=%s: %s", cmd, e)
 
@@ -489,6 +538,78 @@ async def _handle_betbonus(ctx, message, args):
     except Exception:
         sent = await message.reply(f"```\n{result}```")
     _schedule_delete(sent, 60)
+
+
+# ─── 3b. 道具卡回收（.card）──────────────────────────────────────────────────
+def _card_id_map(ctx) -> dict:
+    """配置里的 4 个 card_id（字符串）→ {序号(1~4): card_id(int)}。"""
+    c = ctx.config
+    out = {}
+    for n in (1, 2, 3, 4):
+        out[n] = safe_int(c.get(f"card_id_{n}", n), n)
+    return out
+
+
+async def _handle_card(ctx, api_fn, message, args):
+    """
+    回收朱雀道具卡换灵石。迁移自原 plugins/bot/commands/zhuqe_card.py +
+    libs/zhuque_listBackpack.py / zhuque_recycleMagicCard.py。
+
+    用法：
+      /card             → 回收背包里全部 4 种卡的现有库存
+      /card 2           → 回收 2 号卡(神佑7天卡)的全部库存
+      /card 2 10        → 回收 2 号卡 10 张
+
+    ⚠️ 待实盘校验：回收端点 POST /api/mall/recycleMagicCard 的 body 字段名({"id":card_id})、
+    背包 listBackpack 的 card_id 取值，均按原项目(aiohttp 版)迁移。若站点改版需对照 F12。
+    """
+    ctx.log.warning("道具卡回收 .card 触发：API 端点/字段按原项目迁移，待实盘校验")
+    api = api_fn()
+    id_map = _card_id_map(ctx)
+
+    # 解析参数：第 1 个=卡序号(1~4)，第 2 个=数量
+    target_slot = None
+    want_number = None
+    if len(args) >= 1 and args[0].isdigit():
+        slot = int(args[0])
+        if slot in id_map:
+            target_slot = slot
+        else:
+            await message.reply("```\n卡号需为 1~4：1改名卡 2神佑7天卡 3邀请卡 4释放7天卡```")
+            return
+    if len(args) >= 2 and args[1].isdigit():
+        want_number = int(args[1])
+
+    try:
+        waiting = await message.edit("```\n查询背包中……```")
+    except Exception:
+        waiting = await message.reply("```\n查询背包中……```")
+
+    backpack = await api.list_backpack()
+    if backpack is None:
+        await waiting.edit("```\n背包查询失败，请检查 Cookie / X-Csrf-Token 配置```")
+        return
+
+    slots = [target_slot] if target_slot else [1, 2, 3, 4]
+    result_lines = []
+    total_back = 0.0
+    for slot in slots:
+        card_id = id_map[slot]
+        have = safe_int(backpack.get(slot, backpack.get(card_id, 0)), 0)
+        number = want_number if (want_number is not None) else have
+        if number <= 0:
+            result_lines.append(f"{CARD_NAMES[slot]}：无库存，跳过")
+            continue
+        number = min(number, have) if have > 0 else number
+        success = await api.recycle_card(card_id, number)
+        back = CARD_BONUS_VALUES.get(slot, 0) * success * 0.8
+        total_back += back
+        result_lines.append(f"{CARD_NAMES[slot]}：回收 {success}/{number} 张，约 {back:,.0f} 灵石")
+
+    body = "\n".join(result_lines) or "无可回收道具"
+    await waiting.edit(f"**朱雀道具卡回收完成：**\n{body}\n\n合计回血约 **{total_back:,.0f}** 灵石")
+    if ctx.config.get("owner_notify", True) and total_back > 0:
+        await ctx.notify(f"朱雀道具卡回收回血约 {total_back:,.0f} 灵石", level="success", category="道具回收")
 
 
 # ─── 4. 魔法卡定时 ───────────────────────────────────────────────────────────
@@ -740,6 +861,45 @@ async def _handle_redpocket(ctx, client, message):
 
 # ─── 7. 转账记录 ─────────────────────────────────────────────────────────────
 _RE_TRANSFER = re.compile(r"转账成功, 信息如下: \n.+ 转出 (\d+)\n")
+_LEADERBOARD_SIZE = 5
+
+
+def _transfer_user_of(message, direction: str):
+    """
+    取被记账的对方用户。迁移自原 transform_zhuque.py：
+      - 转入(get)：对方是 message.reply_to_message 的发送者（command_to_me 链）。
+      - 转出(pay)：对方是 message.reply_to_message.reply_to_message 的发送者（reply_to_me 链）。
+    返回 (user_id, user_name) 或 (0, "")。
+    """
+    if direction == "get":
+        src = getattr(message, "reply_to_message", None)
+    else:
+        r = getattr(message, "reply_to_message", None)
+        src = getattr(r, "reply_to_message", None) if r else None
+    fu = getattr(src, "from_user", None) if src else None
+    if not fu:
+        return 0, ""
+    parts = [p for p in (getattr(fu, "first_name", ""), getattr(fu, "last_name", "")) if p]
+    name = " ".join(parts).strip() or getattr(fu, "username", "") or str(getattr(fu, "id", 0))
+    return int(getattr(fu, "id", 0) or 0), name
+
+
+def _build_leaderboard(records: list, direction: str, limit: int = _LEADERBOARD_SIZE) -> list:
+    """按用户聚合某方向的转账总额，返回 [(name, total, count), ...] TOP limit。"""
+    agg: dict = {}
+    for rec in records:
+        if rec.get("direction") != direction:
+            continue
+        uid = rec.get("user_id", 0)
+        amt = abs(float(rec.get("amount", 0) or 0))
+        name = rec.get("user_name", "") or str(uid)
+        cur = agg.get(uid) or {"name": name, "total": 0.0, "count": 0}
+        cur["total"] += amt
+        cur["count"] += 1
+        cur["name"] = name
+        agg[uid] = cur
+    ranked = sorted(agg.values(), key=lambda x: x["total"], reverse=True)
+    return ranked[:limit]
 
 
 async def _handle_transform(ctx, client, message, reply_to_me_fn):
@@ -759,9 +919,12 @@ async def _handle_transform(ctx, client, message, reply_to_me_fn):
     else:
         return
 
+    user_id, user_name = _transfer_user_of(message, direction)
     rec = {
         "direction": direction,
         "amount": amount,
+        "user_id": user_id,
+        "user_name": user_name,
         "ts": datetime.now().isoformat(timespec="seconds"),
     }
     raw = ctx.kv.get("transform_records") or []
@@ -780,12 +943,38 @@ async def _handle_transform(ctx, client, message, reply_to_me_fn):
         import json
         ctx.kv.set("transform_records", json.dumps(raw, ensure_ascii=False))
 
-    ctx.log.info("记录灵石转账 dir=%s amount=%s", direction, amount)
-    if ctx.config.get("owner_notify", True):
-        word = "收到" if direction == "get" else "转出"
-        await ctx.notify(
-            f"朱雀{word}灵石转账 {abs(bonus)}", level="info", category="转账", account=client
-        )
+    ctx.log.info("记录灵石转账 dir=%s amount=%s user=%s", direction, amount, user_name)
+
+    c = ctx.config
+    # notification 总开关：关闭则只记录不发任何消息（对齐原 TransferService）
+    if not c.get("transform_notification", False):
+        return
+
+    # 转入查 leaderboard，转出查 payleaderboard
+    if direction == "get":
+        lb_on = c.get("transform_leaderboard", False)
+        table_title = "打赏"
+    else:
+        lb_on = c.get("transform_payleaderboard", False)
+        table_title = "赏赐"
+
+    word = "收到" if direction == "get" else "转出"
+    body = f"朱雀{word}灵石转账 {abs(bonus):,.0f}"
+    if user_name:
+        body += f"（{user_name}）"
+
+    # 排行榜数据已存 ctx.kv，按开关决定通知时是否附榜
+    if lb_on:
+        entries = _build_leaderboard(raw, direction, _LEADERBOARD_SIZE)
+        if entries:
+            lines = [f"个人{table_title}总榜 TOP{len(entries)}："]
+            medals = ["🥇", "🥈", "🥉"]
+            for i, e in enumerate(entries):
+                medal = medals[i] if i < 3 else f"{i + 1}."
+                lines.append(f"{medal} {e['name']} {e['total']:,.0f}（{e['count']}次）")
+            body += "\n" + "\n".join(lines)
+
+    await ctx.notify(body, level="info", category="转账", account=client)
 
 
 # ─── 8. 鳄鱼丼 YDX ──────────────────────────────────────────────────────────
@@ -884,6 +1073,14 @@ async def _ydx_new_round(ctx, state, store, client, message):
 
     if bet_count > -1:
         bet_bonus = bet_model.get_bet_bonus(start_bonus, bet_count)
+        # ydx_wwd_switch：下注分支的二级开关（原 ZHUQUE_<id>.ydx_wwd_switch，默认 off）。
+        # 关闭时只计算下注方案、不实际点击下注按钮。需实盘校验其在原站的确切语义。
+        if not c.get("ydx_wwd_switch", False):
+            ctx.log.warning(
+                "YDX 满足下注条件(side=%s bonus=%s)但 ydx_wwd_switch 关闭，仅计算不下注（待实盘校验）",
+                bet_side, bet_bonus,
+            )
+            return
         total = await _ydx.manual_bet(client, message, bet_bonus, bet_side, ctx.log)
         if total == 0:
             ctx.log.warning("YDX 下注失败/零食不足")

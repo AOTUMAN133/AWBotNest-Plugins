@@ -22,7 +22,7 @@ from ._game import NumberBombGame
 __plugin__ = {
     "name": "数字炸弹",
     "id": "bomb_game",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "群内数字炸弹竞猜：开启后群友回复+金额参与组奖池，轮流猜数字，猜中/范围耗尽即爆炸，中奖者按比例分奖池。",
     "scope": "both",
@@ -79,6 +79,18 @@ __plugin__ = {
             "type": "boolean", "default": True, "label": "自动删除提示消息",
             "section": "消息", "help": "范围提示/冷却提示等临时消息自动删除（爆炸结算消息保留）。",
         },
+        "auto_delete_disabled_groups": {
+            "type": "text", "default": "", "label": "不自动删除的群",
+            "section": "消息",
+            "help": "一行一个群ID。即使上面总开关开着，这些群也不自动删除消息（对应原版按群关闭自动删除）。",
+            "show_if": {"auto_delete_enabled": True},
+        },
+        # —— 群组临时停用 ——
+        "monitor_disabled_groups": {
+            "type": "text", "default": "", "label": "临时停用的群",
+            "section": "群组",
+            "help": "一行一个群ID。这些群虽在允许列表内，但暂时禁止开启数字炸弹（对应原版按群监控开关）。",
+        },
         # —— 参与确认 ——
         "require_transfer_confirm": {
             "type": "boolean", "default": False, "label": "需转账bot确认才算参与",
@@ -130,6 +142,15 @@ async def setup(ctx):
 
             # 开始 / 持续 / 结束命令（仅自己发的）
             if message.outgoing:
+                # 临时停用的群：禁止开启（结束命令仍放行）
+                disabled = parse_groups(ctx.config.get("monitor_disabled_groups", ""))
+                if (is_start_command(text) or is_continuous_command(text)) and chat_id in disabled:
+                    try:
+                        await message.edit_text("⛔ 本群已临时停用数字炸弹（可在插件配置移出停用列表）")
+                        game._track(_auto_delete(message, 5))
+                    except Exception:
+                        pass
+                    return
                 if is_start_command(text):
                     ctx.log.info("检测到开始游戏命令，chat_id=%s", chat_id)
                     try:

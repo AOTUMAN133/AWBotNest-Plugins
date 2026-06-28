@@ -25,7 +25,7 @@ from ._activity import ActivityManager, cancel_all_tasks, is_create_command, to_
 __plugin__ = {
     "name": "发红包",
     "id": "red_packet_send",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -56,14 +56,14 @@ __plugin__ = {
 
         # ───────── 限制 ─────────
         "max_amount": {
-            "type": "number", "default": 10000, "label": "单次总额上限(魔力)",
+            "type": "number", "default": 0, "label": "单次总额上限(魔力)",
             "min": 0, "max": 1000000, "step": 100, "section": "限制",
-            "help": "创建红包时总额超过此值则拒绝。0 = 不限制。",
+            "help": "创建红包时总额超过此值则拒绝。0 = 不限制（原版默认无上限）。",
         },
         "max_count": {
-            "type": "number", "default": 100, "label": "单次红包个数上限",
+            "type": "number", "default": 0, "label": "单次红包个数上限",
             "min": 0, "max": 1000, "step": 1, "section": "限制",
-            "help": "创建红包时个数超过此值则拒绝。0 = 不限制。",
+            "help": "创建红包时个数超过此值则拒绝。0 = 不限制（原版默认无上限）。",
         },
         "activity_timeout_minutes": {
             "type": "slider", "default": 30, "label": "活动超时(分钟)",
@@ -71,9 +71,9 @@ __plugin__ = {
             "help": "活动创建后多久无人抢完则自动结算公布。",
         },
         "end_delete_delay": {
-            "type": "slider", "default": 0, "label": "结束后删消息(秒)",
+            "type": "slider", "default": 10, "label": "结束后删消息(秒)",
             "min": 0, "max": 600, "step": 5, "section": "限制",
-            "help": "活动结束后延迟多少秒批量撤回红包相关消息。0 = 不删除。",
+            "help": "活动结束后延迟多少秒批量撤回红包相关消息。0 = 不删除（原版默认 10 秒）。",
         },
 
         # ───────── 发放与文案 ─────────
@@ -115,8 +115,8 @@ async def setup(ctx):
             message.text,
             message.reply_to_message,
             create_word,
-            to_int(ctx.config.get("max_amount", 10000), 10000),
-            to_int(ctx.config.get("max_count", 100), 100),
+            to_int(ctx.config.get("max_amount", 0), 0),
+            to_int(ctx.config.get("max_count", 0), 0),
         )
         if not params:
             return

@@ -27,77 +27,83 @@ import asyncio
 import random
 
 from ._sites import (
-    parse_sites, detect_direction, counterparty_message,
+    build_active_sites, detect_direction, counterparty_message,
     plus_amount_message, extract_amount_from_text, extract_plus_amount,
     user_identity,
 )
 from ._records import RecordStore
 from . import _leaderboard as lb
 
-# 默认站点列表（原项目已确认的站点；用户可在前端覆盖）。
-# 格式：群ID | 站点名 | botID | 奖励名 [ | 金额正则 ] [ | parser ]
-_DEFAULT_SITES = """\
-# 群ID | 站点名 | 转账botID | 奖励名 | [金额正则] | [parser]
--1002372175195 | audiences | 2053736484 | 爆米花 |  | reply
--1002022762746 | PTVicomo  | 7124396542 | 象草   | ✅.+ 发送了 (\\d+) 象草 | reply
--1002131053667 | hddolby   | 6474948384 | 鲸币   | 成功转账(\\d+) | reply
--1002132909147 | azusa     | 6696869468 | 魔力值 | 成功赠送\\s*(\\d+)\\s*魔力值 | reply
--1001664998164 | zm        | 7192791419 | 电力   | 转账成功！已转账\\s*(\\d+)\\s*电力 | reply
--1002014253433 | springsunday | 752250569 | 茉莉 |  | plus
--1001173590111 | springsunday | 752250569 | 茉莉 |  | plus
--1001326208894 | hdsky     | 8907007783 | 银元   | 转赠\\s*(\\d+)\\s*银元 | hdsky
-"""
+# 站点（群组ID/转账bot/货币/解析方式）全部内置写死在 _sites.py 的 _BUILTIN_SITES，
+# 用户只通过下面 config_schema 的每站点开关决定是否监听/致谢/上榜。
 
 
 __plugin__ = {
     "name": "多站点转账",
     "id": "transfer",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
     "description": "监听多个PT站群的转账bot，记录转入/转出并生成排行榜。站点可配置。",
     "config_schema": {
-        # —— 站点 ——
-        "sites": {
-            "type": "text",
-            "default": "# 群ID | 站点名 | 转账botID | 奖励名 | [金额正则] | [parser]\n-1002372175195 | audiences | 2053736484 | 爆米花 |  | reply\n-1002022762746 | PTVicomo  | 7124396542 | 象草   | ✅.+ 发送了 (\\d+) 象草 | reply\n-1002131053667 | hddolby   | 6474948384 | 鲸币   | 成功转账(\\d+) | reply\n-1002132909147 | azusa     | 6696869468 | 魔力值 | 成功赠送\\s*(\\d+)\\s*魔力值 | reply\n-1001664998164 | zm        | 7192791419 | 电力   | 转账成功！已转账\\s*(\\d+)\\s*电力 | reply\n-1002014253433 | springsunday | 752250569 | 茉莉 |  | plus\n-1001173590111 | springsunday | 752250569 | 茉莉 |  | plus\n-1001326208894 | hdsky     | 8907007783 | 银元   | 转赠\\s*(\\d+)\\s*银元 | hdsky\n",
-            "label": "站点列表",
-            "section": "站点",
-            "help": "一行一个站点：群ID | 站点名 | 转账botID | 奖励名 | [金额正则] | [parser]。"
-                    "金额正则留空=默认抓首个数字；parser=reply(默认)/plus(取+金额消息)/hdsky(实体解析)。"
-                    "botID=0 表示不校验发送者。# 开头为注释。",
-        },
-        # —— 通知 ——
-        "notification": {
-            "type": "boolean", "default": False, "label": "收到转账时群内致谢",
-            "section": "通知",
-            "help": "开启后，记录到转账会在群里回复一条致谢+个人累计消息（15秒后自删）。",
-        },
-        "leaderboard_in": {
-            "type": "boolean", "default": False, "label": "致谢附转入榜(打赏榜)",
-            "section": "通知", "show_if": {"notification": True},
-            "help": "转入(别人打赏你)时，致谢消息附带该站点打赏总榜。",
-        },
-        "leaderboard_out": {
-            "type": "boolean", "default": False, "label": "致谢附转出榜(赏赐榜)",
-            "section": "通知", "show_if": {"notification": True},
-            "help": "转出(你赏赐别人)时，致谢消息附带该站点赏赐总榜。",
-        },
+        # —— 站点开关（群组ID/转账bot 全部内置写死，用户只开关功能）——
+        # 每个站点 4 个开关：启用监听 / 群内致谢 / 致谢附转入榜 / 致谢附转出榜
+        "site_audiences_enabled":   {"type": "boolean", "default": True,  "label": "Audiences 启用", "section": "Audiences"},
+        "site_audiences_notify":    {"type": "boolean", "default": False, "label": "Audiences 群内致谢", "section": "Audiences", "show_if": {"site_audiences_enabled": True}},
+        "site_audiences_lb_in":     {"type": "boolean", "default": False, "label": "Audiences 致谢附打赏榜(转入)", "section": "Audiences", "show_if": {"site_audiences_notify": True}},
+        "site_audiences_lb_out":    {"type": "boolean", "default": False, "label": "Audiences 致谢附赏赐榜(转出)", "section": "Audiences", "show_if": {"site_audiences_notify": True}},
+
+        "site_ptvicomo_enabled":    {"type": "boolean", "default": True,  "label": "PTVicomo 启用", "section": "PTVicomo"},
+        "site_ptvicomo_notify":     {"type": "boolean", "default": False, "label": "PTVicomo 群内致谢", "section": "PTVicomo", "show_if": {"site_ptvicomo_enabled": True}},
+        "site_ptvicomo_lb_in":      {"type": "boolean", "default": False, "label": "PTVicomo 致谢附打赏榜(转入)", "section": "PTVicomo", "show_if": {"site_ptvicomo_notify": True}},
+        "site_ptvicomo_lb_out":     {"type": "boolean", "default": False, "label": "PTVicomo 致谢附赏赐榜(转出)", "section": "PTVicomo", "show_if": {"site_ptvicomo_notify": True}},
+
+        "site_hddolby_enabled":     {"type": "boolean", "default": True,  "label": "HDDolby 启用", "section": "HDDolby"},
+        "site_hddolby_notify":      {"type": "boolean", "default": False, "label": "HDDolby 群内致谢", "section": "HDDolby", "show_if": {"site_hddolby_enabled": True}},
+        "site_hddolby_lb_in":       {"type": "boolean", "default": False, "label": "HDDolby 致谢附打赏榜(转入)", "section": "HDDolby", "show_if": {"site_hddolby_notify": True}},
+        "site_hddolby_lb_out":      {"type": "boolean", "default": False, "label": "HDDolby 致谢附赏赐榜(转出)", "section": "HDDolby", "show_if": {"site_hddolby_notify": True}},
+
+        "site_azusa_enabled":       {"type": "boolean", "default": True,  "label": "Azusa 启用", "section": "Azusa"},
+        "site_azusa_notify":        {"type": "boolean", "default": False, "label": "Azusa 群内致谢", "section": "Azusa", "show_if": {"site_azusa_enabled": True}},
+        "site_azusa_lb_in":         {"type": "boolean", "default": False, "label": "Azusa 致谢附打赏榜(转入)", "section": "Azusa", "show_if": {"site_azusa_notify": True}},
+        "site_azusa_lb_out":        {"type": "boolean", "default": False, "label": "Azusa 致谢附赏赐榜(转出)", "section": "Azusa", "show_if": {"site_azusa_notify": True}},
+
+        "site_zm_enabled":          {"type": "boolean", "default": True,  "label": "ZmPT 启用", "section": "ZmPT"},
+        "site_zm_notify":           {"type": "boolean", "default": False, "label": "ZmPT 群内致谢", "section": "ZmPT", "show_if": {"site_zm_enabled": True}},
+        "site_zm_lb_in":            {"type": "boolean", "default": False, "label": "ZmPT 致谢附打赏榜(转入)", "section": "ZmPT", "show_if": {"site_zm_notify": True}},
+        "site_zm_lb_out":           {"type": "boolean", "default": False, "label": "ZmPT 致谢附赏赐榜(转出)", "section": "ZmPT", "show_if": {"site_zm_notify": True}},
+
+        "site_springsunday_enabled":{"type": "boolean", "default": True,  "label": "SpringSunday 启用(含两个群)", "section": "SpringSunday"},
+        "site_springsunday_notify": {"type": "boolean", "default": False, "label": "SpringSunday 群内致谢", "section": "SpringSunday", "show_if": {"site_springsunday_enabled": True}},
+        "site_springsunday_lb_in":  {"type": "boolean", "default": False, "label": "SpringSunday 致谢附打赏榜(转入)", "section": "SpringSunday", "show_if": {"site_springsunday_notify": True}},
+        "site_springsunday_lb_out": {"type": "boolean", "default": False, "label": "SpringSunday 致谢附赏赐榜(转出)", "section": "SpringSunday", "show_if": {"site_springsunday_notify": True}},
+
+        "site_hdsky_enabled":       {"type": "boolean", "default": True,  "label": "HDSky 启用", "section": "HDSky"},
+        "site_hdsky_notify":        {"type": "boolean", "default": False, "label": "HDSky 群内致谢", "section": "HDSky", "show_if": {"site_hdsky_enabled": True}},
+        "site_hdsky_lb_in":         {"type": "boolean", "default": False, "label": "HDSky 致谢附打赏榜(转入)", "section": "HDSky", "show_if": {"site_hdsky_notify": True}},
+        "site_hdsky_lb_out":        {"type": "boolean", "default": False, "label": "HDSky 致谢附赏赐榜(转出)", "section": "HDSky", "show_if": {"site_hdsky_notify": True}},
+
+        "site_mocktest_enabled":    {"type": "boolean", "default": False, "label": "MockTest(测试) 启用", "section": "MockTest", "help": "测试站点，默认关闭。"},
+        "site_mocktest_notify":     {"type": "boolean", "default": False, "label": "MockTest 群内致谢", "section": "MockTest", "show_if": {"site_mocktest_enabled": True}},
+        "site_mocktest_lb_in":      {"type": "boolean", "default": False, "label": "MockTest 致谢附转入榜", "section": "MockTest", "show_if": {"site_mocktest_notify": True}},
+        "site_mocktest_lb_out":     {"type": "boolean", "default": False, "label": "MockTest 致谢附转出榜", "section": "MockTest", "show_if": {"site_mocktest_notify": True}},
+
+        # —— 致谢延迟 ——
         "notify_delay_min": {
             "type": "number", "default": 0, "label": "致谢延迟最小(秒)",
-            "min": 0, "max": 300, "section": "通知", "show_if": {"notification": True},
-            "help": "记录到转账后等待若干秒再发致谢，模拟人工。对应原项目的等待时间。",
+            "min": 0, "max": 300, "section": "致谢延迟",
+            "help": "记录到转账后等待若干秒再发致谢，模拟人工。",
         },
         "notify_delay_max": {
             "type": "number", "default": 0, "label": "致谢延迟最大(秒)",
-            "min": 0, "max": 300, "section": "通知", "show_if": {"notification": True},
+            "min": 0, "max": 300, "section": "致谢延迟",
         },
         # —— 排行榜 ——
         "rank_command": {
             "type": "string", "default": "转账排行", "label": "排行榜命令词",
             "section": "排行榜",
-            "help": "自己在任意聊天发「.<命令词> [站点名] [in/out]」即可拉取排行榜。"
+            "help": "自己在任意聊天发「.<命令词> [站点key] [in/out]」即可拉取排行榜。"
                     "如 .转账排行 audiences in。不带站点=逐站点输出。",
         },
         "rank_size": {
@@ -118,6 +124,18 @@ __plugin__ = {
             "section": "通知中心",
             "help": "每笔记录到的转账，额外用平台通知中心推一条给主人（ctx.notify）。",
         },
+        # —— SpringSunday 大额确认 ——
+        "ssd_click_mode": {
+            "type": "select", "default": "off", "label": "SSD大额转账自动确认",
+            "options": [
+                {"value": "off", "label": "关闭（不自动点）"},
+                {"value": "once", "label": "单次确认（点第一行按钮）"},
+                {"value": "5min", "label": "5分钟确认（点第二行按钮）"},
+            ],
+            "section": "SSD大额确认",
+            "help": "springsunday 转账金额过大时，转账bot会回复你一条「请确认你的转账」并附确认按钮。"
+                    "开启后自动点对应按钮。对应原项目 SPRINGSUNDAY.ssd_click（off/once/5min）。",
+        },
     },
 }
 
@@ -130,14 +148,18 @@ async def setup(ctx):
     hdsky_pay_cache: dict[int, int] = {}
 
     def _sites():
-        """实时解析站点配置（用户可能改）。返回 {chat_id: [SiteConfig]}。"""
-        return parse_sites(ctx.config.get("sites", ""))
+        """根据每站点开关构建 {chat_id: [SiteConfig]}（群组/bot 内置写死）。"""
+        return build_active_sites(ctx.config)
 
     def _rank_size() -> int:
         try:
             return int(ctx.config.get("rank_size", 10) or 10)
         except (ValueError, TypeError):
             return 10
+
+    def _ssd_groups() -> set[int]:
+        """SpringSunday 大额确认监听的群（内置写死的两个 ssd 群）。"""
+        return {-1002014253433, -1001173590111}
 
     ctx.log.info("多站点转账插件已启用，配置站点群数=%s", len(_sites()))
 
@@ -197,6 +219,54 @@ async def setup(ctx):
             await _do_rank_command(ctx, store, message, parts[1:], _rank_size)
         except Exception as e:
             ctx.log.error("处理排行榜命令出错: %s", e)
+
+    # ── handler 4：springsunday 大额转账自动点确认按钮（ssd_click）────────────────
+    # 原项目 transform_ssd.py：转账金额过大时转账bot 回复「请确认你的转账」并附确认按钮，
+    # 按 SPRINGSUNDAY.ssd_click（off/once/5min）自动点。这里复刻该逻辑。
+    #
+    # ⚠️ 平台支持情况（已核对 kernel/context.py）：ctx.on_message 只注册 pyrogram
+    #    MessageHandler，平台未提供 on_edited_message / EditedMessageHandler。原项目对
+    #    ssd 同时挂了 on_message 和 on_edited_message（确认消息可能是 bot「先发占位再编辑」
+    #    得到的）。平台暂不支持监听编辑消息，故 ssd 编辑确认可能漏 —— 这里只能用普通
+    #    on_message 兜底（绝大多数情况下确认按钮随新消息到达，可正常点中）。
+    @ctx.on_message(ctx.filters.incoming & ctx.filters.group & ctx.filters.reply,
+                    group=-3, target="user")
+    async def ssd_confirm_click(client, message):
+        try:
+            mode = (ctx.config.get("ssd_click_mode") or "off").strip().lower()
+            if mode not in ("once", "5min"):
+                return
+            if message.chat.id not in _ssd_groups():
+                return
+            # 必须是转账bot 回复「我」发出的消息
+            rtm = getattr(message, "reply_to_message", None)
+            if not (rtm and rtm.from_user and getattr(rtm.from_user, "is_self", False)):
+                return
+            text = message.text or getattr(message, "caption", "") or ""
+            if "转账金额过大" not in text and "请确认你的转账" not in text:
+                return
+            row, col = (0, 0) if mode == "once" else (1, 0)
+            markup = getattr(message, "reply_markup", None)
+            kb = getattr(markup, "inline_keyboard", None) if markup else None
+            try:
+                callback_data = kb[row][col].callback_data
+            except (TypeError, AttributeError, IndexError):
+                return
+            await asyncio.sleep(0.5)
+            try:
+                await client.request_callback_answer(
+                    chat_id=message.chat.id,
+                    message_id=message.id,
+                    callback_data=callback_data,
+                    timeout=10,
+                )
+                ctx.log.info("SSD大额转账确认成功，点击了 %s 按钮", mode)
+            except TimeoutError:
+                ctx.log.warning("SSD转账确认超时")
+            except Exception as e:
+                ctx.log.error("SSD转账确认失败: %s", e)
+        except Exception as e:
+            ctx.log.error("处理SSD大额确认出错: %s", e)
 
 
 async def teardown(ctx):
@@ -319,8 +389,10 @@ async def _record_and_notify(ctx, store, client, message, site, direction,
         except Exception as e:
             ctx.log.debug("ctx.notify 失败: %s", e)
 
-    # 群内致谢（可选）
-    if not ctx.config.get("notification", False):
+    # 群内致谢（可选）—— 按「该站点自己的开关」判断，缺省继承全局 notification
+    notif_on = site.notification if site.notification is not None \
+        else bool(ctx.config.get("notification", False))
+    if not notif_on:
         return
 
     # 延迟（对应原项目 wait_time）
@@ -331,8 +403,14 @@ async def _record_and_notify(ctx, store, client, message, site, direction,
 
     text = lb.render_user_summary(stat, site.bonus_name, direction, user_name, amount)
 
-    lb_on = (ctx.config.get("leaderboard_in", False) if direction == "in"
-             else ctx.config.get("leaderboard_out", False))
+    # 排行榜开关：转入看 leaderboard（缺省继承 leaderboard_in），
+    #             转出看 payleaderboard（缺省继承 leaderboard_out）。
+    if direction == "in":
+        lb_on = site.leaderboard if site.leaderboard is not None \
+            else bool(ctx.config.get("leaderboard_in", False))
+    else:
+        lb_on = site.payleaderboard if site.payleaderboard is not None \
+            else bool(ctx.config.get("leaderboard_out", False))
     entries = []
     if lb_on:
         entries = store.leaderboard(site.site_name, direction, rank_size_fn())
@@ -394,8 +472,8 @@ async def _do_rank_command(ctx, store, message, args, rank_size_fn):
 
     directions = [direction] if direction else ["in", "out"]
     size = rank_size_fn()
-    # 站点的奖励名：从当前配置里找；找不到用空
-    site_cfgs = parse_sites(ctx.config.get("sites", ""))
+    # 站点的奖励名：从当前启用站点里找；找不到用空
+    site_cfgs = build_active_sites(ctx.config)
     bonus_by_site = {}
     for lst in site_cfgs.values():
         for s in lst:
