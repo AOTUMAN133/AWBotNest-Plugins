@@ -11,15 +11,17 @@
 # 2. gap >= 阈值 → 不活跃，等待 x 秒后抢
 # 3. gap < 阈值 → 活跃，立即抢
 # 4. 可选：不活跃时自动发消息，拉近后续红包的活跃度
+# 5. 【双 msgid 追踪】记录最后 2 条自身发言，最新一条在红包之后时用倒数第二条算 gap
 # =============================================================================
 
 import asyncio
+import json
 import time
 
 __plugin__ = {
     "name": "🧧天空红包",
     "id": "hdsky",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "author": "Yy",
     "description": "天空小秘（bot 8907007783）拼手气红包自动抢：检测「抢红包」按钮自动点击，auto_msg 拉近活跃度 + gap 判定不活跃延迟。",
     "scope": "user",
@@ -64,8 +66,8 @@ _CLICKED_TTL = 3600
 
 # 去重缓存（内存级，插件重载时重置）
 _clicked: dict[str, float] = {}
-# 自身发言追踪（内存级）
-_last_self_msg_id: dict[str, int] = {}
+# 自身发言追踪（内存级，每个 chat 记录最后 2 个 msg_id）
+_last_self_msg_ids: dict[str, list[int]] = {}
 
 
 def _parse_groups(raw: str) -> list[int]:
@@ -112,22 +114,63 @@ def _is_lucky_packet(message) -> bool:
     return False
 
 
-async def _get_last_self_id(ctx, chat_id: int) -> int:
-    """获取最近一次自身发言的 msg_id，优先读内存，回退读 kv。"""
+def _push_self_msg_id(chat_id: int, msg_id: int) -> None:
+    """记录自身发言 msg_id，保留最近 2 个。"""
     key = f"{chat_id}"
-    last_id = _last_self_msg_id.get(key)
-    if last_id is not None:
-        return last_id
+    ids = _last_self_msg_ids.get(key, [])
+    ids.append(msg_id)
+    if len(ids) > 2:
+        ids.pop(0)
+    _last_self_msg_ids[key] = ids
+
+
+async def _get_last_self_ids(ctx, chat_id: int) -> list[int]:
+    """获取最近 2 个自身发言 msg_id，优先读内存，回退读 kv。
+
+    返回 list，按时间升序（老的在前），可能不足 2 个或为空。
+    """
+    key = f"{chat_id}"
+    ids = _last_self_msg_ids.get(key)
+    if ids is not None:
+        return ids
     # 读 kv 回填
     db_val = await ctx.kv.get(f"hdsky_last_msg:{chat_id}")
     if db_val:
         try:
-            last_id = int(db_val)
-            _last_self_msg_id[key] = last_id
-            return last_id
-        except ValueError:
+            parsed = json.loads(db_val)
+            if isinstance(parsed, list):
+                _last_self_msg_ids[key] = parsed
+                return parsed
+        except (ValueError, TypeError):
             pass
-    return 0
+    return []
+
+
+def _calc_gap(message_id: int, self_ids: list[int]) -> tuple[int, bool]:
+    """计算红包 msg_id 与自身发言的 gap。
+
+    返回 (gap, is_valid)。
+    is_valid=False 表示两个自身 msg_id 都在红包之后，无法判定活跃度。
+    """
+    if not self_ids:
+        return 999, True  # 没有发言记录 → 视为不活跃
+
+    # 最新一条自身发言
+    newest = self_ids[-1]
+    gap1 = message_id - newest
+
+    if gap1 >= 0:
+        # 最新发言在红包之前或同时 → 直接用最新
+        return gap1, True
+
+    # 最新发言在红包之后（gap1 < 0），用倒数第二条
+    if len(self_ids) >= 2:
+        older = self_ids[-2]
+        gap2 = message_id - older
+        return gap2, True
+
+    # 只有一条且比红包晚 → 无法判定
+    return gap1, False
 
 
 async def setup(ctx):
@@ -147,8 +190,9 @@ async def setup(ctx):
         if groups and chat_id not in groups:
             return
 
-        _last_self_msg_id[f"{chat_id}"] = message.id
-        await ctx.kv.set(f"hdsky_last_msg:{chat_id}", str(message.id))
+        _push_self_msg_id(chat_id, message.id)
+        ids = _last_self_msg_ids.get(f"{chat_id}", [])
+        await ctx.kv.set(f"hdsky_last_msg:{chat_id}", json.dumps(ids))
 
     # ─── 监听群友的 /red 指令（发 auto_msg 拉近活跃度）───
     # 同 group=-9，但 track_self_message 只用 filters.me，群友消息不会被它拦截
@@ -170,8 +214,8 @@ async def setup(ctx):
 
         # 自身最近是否活跃：用 /red 指令的 msg_id 与最后自身发言算 gap
         auto_gap = int(cfg.get("auto_gap", 15))
-        last_id = await _get_last_self_id(ctx, chat_id)
-        gap = message.id - last_id
+        self_ids = await _get_last_self_ids(ctx, chat_id)
+        gap, _ = _calc_gap(message.id, self_ids)
         if gap < auto_gap:
             ctx.log.debug("已活跃 gap=%s < auto_gap=%s，跳过 auto_msg", gap, auto_gap)
             return
@@ -179,8 +223,9 @@ async def setup(ctx):
         try:
             sent = await client.send_message(chat_id, auto_msg)
             # 手动更新 last_id，避免依赖 Pyrogram update loop 触发 track_self_message
-            _last_self_msg_id[f"{chat_id}"] = sent.id
-            await ctx.kv.set(f"hdsky_last_msg:{chat_id}", str(sent.id))
+            _push_self_msg_id(chat_id, sent.id)
+            ids = _last_self_msg_ids.get(f"{chat_id}", [])
+            await ctx.kv.set(f"hdsky_last_msg:{chat_id}", json.dumps(ids))
             await sent.delete()
             ctx.log.info("已响应 /red 发送 auto_msg (gap=%s >= auto_gap=%s) chat=%s last_id=%s",
                          gap, auto_gap, chat_id, sent.id)
@@ -217,11 +262,13 @@ async def setup(ctx):
 
         # ── 活跃度判定 ──
         inactive_gap = int(cfg.get("inactive_gap", 20))
-        last_id = await _get_last_self_id(ctx, chat_id)
-        gap = message.id - last_id
-        is_inactive = gap >= inactive_gap
+        self_ids = await _get_last_self_ids(ctx, chat_id)
+        gap, gap_valid = _calc_gap(message.id, self_ids)
 
-        if is_inactive:
+        if not gap_valid:
+            # 两个自身发言都在红包之后，无法判定活跃度 → 立刻抢
+            ctx.log.info("gap 无效（自身发言均在红包后），立刻抢 chat=%s msg=%s", chat_id, message.id)
+        elif gap >= inactive_gap:
             inactive_delay = int(cfg.get("inactive_delay", 5) or 0)
             if inactive_delay > 0:
                 ctx.log.info(
