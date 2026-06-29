@@ -8,24 +8,28 @@
 __plugin__ = {
     "name": "定时自动回复",
     "id": "custom_auto_reply",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "author": "AWdress",
-    "description": "到点自动用你的账号往指定群/会话发一条消息，支持多个会话。可选每天定点、每隔几小时/几分钟，或直接填 cron 表达式。注册后会按规则反复发送。",
+    "description": "到点自动用你的账号往指定群/会话发消息，支持多个会话、每个会话各自的内容。可选每天定点、每隔几小时/几分钟，或直接填 cron 表达式。注册后会按规则反复发送。",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
         # —— 必填：发给谁、发什么 ——
         "target_chat_id": {
-            "type": "text", "default": "", "label": "发送到哪些会话",
+            "type": "text", "default": "", "label": "会话与内容",
             "section": "发送内容",
             "help": (
-                "群组/频道ID（形如 -1001234567890）或 @用户名。不知道ID可先用「查ID」插件获取。\n"
-                "支持多个：每行一个，或用逗号 / 空格分隔。会依次发给每一个。"
+                "每行一个会话。两种写法：\n"
+                "1) 只填会话：`-1001234567890` 或 `@用户名` —— 用下方「默认消息」发。\n"
+                "2) 会话各自内容：`-1001234567890 | 早上好` —— 用竖线 | 隔开，竖线后是这个会话专属内容。\n"
+                "会话ID形如 -1001234567890，不知道可用「查ID」插件。内容里想换行用 \\n。\n"
+                "一行只填会话不带 | 时，也可逗号/空格分隔多个会话（共用默认消息）。"
             ),
         },
         "message": {
-            "type": "text", "default": "", "label": "发送的消息",
-            "section": "发送内容", "help": "要定时发出去的文字内容。",
+            "type": "text", "default": "", "label": "默认消息（可选）",
+            "section": "发送内容",
+            "help": "对那些没单独写内容（没带 | ）的会话使用这条。所有会话都各自写了内容时可留空。",
         },
 
         # —— 发送频率 ——
@@ -89,18 +93,45 @@ def _normalize_chat_id(raw):
         return None
 
 
-def _parse_targets(raw) -> list:
-    """把多行/逗号/空格分隔的会话清单解析成去重后的有效目标列表。"""
-    text = str(raw or "")
-    parts = text.replace(",", "\n").replace("，", "\n").split("\n")
-    targets, seen = [], set()
-    for p in parts:
-        for token in p.split():            # 再按空格拆，兼容一行多个
-            t = _normalize_chat_id(token)
-            if t is not None and t not in seen:
-                seen.add(t)
-                targets.append(t)
-    return targets
+def _parse_plan(raw, default_msg: str) -> list:
+    """解析「会话与内容」清单 → [(target, message)] 列表，去重、丢非法/空内容。
+
+    每行两种写法：
+      `会话`              → 用 default_msg
+      `会话 | 专属内容`    → 用专属内容（内容里 \\n 视为换行）
+    不带 | 的行可再按逗号/空格拆成多个会话，共用 default_msg。
+    """
+    plan, seen = [], set()
+    for line in str(raw or "").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # 竖线（半角 | 或全角 ｜）分隔：左会话、右内容
+        sep = None
+        for ch in ("|", "｜"):
+            if ch in line:
+                sep = ch
+                break
+        if sep is not None:
+            chat_part, _, msg_part = line.partition(sep)
+            target = _normalize_chat_id(chat_part)
+            msg = msg_part.strip().replace("\\n", "\n")
+            if target is None or not msg or target in seen:
+                continue
+            seen.add(target)
+            plan.append((target, msg))
+        else:
+            # 无竖线：可能一行多个会话，共用默认消息
+            tokens = line.replace(",", " ").replace("，", " ").split()
+            for tok in tokens:
+                target = _normalize_chat_id(tok)
+                if target is None or target in seen:
+                    continue
+                if not default_msg:
+                    continue  # 没默认消息又没专属内容 → 跳过
+                seen.add(target)
+                plan.append((target, default_msg))
+    return plan
 
 
 def _build_message_link(target_chat_id, msg_id) -> str:
@@ -117,16 +148,13 @@ def _build_message_link(target_chat_id, msg_id) -> str:
 
 
 def _make_action(ctx):
-    """生成定时回调：读取当前配置 → 用所有已连接用户账号发到每个目标会话。"""
+    """生成定时回调：读取当前配置 → 用所有已连接用户账号按计划发到每个会话。"""
     async def _action():
         cfg = ctx.config
-        targets = _parse_targets(cfg.get("target_chat_id"))
-        message_text = (cfg.get("message") or "").strip()
-        if not targets:
-            ctx.log.error("[定时回复] 目标会话未设置或格式全部错误")
-            return
-        if not message_text:
-            ctx.log.error("[定时回复] 消息内容为空")
+        default_msg = (cfg.get("message") or "").strip()
+        plan = _parse_plan(cfg.get("target_chat_id"), default_msg)
+        if not plan:
+            ctx.log.error("[定时回复] 没有可发送的会话（会话格式错误，或会话没内容也没默认消息）")
             return
 
         user_apps = ctx.user_apps
@@ -143,7 +171,7 @@ def _make_action(ctx):
             else:
                 acct = getattr(app, "name", "未知账号")
 
-            for target in targets:
+            for target, message_text in plan:
                 try:
                     sent = await app.send_message(target, message_text)
                     ctx.log.info("[定时回复] [%s] → %s 发送成功 msg=%s", acct, target, sent.id)
@@ -177,8 +205,9 @@ def _make_action(ctx):
 
 async def setup(ctx):
     cfg = ctx.config
-    if not (cfg.get("message") or "").strip() or not _parse_targets(cfg.get("target_chat_id")):
-        ctx.log.info("[定时回复] 尚未填写目标会话或消息内容，未注册定时任务")
+    default_msg = (cfg.get("message") or "").strip()
+    if not _parse_plan(cfg.get("target_chat_id"), default_msg):
+        ctx.log.info("[定时回复] 尚未填写有效的会话/内容，未注册定时任务")
         return
 
     action = _make_action(ctx)
