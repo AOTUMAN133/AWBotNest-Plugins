@@ -1,8 +1,8 @@
 # =============================================================================
-# 红包插件 - 配置解析 + 记录（ctx.kv）
+# 影巢口令红包插件 - 配置解析 + 记录（ctx.kv）
 #
-# 原项目用 red_packet_service / state_repo / state_manager 记录运行状态与配置，
-# 本平台改用：配置走 ctx.config（前端 config_schema 表单），运行记录走 ctx.kv。
+# 配置走 ctx.config（前端 config_schema 表单），运行记录走 ctx.kv。
+# 每插件独立 kv（data/kv/<id>.sqlite），与抢红包插件互不干扰。
 # =============================================================================
 from __future__ import annotations
 
@@ -12,20 +12,35 @@ import time as _time
 
 # ─── 配置解析工具 ──────────────────────────────────────────────────────────
 
-def parse_groups(raw: str) -> list[int]:
-    """解析群组ID列表（逗号或换行分隔）。空 = 不限制（所有群）。"""
-    groups: list[int] = []
+def parse_targets(raw: str) -> dict[int, str]:
+    """解析「监控发包人」配置（多行 `uid 备注` 或 `uid`），返回 {uid: 备注}。"""
+    targets: dict[int, str] = {}
     if not raw:
-        return groups
-    for chunk in str(raw).replace("\n", ",").split(","):
-        chunk = chunk.strip()
-        if not chunk:
+        return targets
+    for line in str(raw).splitlines():
+        line = line.strip()
+        if not line:
             continue
+        parts = line.split(maxsplit=1)
         try:
-            groups.append(int(chunk))
-        except ValueError:
-            pass
-    return groups
+            uid = int(parts[0])
+        except (ValueError, IndexError):
+            continue
+        remark = parts[1].strip() if len(parts) > 1 else str(uid)
+        targets[uid] = remark
+    return targets
+
+
+def parse_keywords(raw: str) -> list[str]:
+    """解析陷阱关键词（逗号或换行分隔）。"""
+    if not raw:
+        return []
+    out = []
+    for chunk in str(raw).replace("\n", ",").split(","):
+        k = chunk.strip()
+        if k:
+            out.append(k)
+    return out
 
 
 def to_float(val, default: float = 0.0) -> float:
