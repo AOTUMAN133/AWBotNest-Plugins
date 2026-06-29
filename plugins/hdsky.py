@@ -150,29 +150,6 @@ async def setup(ctx):
         _last_self_msg_id[f"{chat_id}"] = message.id
         await ctx.kv.set(f"hdsky_last_msg:{chat_id}", str(message.id))
 
-    # ─── /red 指令监听（发 auto_msg 拉近活跃度）──────────
-    @ctx.on_message(
-        ctx.filters.group
-        & ctx.filters.regex(r"/red\S*\s+\d+\s+\d+"),
-        group=-9,
-    )
-    async def red_command_alert(client, message):
-        """监听用户发送的 /red 指令，发配置的 auto_msg 后删除，拉近活跃度 gap。"""
-        chat_id = message.chat.id
-        groups = _parse_groups(cfg.get("enabled_groups", ""))
-        if groups and chat_id not in groups:
-            return
-
-        auto_msg = (cfg.get("auto_msg") or "").strip()
-        if not auto_msg:
-            return
-        try:
-            sent = await message.reply(auto_msg)
-            await sent.delete()
-            ctx.log.info("已响应 /red 发送 auto_msg chat=%s", chat_id)
-        except Exception:
-            pass
-
     # ─── 抢红包 Handler ────────────────────────────────
     @ctx.on_message(
         ctx.filters.group
