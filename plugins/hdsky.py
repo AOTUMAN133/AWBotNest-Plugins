@@ -177,7 +177,7 @@ async def setup(ctx):
             return
 
         try:
-            sent = await message.reply(auto_msg)
+            sent = await client.send_message(chat_id, auto_msg)
             await sent.delete()
             ctx.log.info("已响应 /red 发送 auto_msg (gap=%s >= auto_gap=%s) chat=%s", gap, auto_gap, chat_id)
         except Exception:
