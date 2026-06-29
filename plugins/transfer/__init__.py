@@ -41,7 +41,7 @@ from . import _leaderboard as lb
 __plugin__ = {
     "name": "多站点转账",
     "id": "transfer",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -418,19 +418,29 @@ async def _record_and_notify(ctx, store, client, message, site, direction,
 
     owner_name = client.me.first_name if client.me else ""
     sent = None
+    want_image = ctx.config.get("rank_output", "text") == "image"
     try:
-        if entries and ctx.config.get("rank_output", "text") == "image":
+        if entries and want_image:
             img = lb.render_image(entries, site.site_name, site.bonus_name,
                                   direction, owner_name, ctx.data_dir)
             if img:
                 cap = text + "\n\n" + "（榜单见图）"
-                sent = await message.reply_photo(img, caption=cap)
                 try:
-                    import os
-                    if os.path.exists(img):
-                        os.unlink(img)
-                except Exception:
-                    pass
+                    sent = await message.reply_photo(img, caption=cap)
+                except Exception as photo_err:  # noqa: BLE001 - 发图失败回退文本
+                    ctx.log.warning("[排行榜] 发图失败，回退文本: %r", photo_err)
+                finally:
+                    try:
+                        import os
+                        if os.path.exists(img):
+                            os.unlink(img)
+                    except Exception:
+                        pass
+            else:
+                ctx.log.warning("[排行榜] 出图未生成（render_image 返回空，imgkit=%s pil=%s），回退文本",
+                                lb._imgkit_available(), lb._pil_available())
+        elif entries and not want_image:
+            ctx.log.info("[排行榜] 输出形式=文本（rank_output 未设为 image），如需图片请在配置里改「排行榜输出形式」")
         if sent is None:
             if entries:
                 table = lb.render_text(entries, site.site_name, site.bonus_name,
