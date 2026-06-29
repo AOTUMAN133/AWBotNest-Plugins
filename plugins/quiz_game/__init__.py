@@ -15,7 +15,7 @@ from ._engine import fetch_from_ai, fetch_from_tianapi
 __plugin__ = {
     "name": "趣味答题",
     "id": "quiz_game",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "群内答题游戏：发「开启答题」出题，群友抢答，答对自动发魔力奖励，支持连胜加成。AI或天行出题。",
     "scope": "user",
@@ -42,8 +42,8 @@ __plugin__ = {
         "source": {
             "type": "select", "default": "ai", "label": "出题源", "section": "出题源",
             "options": [
-                {"value": "ai", "label": "🤖 AI 出题"},
-                {"value": "tianapi", "label": "☁️ 天行数据"},
+                {"value": "ai", "label": "AI 出题"},
+                {"value": "tianapi", "label": "天行数据"},
             ],
         },
         "difficulty": {
@@ -131,14 +131,14 @@ async def setup(ctx):
             if chat_id in _active:
                 ans = _active[chat_id]["a"]
                 await _send_temp(client, chat_id,
-                                 f"⏱️ 时间到！没人答对，正确答案是：{ans}\n🛑 活动已结束")
+                                 f"时间到！没人答对，正确答案是：{ans}\n活动已结束")
                 await _stop(client, chat_id)
         return _track(asyncio.create_task(_runner()))
 
     async def _send_next_question(client, chat_id, timeout):
         state = _active[chat_id]
-        text = (f"🎯 趣味答题 · 第 {state['round']}/{state['total_rounds']} 轮\n"
-                f"❓ {state['q']}\n\n⏱️ 请在 {timeout} 秒内直接发送答案")
+        text = (f"趣味答题 · 第 {state['round']}/{state['total_rounds']} 轮\n"
+                f"{state['q']}\n\n请在 {timeout} 秒内直接发送答案")
         try:
             msg = await client.send_message(chat_id, text)
             state["q_msgs"].append(msg)
@@ -152,7 +152,7 @@ async def setup(ctx):
         if chat_id in _active:
             if chat_id not in _busy_hints:
                 _busy_hints.add(chat_id)
-                await _send_temp(client, chat_id, "⚠️ 答题已在进行中，结束请发：结束答题")
+                await _send_temp(client, chat_id, "答题已在进行中，结束请发：结束答题")
             return
         timeout = int(cfg.get("timeout", 60) or 60)
         reward = int(cfg.get("reward", 200) or 200)
@@ -161,7 +161,7 @@ async def setup(ctx):
         pool = await _fetch_pool(cfg, rounds)
         _busy_hints.discard(chat_id)
         if len(pool) < rounds:
-            await _send_temp(client, chat_id, "❌ 出题失败，题目数量不足，请检查出题源配置或稍后重试。")
+            await _send_temp(client, chat_id, "出题失败，题目数量不足，请检查出题源配置或稍后重试。")
             return
 
         first = pool[0]
@@ -172,8 +172,8 @@ async def setup(ctx):
             "last_winner_id": 0, "streak_count": 0,
         }
         _name_cache.setdefault(chat_id, {})
-        text = (f"🎯 趣味答题 · 第 1/{rounds} 轮\n🎁 答对奖励：{reward} 魔力\n"
-                f"❓ {first['q']}\n\n⏱️ 请在 {timeout} 秒内直接发送答案\n（发「结束答题」可手动结束）")
+        text = (f"趣味答题 · 第 1/{rounds} 轮\n答对奖励：{reward} 魔力\n"
+                f"{first['q']}\n\n请在 {timeout} 秒内直接发送答案\n（发「结束答题」可手动结束）")
         try:
             msg = await message.edit_text(text)
         except Exception:
@@ -195,11 +195,11 @@ async def setup(ctx):
             scores = state["scores"]
             if scores:
                 names = _name_cache.get(chat_id, {})
-                board = "\n".join(f"👤 {names.get(uid, str(uid))}: {sc} 分"
+                board = "\n".join(f"{names.get(uid, str(uid))}: {sc} 分"
                                   for uid, sc in sorted(scores.items(), key=lambda x: x[1], reverse=True))
-                text = f"🛑 答题结束\n🏆 排行榜\n{board}"
+                text = f"答题结束\n排行榜\n{board}"
             else:
-                text = "🛑 答题结束，本轮无人得分。"
+                text = "答题结束，本轮无人得分。"
             await _send_temp(client, chat_id, text)
             _active.pop(chat_id, None)
             _name_cache.pop(chat_id, None)
@@ -212,12 +212,12 @@ async def setup(ctx):
         if text == "开启答题":
             if not _valid_group(ctx.config, message.chat.id):
                 try:
-                    await message.edit_text("⚠️ 该群未在允许列表，无法开启答题。")
+                    await message.edit_text("该群未在允许列表，无法开启答题。")
                 except Exception:
                     pass
                 return
             try:
-                await message.edit_text("🎮 趣味答题启动中，正在生成题目...")
+                await message.edit_text("趣味答题启动中，正在生成题目...")
             except Exception:
                 pass
             await _start(client, message.chat.id, message)
@@ -269,9 +269,9 @@ async def setup(ctx):
         except Exception as e:  # noqa: BLE001
             ctx.log.error("[答题] 发奖失败: %r", e)
 
-        streak_text = f"🔥 连胜 {streak}（+{bonus}）\n" if streak > 1 else ""
+        streak_text = f"连胜 {streak}（+{bonus}）\n" if streak > 1 else ""
         result = await message.reply(
-            f"🎉 答对了！\n👤 {uname}\n✅ 答案：{ans}\n💰 +{total} 魔力\n{streak_text}📈 累计 {score} 次\n⏳ 准备下一题..."
+            f"答对了！\n{uname}\n答案：{ans}\n+{total} 魔力\n{streak_text}累计 {score} 次\n准备下一题..."
         )
         _track(asyncio.create_task(_auto_del(result, 30)))
 

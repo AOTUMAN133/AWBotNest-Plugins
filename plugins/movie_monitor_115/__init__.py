@@ -18,7 +18,7 @@ from ._tmdb import TmdbApi, get_emby_tmdb_ids
 __plugin__ = {
     "name": "影巢115媒体监控",
     "id": "movie_monitor_115",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "AWdress",
     "description": "监控频道里的 115 分享，TMDB 识别后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。",
     "scope": "user",
@@ -219,7 +219,7 @@ async def setup(ctx):
         except Exception as e:  # noqa: BLE001
             ctx.log.error("[影巢监控] /getmedia 失败: %r", e)
             try:
-                await message.edit(f"❌ 查询失败: {e.__class__.__name__}")
+                await message.edit(f"查询失败: {e.__class__.__name__}")
             except Exception:
                 pass
         finally:

@@ -43,7 +43,7 @@ from ._prize import PrizeStore, record_draw_result, send_prizes
 __plugin__ = {
     "name": "小菜抽奖",
     "id": "auto_lottery",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -104,7 +104,7 @@ __plugin__ = {
             "type": "text", "default": "", "label": "奖品列表",
             "section": "奖品匹配", "show_if": {"auto_lottery_enabled": True},
             "help": "每行 `群组ID|奖品1,奖品2,...`（对应原 PRIZE_LIST，每群组要参与的奖品名）。\n"
-                    "例：\n-1001234567890|魔力,积分\n-1001234567891|金币,💎币,GB,邀请\n"
+                    "例：\n-1001234567890|魔力,积分\n-1001234567891|金币,币,GB,邀请\n"
                     "抽奖奖品文本包含某群任一关键词即视为符合。",
         },
         "universal_prize_match": {
@@ -408,22 +408,22 @@ async def setup(ctx):
             if is_trap:
                 ctx.log.warning("跳过陷阱抽奖 %s: %s", lottery_id, reason)
                 await _maybe_notify(
-                    f"🛡️ 跳过陷阱抽奖\n🆔 {lottery_id}\n🎁 {info.get('prize','')}\n"
-                    f"📝 {reason}\n🔗 {message.link}",
+                    f"跳过陷阱抽奖\n{lottery_id}\n{info.get('prize','')}\n"
+                    f"{reason}\n{message.link}",
                     "warning", client, skip=True)
                 return
 
         # ── 总开关 ──
         if not cfg.get("auto_lottery_enabled", False):
             await _maybe_notify(
-                f"🔒 自动抽奖未开启，跳过\n🆔 {lottery_id}\n🔗 {message.link}",
+                f"自动抽奖未开启，跳过\n{lottery_id}\n{message.link}",
                 "info", client, skip=True)
             return
 
         # ── 时间窗 ──
         if not is_within_time_ranges(parse_time_ranges(cfg.get("auto_lottery_time", ""))):
             await _maybe_notify(
-                f"⏰ 不在抽奖时间段，跳过\n🆔 {lottery_id}\n🔗 {message.link}",
+                f"不在抽奖时间段，跳过\n{lottery_id}\n{message.link}",
                 "info", client, skip=True)
             return
 
@@ -435,8 +435,8 @@ async def setup(ctx):
             case_sensitive=cfg.get("prize_case_sensitive", False))
         if matched_group is None:
             await _maybe_notify(
-                f"🚫 奖品不符合，跳过\n🆔 {lottery_id}\n🎁 {info.get('prize','')}\n"
-                f"🔗 {message.link}", "info", client, skip=True)
+                f"奖品不符合，跳过\n{lottery_id}\n{info.get('prize','')}\n"
+                f"{message.link}", "info", client, skip=True)
             return
 
         # ── 登记并参与 ──
@@ -474,7 +474,7 @@ async def setup(ctx):
         if lottery_id not in _state.lottery_list:
             ctx.log.info("抽奖 %s 在等待期间已结束", lottery_id)
             await _maybe_notify(
-                f"⏰ 抽奖已结束（等待期内）\n🆔 {lottery_id}\n🔗 {message.link}",
+                f"抽奖已结束（等待期内）\n{lottery_id}\n{message.link}",
                 "info", client, skip=True)
             return
 
@@ -505,13 +505,13 @@ async def setup(ctx):
                 _state.lottery_list[lottery_id]['flag'] = 1
             ctx.log.info("抽奖参与成功 %s", lottery_id)
             await _maybe_notify(
-                f"✅ 抽奖参与成功\n🆔 {lottery_id}\n🏠 {message.chat.title}\n"
-                f"🎁 {info.get('prize','')}\n🔑 {keyword}\n🔗 {message.link}",
+                f"抽奖参与成功\n{lottery_id}\n{message.chat.title}\n"
+                f"{info.get('prize','')}\n{keyword}\n{message.link}",
                 "success", client)
         except Exception as e:  # noqa: BLE001
             ctx.log.error("发送抽奖消息失败 %s: %r", lottery_id, e)
             await _maybe_notify(
-                f"❌ 抽奖参与失败\n🆔 {lottery_id}\n🔑 {keyword}\n⚠️ {e}",
+                f"抽奖参与失败\n{lottery_id}\n{keyword}\n{e}",
                 "error", client)
 
     async def _participate_via_first(client, message, lottery_id, keyword, original_message):
@@ -677,8 +677,8 @@ async def setup(ctx):
 
         if cfg.get("manual_prize_mode", False):
             await _maybe_notify(
-                f"📝 记录待发奖\n🆔 {lottery_id}\n👥 {len(winners)} 人\n"
-                f"🏠 {record['chat_title']}\n🎯 发奖: .sendprize {lottery_id[:8]}",
+                f"记录待发奖\n{lottery_id}\n{len(winners)} 人\n"
+                f"{record['chat_title']}\n发奖: .sendprize {lottery_id[:8]}",
                 "info", client)
             return
 
@@ -693,11 +693,11 @@ async def setup(ctx):
         if failed:
             detail = "\n".join(f"  {f['user_name']}({f['user_id']}): {f['reason']}" for f in failed)
             await _maybe_notify(
-                f"⚠️ 发奖完成（部分失败）\n🆔 {lottery_id}\n成功 {success}/{total}\n"
+                f"发奖完成（部分失败）\n{lottery_id}\n成功 {success}/{total}\n"
                 f"失败明细:\n{detail}", "warning", client)
         else:
             await _maybe_notify(
-                f"✅ 发奖完成\n🆔 {lottery_id}\n成功 {success}/{total} 人",
+                f"发奖完成\n{lottery_id}\n成功 {success}/{total} 人",
                 "success", client)
 
     # ============================================================

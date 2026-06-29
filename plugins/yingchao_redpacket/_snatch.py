@@ -181,7 +181,7 @@ class TokenSnatcher:
             self._log.warning("[影巢口令] OCR口令命中陷阱，拦截: %r", keyword)
             if notify:
                 await self._safe_notify(
-                    f"影巢口令红包-已拦截陷阱口令\n👤 发包人: {sender_name}\n🔒 口令: {keyword}\n🔗 {getattr(message,'link','')}",
+                    f"影巢口令红包-已拦截陷阱口令\n发包人: {sender_name}\n口令: {keyword}\n{getattr(message,'link','')}",
                     level="warning", account=client,
                 )
             return
@@ -205,7 +205,7 @@ class TokenSnatcher:
         self._log.info("[影巢口令] 已发OCR口令 chat=%s msg=%s sent=%s 口令=%r", group_id, packet_id, sent_id, keyword)
         if notify:
             await self._safe_notify(
-                f"影巢口令红包-已发OCR口令\n👤 发包人: {sender_name}\n🔑 口令: {keyword}\n🔗 {getattr(message,'link','')}",
+                f"影巢口令红包-已发OCR口令\n发包人: {sender_name}\n口令: {keyword}\n{getattr(message,'link','')}",
                 level="info", account=client,
             )
 
@@ -251,7 +251,7 @@ class TokenSnatcher:
         )
         if notify:
             await self._safe_notify(
-                f"影巢口令红包-OCR口令识别有误，转等待复制\n👤 发包人: {entry.sender_name}\n🔑 口令: {entry.keyword}",
+                f"影巢口令红包-OCR口令识别有误，转等待复制\n发包人: {entry.sender_name}\n口令: {entry.keyword}",
                 level="warning", account=client,
             )
 
@@ -268,7 +268,7 @@ class TokenSnatcher:
             })
             if notify:
                 await self._safe_notify(
-                    f"影巢口令红包-OCR口令抢到了\n👤 发包人: {ocr_entry.sender_name}\n🔑 口令: {ocr_entry.keyword}",
+                    f"影巢口令红包-OCR口令抢到了\n发包人: {ocr_entry.sender_name}\n口令: {ocr_entry.keyword}",
                     level="success", account=client,
                 )
             return
@@ -316,7 +316,7 @@ class TokenSnatcher:
         })
         if notify and ok:
             await self._safe_notify(
-                f"影巢口令红包-复制口令参与\n👤 发包人: {pending.sender_name}\n🔑 口令: {keyword}",
+                f"影巢口令红包-复制口令参与\n发包人: {pending.sender_name}\n口令: {keyword}",
                 level="success", account=client,
             )
 

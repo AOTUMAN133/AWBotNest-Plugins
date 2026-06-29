@@ -10,7 +10,7 @@ import httpx
 __plugin__ = {
     "name": "小姐姐视频",
     "id": "xjj",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "发送 /xjj 或 .xjj 获取一条随机短视频。",
     "scope": "user",
@@ -89,7 +89,7 @@ async def setup(ctx):
         )
         if not url:
             try:
-                await message.edit(f"❌ {error}")
+                await message.edit(f"{error}")
             except Exception:
                 pass
             return

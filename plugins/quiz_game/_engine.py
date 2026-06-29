@@ -99,7 +99,7 @@ async def fetch_from_tianapi(tianapi_key: str, log) -> Optional[dict]:
                 return None
             q_text = f"【{name}】 {title}"
             if pic:
-                q_text += f"\n\n[🖼️点击查看图片]({pic})"
+                q_text += f"\n\n[点击查看图片]({pic})"
             return {"q": q_text, "a": answer, "aliases": []}
     except Exception as e:  # noqa: BLE001
         log.warning("[答题] 天行接口失败: %r", e)

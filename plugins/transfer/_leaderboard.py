@@ -15,7 +15,7 @@ import os
 import shutil
 import uuid
 
-_MEDALS = ["🥇", "🥈", "🥉"]
+_MEDALS = ["No.1", "No.2", "No.3"]
 
 # PIL 出图配色（与 HTML 版风格一致）
 _BG = (102, 126, 234)          # #667eea 紫蓝背景
@@ -51,9 +51,9 @@ def render_text(entries: list[dict], site_name: str, bonus_name: str,
                 direction: str, owner_name: str = "") -> str:
     """渲染文本排行榜。direction: 'in'=打赏总榜 / 'out'=赏赐总榜。"""
     title_word = "打赏" if direction == "in" else "赏赐"
-    head = f"🏆 {site_name} {title_word}总榜 TOP{len(entries)}"
+    head = f"{site_name} {title_word}总榜 TOP{len(entries)}"
     if owner_name:
-        head = f"🏆 {owner_name} · {site_name} {title_word}总榜 TOP{len(entries)}"
+        head = f"{owner_name} · {site_name} {title_word}总榜 TOP{len(entries)}"
     if not entries:
         return f"{head}\n\n暂无数据。"
     lines = [head, ""]
@@ -72,15 +72,15 @@ def render_user_summary(stat: dict, bonus_name: str, direction: str,
     """单笔转账后的个人累计文案（用于 notification）。"""
     title_word = "打赏" if direction == "in" else "赏赐"
     if direction == "in":
-        head = (f"👤 {user_name} 大佬，感谢打赏！\n"
-                f"💰 本次收到：{_fmt_amount(abs(amount))} {bonus_name}")
+        head = (f"{user_name} 大佬，感谢打赏！\n"
+                f"本次收到：{_fmt_amount(abs(amount))} {bonus_name}")
     else:
-        head = (f"👤 {user_name}\n"
-                f"🎁 这是赏赐你的 {_fmt_amount(abs(amount))} {bonus_name}，拿去花！")
+        head = (f"{user_name}\n"
+                f"这是赏赐你的 {_fmt_amount(abs(amount))} {bonus_name}，拿去花！")
     rank_str = f"第 {stat['rank']} 名" if stat.get("rank", -1) > 0 else "—"
-    tail = (f"📊 累计{title_word}：{stat['count']} 次，共 "
+    tail = (f"累计{title_word}：{stat['count']} 次，共 "
             f"{_fmt_amount(stat['total'])} {bonus_name}\n"
-            f"🏆 {title_word}总榜：{rank_str}")
+            f"{title_word}总榜：{rank_str}")
     return f"{head}\n{tail}"
 
 
@@ -156,10 +156,10 @@ def _render_image_imgkit(entries: list[dict], site_name: str, bonus_name: str,
         .r{{font-weight:bold}} .i{{color:#667eea}} .n{{font-weight:600}}
         .c{{color:#4ecdc4;font-weight:bold}} .a{{color:#ff6b6b;font-weight:bold}}
         </style></head><body><div class="box">
-        <div class="t">🌟 {_html_escape(owner)} 的{title_word}数据终端 🌟</div>
+        <div class="t">{_html_escape(owner)} 的{title_word}数据终端 </div>
         <div class="s">&gt;&gt;&gt; {site_name} TOP{len(entries)} 排行榜 &lt;&lt;&lt;</div>
-        <table><thead><tr><th>⚡排名</th><th>🆔ID</th><th>👤用户</th>
-        <th>📊次数</th><th>💰{bonus_name}</th></tr></thead><tbody>{rows}</tbody></table>
+        <table><thead><tr><th>排名</th><th>ID</th><th>用户</th>
+        <th>次数</th><th>{bonus_name}</th></tr></thead><tbody>{rows}</tbody></table>
         </div></body></html>"""
 
         out_dir = str(out_dir)

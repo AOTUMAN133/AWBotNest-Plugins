@@ -12,7 +12,7 @@ import urllib.parse
 __plugin__ = {
     "name": "举牌",
     "id": "jupai",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "发送 /jupai 文字（或回复一条消息再发 /jupai），把文字转成举牌人图片。",
     "scope": "user",
@@ -59,7 +59,7 @@ async def setup(ctx):
                 text = m.group(1).strip()
 
         if not text:
-            return await message.edit("❌ 请回复一条消息或输入文字\n例如: /jupai 你好")
+            return await message.edit("请回复一条消息或输入文字\n例如: /jupai 你好")
 
         api_url = cfg.get("api_url", "https://api.txqq.pro/api/zt.php")
         try:
@@ -73,7 +73,7 @@ async def setup(ctx):
         except Exception as e:  # noqa: BLE001
             ctx.log.error("举牌失败: %r", e)
             try:
-                await message.edit(f"❌ 获取失败: {e.__class__.__name__}")
+                await message.edit(f"获取失败: {e.__class__.__name__}")
             except Exception:
                 pass
 

@@ -12,7 +12,7 @@ from pathlib import Path
 __plugin__ = {
     "name": "取消息结构",
     "id": "getmsg",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "回复一条消息再发 /getmsg，把该消息的原始结构导出为 txt 发到你的收藏夹，便于调试。",
     "scope": "user",
@@ -46,7 +46,7 @@ async def setup(ctx):
 
         reply = message.reply_to_message
         if not reply:
-            return await message.edit("❌ 请先回复一条要查看结构的消息")
+            return await message.edit("请先回复一条要查看结构的消息")
 
         # 生成临时 txt 文件
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -65,7 +65,7 @@ async def setup(ctx):
         except Exception as e:  # noqa: BLE001
             ctx.log.error("[取消息结构] 导出失败: %r", e)
             try:
-                await message.edit(f"❌ 导出失败: {e.__class__.__name__}")
+                await message.edit(f"导出失败: {e.__class__.__name__}")
             except Exception:
                 pass
         finally:

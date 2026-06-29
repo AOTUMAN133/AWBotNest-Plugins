@@ -18,14 +18,14 @@ def classify_error(err: Exception) -> str:
     if len(msg) > 300:
         msg = msg[:300] + "..."
     if any(k in lower for k in ("model_not_found", "no available channel", "model not found")):
-        return f"❌ AI 模型不可用：{msg}"
+        return f"AI 模型不可用：{msg}"
     if any(k in lower for k in ("401", "403", "unauthorized", "forbidden")):
-        return f"❌ AI 鉴权失败（401/403）：{msg}"
+        return f"AI 鉴权失败（401/403）：{msg}"
     if any(k in lower for k in ("429", "rate limit", "too many requests")):
-        return f"❌ AI 请求过于频繁（429）：{msg}"
+        return f"AI 请求过于频繁（429）：{msg}"
     if "503" in lower or "service unavailable" in lower:
-        return f"❌ AI 服务暂时不可用（503）：{msg}"
-    return f"❌ AI 调用失败：{msg}"
+        return f"AI 服务暂时不可用（503）：{msg}"
+    return f"AI 调用失败：{msg}"
 
 
 async def generate(

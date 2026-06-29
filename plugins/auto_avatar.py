@@ -18,7 +18,7 @@ import random
 __plugin__ = {
     "name": "自动换头像",
     "id": "auto_avatar",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "定时把账号头像换成图片池里随机一张。回复图片发 .avataradd 加入池子，.avatarlist/.avatarclear 管理。",
     "scope": "user",
@@ -138,22 +138,22 @@ async def setup(ctx):
             # 图片来源：自身这条消息的图，或被回复消息的图
             src = message if message.photo else message.reply_to_message
             if not src or not getattr(src, "photo", None):
-                return await message.edit("❌ 请回复一张图片，或发图并把说明写成加图命令")
+                return await message.edit("请回复一张图片，或发图并把说明写成加图命令")
             try:
                 pool_dir = _pool_dir(ctx, client)
                 dest = pool_dir / f"{src.id}.jpg"
                 await client.download_media(src, file_name=str(dest))
                 count = len(_list_pool(ctx, client))
-                await message.edit(f"✅ 已存入图片池（账号 {_account_name(client)}，共 {count} 张）")
+                await message.edit(f"已存入图片池（账号 {_account_name(client)}，共 {count} 张）")
             except Exception as e:  # noqa: BLE001
                 ctx.log.error("[自动换头像] 存图失败: %r", e)
-                await message.edit(f"❌ 存图失败: {e.__class__.__name__}")
+                await message.edit(f"存图失败: {e.__class__.__name__}")
             return
 
         # 查看
         if _matches(cmd_text, cfg.get("list_command", ".avatarlist")):
             count = len(_list_pool(ctx, client))
-            return await message.edit(f"🖼️ 账号 {_account_name(client)} 图片池：{count} 张")
+            return await message.edit(f"账号 {_account_name(client)} 图片池：{count} 张")
 
         # 清空
         if _matches(cmd_text, cfg.get("clear_command", ".avatarclear")):
@@ -164,7 +164,7 @@ async def setup(ctx):
                     removed += 1
                 except Exception:
                     pass
-            return await message.edit(f"🗑️ 已清空 {removed} 张（账号 {_account_name(client)}）")
+            return await message.edit(f"已清空 {removed} 张（账号 {_account_name(client)}）")
 
 
 async def teardown(ctx):

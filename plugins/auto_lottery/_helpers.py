@@ -233,7 +233,7 @@ def parse_prize_list(raw) -> dict[int, list[str]]:
     解析「奖品列表」配置（对应 PRIZE_LIST）。
     每行 `群组ID|奖品1,奖品2,...`，例如：
         -1001234567890|魔力,积分
-        -1001234567891|金币,💎币,GB,邀请
+        -1001234567891|金币,币,GB,邀请
     返回 {group_id: [关键词...]}。
     """
     out: dict[int, list[str]] = {}

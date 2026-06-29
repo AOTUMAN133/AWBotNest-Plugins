@@ -11,7 +11,7 @@ import re
 __plugin__ = {
     "name": "删除自己消息",
     "id": "self_delete",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "发送 /dme 数字 或 .dme 数字，删除当前会话里自己最近发的若干条消息。",
     "scope": "user",
@@ -49,7 +49,7 @@ async def setup(ctx):
 
         cmd = cfg.get("command", ".dme")
         if count is None or count <= 0:
-            return await message.edit(f"❌ 格式：{cmd} 数字\n例如：{cmd} 10")
+            return await message.edit(f"格式：{cmd} 数字\n例如：{cmd} 10")
 
         tip_secs = int(cfg.get("tip_seconds", 2) or 0)
 
@@ -66,7 +66,7 @@ async def setup(ctx):
             ctx.log.error("获取聊天历史失败: %r", e)
 
         if not msgs:
-            await message.edit("❌ 没有找到要删除的消息")
+            await message.edit("没有找到要删除的消息")
             if tip_secs > 0:
                 await asyncio.sleep(tip_secs)
             try:
@@ -78,7 +78,7 @@ async def setup(ctx):
         try:
             await client.delete_messages(message.chat.id, msgs)
             ctx.log.info("已删除 %d 条消息", len(msgs))
-            await message.edit(f"✅ 已删除 {len(msgs)} 条消息")
+            await message.edit(f"已删除 {len(msgs)} 条消息")
             if tip_secs > 0:
                 await asyncio.sleep(tip_secs)
             await message.delete()

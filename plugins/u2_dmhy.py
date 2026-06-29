@@ -16,7 +16,7 @@ import httpx
 __plugin__ = {
     "name": "U2送糖",
     "id": "u2_dmhy",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "用 /u2 或 /u2s 带 cookie 给 u2.dmhy.org 用户赠送 UCoin。单人/批量，自带站点限频冷却。",
     "scope": "user",
@@ -129,7 +129,7 @@ async def setup(ctx):
             return
 
         if not cfg.get("cookie"):
-            return await message.edit("❌ 未配置 u2 Cookie")
+            return await message.edit("未配置 u2 Cookie")
 
         parts = text.split()
         delete_after = int(cfg.get("result_delete", 90) or 0)
@@ -146,8 +146,8 @@ async def setup(ctx):
                 await _wait_cooldown()
                 ok, detail = await _gift(cfg["cookie"], user, bonus, note, ctx.log)
                 _mark_pay()
-                result += (f"🎉 成功赠与 {user} {bonus} UCoin\n" if ok
-                           else f"❌ 赠与 {user} 失败: {detail or '未知'}\n")
+                result += (f"成功赠与 {user} {bonus} UCoin\n" if ok
+                           else f"赠与 {user} 失败: {detail or '未知'}\n")
             r = await status.reply(f"```\n{result}```")
             await _autodel(status, delete_after)
             await _autodel(r, delete_after)
@@ -162,8 +162,8 @@ async def setup(ctx):
             ok, detail = await _gift(cfg["cookie"], user, bonus, note, ctx.log)
             _mark_pay()
             r = await message.edit(
-                f"```\n🎉 成功赠与 {user} {bonus} UCoin```" if ok
-                else f"```\n❌ 赠与 {user} 失败\n原因: {detail}```"
+                f"```\n成功赠与 {user} {bonus} UCoin```" if ok
+                else f"```\n赠与 {user} 失败\n原因: {detail}```"
             )
             await _autodel(r, delete_after)
 

@@ -20,7 +20,7 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "ai",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "私聊/群@你时 AI 人形对话（带记忆）；回复消息发 /ai 让 AI 解释或解答（支持图片）。",
     "scope": "user",
@@ -194,9 +194,9 @@ async def setup(ctx):
         if not re.match(r"^[/\.]ai(?:\s|$)", message.text or "", re.IGNORECASE):
             return
         if not cfg.get("enable_explain_command", True):
-            return await _edit_autodel(message, "❌ /ai 解释命令未启用")
+            return await _edit_autodel(message, "/ai 解释命令未启用")
         if not cfg.get("api_key"):
-            return await _edit_autodel(message, "❌ 未配置 API Key")
+            return await _edit_autodel(message, "未配置 API Key")
 
         command_text = (message.text or "").strip()
         extra_text = re.sub(r"^[/\.]ai\s*", "", command_text, flags=re.IGNORECASE).strip()
@@ -209,7 +209,7 @@ async def setup(ctx):
             image_bytes = await _extract_image(client, reply, ctx)
 
         if not target_text and not extra_text and not image_bytes:
-            return await _edit_autodel(message, "❌ 请回复要解释的消息/图片，或在 /ai 后直接带文本")
+            return await _edit_autodel(message, "请回复要解释的消息/图片，或在 /ai 后直接带文本")
 
         content = target_text or extra_text or "请解释这张图片表达的内容。"
         if cfg.get("enable_explain_prompt", False):
@@ -222,7 +222,7 @@ async def setup(ctx):
             prompt = content
 
         try:
-            code_msg = await message.edit("🤖 正在解释中...")
+            code_msg = await message.edit("正在解释中...")
         except Exception:
             code_msg = message
 
@@ -240,19 +240,19 @@ async def setup(ctx):
             return await _edit_autodel(code_msg, classify_error(e))
 
         if not response:
-            return await _edit_autodel(code_msg, "❌ AI 未返回内容（检查模型/密钥/接口）")
+            return await _edit_autodel(code_msg, "AI 未返回内容（检查模型/密钥/接口）")
 
         try:
             # 不传 parse_mode：客户端默认模式会解析 HTML 标签
             await code_msg.edit_text(
-                "<b>🧠 消息解释</b>\n"
+                "<b>消息解释</b>\n"
                 f"<blockquote><b>Q：</b> {escape(content)}</blockquote>\n"
                 f"<blockquote><b>A：</b> {escape(response)}</blockquote>"
             )
         except Exception:
             # 兜底：纯文本输出
             try:
-                await code_msg.edit_text(f"🧠 解释\nQ: {content}\n\nA: {response}")
+                await code_msg.edit_text(f"解释\nQ: {content}\n\nA: {response}")
             except Exception:
                 pass
         asyncio.create_task(_auto_del(code_msg, 60))

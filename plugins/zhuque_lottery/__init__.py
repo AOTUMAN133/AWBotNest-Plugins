@@ -42,7 +42,7 @@ from . import _ydx
 __plugin__ = {
     "name": "朱雀",
     "id": "zhuque_lottery",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -544,7 +544,7 @@ async def _handle_card(ctx, api_fn, message, args):
       /card 2           → 回收 2 号卡(神佑7天卡)的全部库存
       /card 2 10        → 回收 2 号卡 10 张
 
-    ⚠️ 待实盘校验：回收端点 POST /api/mall/recycleMagicCard 的 body 字段名({"id":card_id})、
+    待实盘校验：回收端点 POST /api/mall/recycleMagicCard 的 body 字段名({"id":card_id})、
     背包 listBackpack 的 card_id 取值，均按原项目(aiohttp 版)迁移。若站点改版需对照 F12。
     """
     ctx.log.warning("道具卡回收 .card 触发：API 端点/字段按原项目迁移，待实盘校验")
@@ -952,7 +952,7 @@ async def _handle_transform(ctx, client, message, reply_to_me_fn):
         entries = _build_leaderboard(raw, direction, _LEADERBOARD_SIZE)
         if entries:
             lines = [f"个人{table_title}总榜 TOP{len(entries)}："]
-            medals = ["🥇", "🥈", "🥉"]
+            medals = ["", "", ""]
             for i, e in enumerate(entries):
                 medal = medals[i] if i < 3 else f"{i + 1}."
                 lines.append(f"{medal} {e['name']} {e['total']:,.0f}（{e['count']}次）")

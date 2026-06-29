@@ -22,7 +22,7 @@ from ._game import NumberBombGame
 __plugin__ = {
     "name": "数字炸弹",
     "id": "bomb_game",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "AWdress",
     "description": "群内数字炸弹竞猜：开启后群友回复+金额参与组奖池，轮流猜数字，猜中/范围耗尽即爆炸，中奖者按比例分奖池。",
     "scope": "both",
@@ -146,7 +146,7 @@ async def setup(ctx):
                 disabled = parse_groups(ctx.config.get("monitor_disabled_groups", ""))
                 if (is_start_command(text) or is_continuous_command(text)) and chat_id in disabled:
                     try:
-                        await message.edit_text("⛔ 本群已临时停用数字炸弹（可在插件配置移出停用列表）")
+                        await message.edit_text("本群已临时停用数字炸弹（可在插件配置移出停用列表）")
                         game._track(_auto_delete(message, 5))
                     except Exception:
                         pass
@@ -154,14 +154,14 @@ async def setup(ctx):
                 if is_start_command(text):
                     ctx.log.info("检测到开始游戏命令，chat_id=%s", chat_id)
                     try:
-                        await message.edit_text("🎯 正在开启数字炸弹游戏（单次模式）...")
+                        await message.edit_text("正在开启数字炸弹游戏（单次模式）...")
                         game._track(_auto_delete(message, 5))
                     except Exception as e:
                         ctx.log.warning("编辑消息失败: %s", e)
                     ok = await game.start_game(client, message, admin_id, continuous=False)
                     if not ok:
                         try:
-                            await message.edit_text("❌ 数字炸弹游戏启动失败，可能已有游戏进行中")
+                            await message.edit_text("数字炸弹游戏启动失败，可能已有游戏进行中")
                         except Exception:
                             pass
                     return
@@ -169,14 +169,14 @@ async def setup(ctx):
                 if is_continuous_command(text):
                     ctx.log.info("检测到持续游戏命令，chat_id=%s", chat_id)
                     try:
-                        await message.edit_text("🔄 正在开启数字炸弹游戏（持续模式）...")
+                        await message.edit_text("正在开启数字炸弹游戏（持续模式）...")
                         game._track(_auto_delete(message, 5))
                     except Exception as e:
                         ctx.log.warning("编辑消息失败: %s", e)
                     ok = await game.start_game(client, message, admin_id, continuous=True)
                     if not ok:
                         try:
-                            await message.edit_text("❌ 数字炸弹游戏启动失败，可能已有游戏进行中")
+                            await message.edit_text("数字炸弹游戏启动失败，可能已有游戏进行中")
                         except Exception:
                             pass
                     return
@@ -184,14 +184,14 @@ async def setup(ctx):
                 if is_end_command(text):
                     ctx.log.info("检测到结束游戏命令，chat_id=%s", chat_id)
                     try:
-                        await message.edit_text("🛑 正在结束数字炸弹游戏...")
+                        await message.edit_text("正在结束数字炸弹游戏...")
                         game._track(_auto_delete(message, 5))
                     except Exception as e:
                         ctx.log.warning("编辑消息失败: %s", e)
                     ok = await game.end_game(client, message, admin_id)
                     if not ok:
                         try:
-                            await message.edit_text("❌ 数字炸弹游戏结束失败，可能没有游戏进行中")
+                            await message.edit_text("数字炸弹游戏结束失败，可能没有游戏进行中")
                         except Exception:
                             pass
                     return
@@ -316,7 +316,7 @@ async def setup(ctx):
                     try:
                         target_chat = int(parts[1])
                     except ValueError:
-                        await message.reply("❌ 无效的群组ID格式")
+                        await message.reply("无效的群组ID格式")
                         return
                     await message.reply(state_manager.get_game_status(target_chat))
                     return
@@ -328,32 +328,32 @@ async def setup(ctx):
                         continue
                     if state_manager.is_game_active(cid):
                         msgs.append(f"**群组 {cid}:**\n{state_manager.get_game_status(cid)}")
-                await message.reply("\n\n".join(msgs) if msgs else "❌ 没有进行中的游戏")
+                await message.reply("\n\n".join(msgs) if msgs else "没有进行中的游戏")
 
             elif cmd == "bomb_cleanup":
                 cleaned, returned = await state_manager.cleanup_old_games(client)
-                rmsg = f"✅ 清理完成！\n\n📊 删除了 {cleaned} 个旧游戏"
+                rmsg = f"清理完成！\n\n删除了 {cleaned} 个旧游戏"
                 if returned > 0:
-                    rmsg += f"\n💰 返还了 {returned} 个奖池"
+                    rmsg += f"\n返还了 {returned} 个奖池"
                 await message.reply(rmsg)
 
             elif cmd == "bomb_interrupt":
                 if len(parts) < 2:
-                    await message.reply("❌ 格式：`.bomb_interrupt 群组ID`")
+                    await message.reply("格式：`.bomb_interrupt 群组ID`")
                     return
                 try:
                     target_chat = int(parts[1])
                 except ValueError:
-                    await message.reply("❌ 无效的群组ID格式")
+                    await message.reply("无效的群组ID格式")
                     return
                 if not state_manager.is_game_active(target_chat):
-                    await message.reply(f"❌ 群组 {target_chat} 没有进行中的游戏")
+                    await message.reply(f"群组 {target_chat} 没有进行中的游戏")
                     return
                 if await state_manager.interrupt_game_and_return_pool(client, target_chat, "manual_interrupt"):
                     await message.reply(
-                        f"✅ **游戏中断成功**\n\n群组ID：{target_chat}\n奖池：已返还给所有参与者")
+                        f"**游戏中断成功**\n\n群组ID：{target_chat}\n奖池：已返还给所有参与者")
                 else:
-                    await message.reply("❌ 中断游戏失败")
+                    await message.reply("中断游戏失败")
         except Exception as e:
             ctx.log.error("处理炸弹管理命令出错: %s", e)
 

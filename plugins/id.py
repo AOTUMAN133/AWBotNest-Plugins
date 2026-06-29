@@ -10,7 +10,7 @@ import asyncio
 __plugin__ = {
     "name": "查ID",
     "id": "id",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "发送 /id 或 .id（可回复某条消息）查询群组ID、用户ID、用户名。",
     "scope": "user",
@@ -37,24 +37,24 @@ def _format_id_info(chat_id, user_id=None, username=None, author_signature=None)
     """把 ID 信息格式化为带代码块（点击可复制）的文本。"""
     if user_id and username:
         return (
-            "🔍 **用户信息查询**\n\n"
-            f"👥 群组ID: `{chat_id}`\n"
-            f"👤 用户ID: `{user_id}`\n"
-            f"📝 用户名: {username}\n\n"
-            "💡 点击ID数字即可复制"
+            "**用户信息查询**\n\n"
+            f"群组ID: `{chat_id}`\n"
+            f"用户ID: `{user_id}`\n"
+            f"用户名: {username}\n\n"
+            "点击ID数字即可复制"
         )
     elif author_signature:
         return (
-            "🔍 **匿名消息信息**\n\n"
-            f"👥 群组ID: `{chat_id}`\n"
-            f"✍️ 作者签名: {author_signature}\n\n"
-            "💡 点击ID数字即可复制"
+            "**匿名消息信息**\n\n"
+            f"群组ID: `{chat_id}`\n"
+            f"作者签名: {author_signature}\n\n"
+            "点击ID数字即可复制"
         )
     else:
         return (
-            "🔍 **群组信息**\n\n"
-            f"👥 群组ID: `{chat_id}`\n\n"
-            "💡 点击ID数字即可复制"
+            "**群组信息**\n\n"
+            f"群组ID: `{chat_id}`\n\n"
+            "点击ID数字即可复制"
         )
 
 

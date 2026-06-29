@@ -41,7 +41,7 @@ from . import _leaderboard as lb
 __plugin__ = {
     "name": "多站点转账",
     "id": "transfer",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "author": "AWdress",
     "scope": "user",
     "default_enabled": False,
@@ -225,7 +225,7 @@ async def setup(ctx):
     # 原项目 transform_ssd.py：转账金额过大时转账bot 回复「请确认你的转账」并附确认按钮，
     # 按 SPRINGSUNDAY.ssd_click（off/once/5min）自动点。这里复刻该逻辑。
     #
-    # ⚠️ 平台支持情况（已核对 kernel/context.py）：ctx.on_message 只注册 pyrogram
+    # 平台支持情况（已核对 kernel/context.py）：ctx.on_message 只注册 pyrogram
     #    MessageHandler，平台未提供 on_edited_message / EditedMessageHandler。原项目对
     #    ssd 同时挂了 on_message 和 on_edited_message（确认消息可能是 bot「先发占位再编辑」
     #    得到的）。平台暂不支持监听编辑消息，故 ssd 编辑确认可能漏 —— 这里只能用普通

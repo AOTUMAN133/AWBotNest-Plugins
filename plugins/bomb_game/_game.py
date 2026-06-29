@@ -132,21 +132,21 @@ class NumberBombGame:
 
             participant_lines = "\n".join(f"  • {name}" for name in names)
             participant_section = (
-                f"\n\n👥 **已参与（{len(names)}人）：**\n{participant_lines}\n"
-                f"🎫 当前奖池：{pool_info['amount']} 魔力 | 🏆 预计奖励：{winner_reward} 魔力"
+                f"\n\n**已参与（{len(names)}人）：**\n{participant_lines}\n"
+                f"当前奖池：{pool_info['amount']} 魔力 | 预计奖励：{winner_reward} 魔力"
             )
             new_text = (
-                f"🎯 **数字炸弹游戏准备中！**\n\n"
-                f"💣 炸弹数字已设置（1-100之间）\n"
-                f"💰 **奖池模式已启用**\n\n"
-                f"🎫 **参与阶段（{wait_time}秒）**\n"
-                f"💰 参与费用：{entry_fee} 魔力\n"
-                f"📝 参与方式：**回复此消息** +{entry_fee}\n"
-                f"⚠️ 注意：等待群组bot转账确认后即可参与\n"
-                f"💸 **重要**：只能回复此消息参与，其他消息参与无效且魔力不退还\n\n"
-                f"⏰ **{wait_time}秒后游戏正式开始**\n"
-                f"🎮 只有参与者才能猜数字\n"
-                f"🏆 中奖者获得奖池奖励"
+                f"**数字炸弹游戏准备中！**\n\n"
+                f"炸弹数字已设置（1-100之间）\n"
+                f"**奖池模式已启用**\n\n"
+                f"**参与阶段（{wait_time}秒）**\n"
+                f"参与费用：{entry_fee} 魔力\n"
+                f"参与方式：**回复此消息** +{entry_fee}\n"
+                f"注意：等待群组bot转账确认后即可参与\n"
+                f"**重要**：只能回复此消息参与，其他消息参与无效且魔力不退还\n\n"
+                f"**{wait_time}秒后游戏正式开始**\n"
+                f"只有参与者才能猜数字\n"
+                f"中奖者获得奖池奖励"
                 f"{participant_section}"
             )
             await client.edit_message_text(chat_id, start_message_id, new_text)
@@ -206,7 +206,7 @@ class NumberBombGame:
                 self.state_manager.end_game(chat_id)
                 try:
                     sent_message = await client.send_message(
-                        chat_id, "❌ **游戏取消**\n\n⚠️ 没有玩家参与，游戏自动取消")
+                        chat_id, "**游戏取消**\n\n没有玩家参与，游戏自动取消")
                     await self._schedule_auto_delete(sent_message, 15)
                 except Exception as e:
                     self.log.error("发送取消消息失败: %s", e)
@@ -233,19 +233,19 @@ class NumberBombGame:
             system_cut = pool_amount - winner_reward
 
             game_start_msg = (
-                f"🎯 **数字炸弹游戏正式开始！**\n\n"
-                f"💰 **奖池信息**\n"
-                f"🎫 总奖池：{pool_amount} 魔力\n"
-                f"👥 参与人数：{participants_count} 人\n"
-                f"🏆 中奖奖励：{winner_reward} 魔力 ({int(pool_ratio*100)}%)\n"
-                f"💼 系统抽成：{system_cut} 魔力 ({int((1-pool_ratio)*100)}%)\n\n"
-                f"🎮 **游戏规则**\n"
+                f"**数字炸弹游戏正式开始！**\n\n"
+                f"**奖池信息**\n"
+                f"总奖池：{pool_amount} 魔力\n"
+                f"参与人数：{participants_count} 人\n"
+                f"中奖奖励：{winner_reward} 魔力 ({int(pool_ratio*100)}%)\n"
+                f"系统抽成：{system_cut} 魔力 ({int((1-pool_ratio)*100)}%)\n\n"
+                f"**游戏规则**\n"
                 f"• 发送格式：**我猜是XX**（XX为1-100的数字）\n"
                 f"• 只有参与者才能猜数字\n"
                 f"• 系统会提示\"太大了\"或\"太小了\"\n"
                 f"• 每个玩家10秒内只能猜测一次\n\n"
-                f"🎯 **难度机制：**\n" + self._get_difficulty_description() + "\n"
-                f"⚠️ 注意：只有严格按照格式发送的数字才有效！"
+                f"**难度机制：**\n" + self._get_difficulty_description() + "\n"
+                f"注意：只有严格按照格式发送的数字才有效！"
             )
             try:
                 sent_message = await client.send_message(chat_id, game_start_msg)
@@ -270,9 +270,9 @@ class NumberBombGame:
         pool_info = self.state_manager.get_pool_info(chat_id)
         had_pool = pool_info.get("amount", 0) > 0
         if await self.state_manager.interrupt_game_and_return_pool(client, chat_id, "admin_stop"):
-            end_msg = "🛑 **数字炸弹游戏已结束**\n\n游戏被管理员强制停止。"
+            end_msg = "**数字炸弹游戏已结束**\n\n游戏被管理员强制停止。"
             if had_pool:
-                end_msg += "\n\n💰 奖池已返还给所有参与者"
+                end_msg += "\n\n奖池已返还给所有参与者"
             try:
                 sent_message = await client.send_message(chat_id, end_msg)
                 await self._schedule_auto_delete(sent_message, 20)
@@ -293,7 +293,7 @@ class NumberBombGame:
             key = (chat_id, user_id)
             if self._notified_non_participants.get(key) != "no_game":
                 try:
-                    sent_message = await message.reply("❌ 当前没有进行中的数字炸弹游戏！\n\n💡 请联系管理员开启！")
+                    sent_message = await message.reply("当前没有进行中的数字炸弹游戏！\n\n请联系管理员开启！")
                     await self._schedule_auto_delete(sent_message, 5)
                 except Exception as e:
                     self.log.error("发送游戏未开始提示失败: %s", e)
@@ -322,7 +322,7 @@ class NumberBombGame:
                     pool_info = self.state_manager.get_pool_info(chat_id)
                     if self.state_manager.is_participant(chat_id, user_id) or \
                             self.state_manager.has_pending_participation(chat_id, user_id):
-                        sent_message = await message.reply("⏰ 游戏还在参与阶段，等待正式开始后再猜数字！")
+                        sent_message = await message.reply("游戏还在参与阶段，等待正式开始后再猜数字！")
                         await self._schedule_auto_delete(sent_message, 8)
                     else:
                         game_info = self.state_manager.get_game_info(chat_id)
@@ -330,9 +330,9 @@ class NumberBombGame:
                         key = (chat_id, user_id)
                         if self._notified_non_participants.get(key) != start_time:
                             sent_message = await message.reply(
-                                f"⏰ 游戏还在参与阶段！\n\n"
-                                f"💡 现在还能参与哦，回复游戏开始消息发送 +{pool_info.get('entry_fee', 888)} 即可加入～\n"
-                                f"⚠️ 注意：参与费用一经确认不退还"
+                                f"游戏还在参与阶段！\n\n"
+                                f"现在还能参与哦，回复游戏开始消息发送 +{pool_info.get('entry_fee', 888)} 即可加入～\n"
+                                f"注意：参与费用一经确认不退还"
                             )
                             await self._schedule_auto_delete(sent_message, 8)
                             self._notified_non_participants[key] = start_time
@@ -342,7 +342,7 @@ class NumberBombGame:
                 key = (chat_id, user_id)
                 if self._notified_non_participants.get(key) != "no_game":
                     try:
-                        sent_message = await message.reply("❌ 当前没有进行中的数字炸弹游戏！")
+                        sent_message = await message.reply("当前没有进行中的数字炸弹游戏！")
                         await self._schedule_auto_delete(sent_message, 5)
                     except Exception as e:
                         self.log.error("发送游戏未开始提示失败: %s", e)
@@ -358,10 +358,10 @@ class NumberBombGame:
                 try:
                     pool_info = self.state_manager.get_pool_info(chat_id)
                     sent_message = await message.reply(
-                        f"❌ 只有参与奖池的玩家才能猜数字！\n\n"
-                        f"💰 参与费用：{pool_info['entry_fee']} 魔力\n"
-                        f"📝 下次游戏开始时记得回复开始消息参与哦！\n"
-                        f"⚠️ 注意：参与费用一经确认不退还"
+                        f"只有参与奖池的玩家才能猜数字！\n\n"
+                        f"参与费用：{pool_info['entry_fee']} 魔力\n"
+                        f"下次游戏开始时记得回复开始消息参与哦！\n"
+                        f"注意：参与费用一经确认不退还"
                     )
                     await self._schedule_auto_delete(sent_message, 8)
                 except Exception as e:
@@ -373,8 +373,8 @@ class NumberBombGame:
         if guess is None:
             try:
                 sent_message = await message.reply(
-                    "❌ 请使用正确格式：**我猜是XX**（XX为1-100的数字）\n\n"
-                    "💡 正确格式：\n• 我猜是50\n• 我猜是25\n• 我猜是99")
+                    "请使用正确格式：**我猜是XX**（XX为1-100的数字）\n\n"
+                    "正确格式：\n• 我猜是50\n• 我猜是25\n• 我猜是99")
                 await self._schedule_auto_delete(sent_message, 5)
             except Exception as e:
                 self.log.error("发送格式提示失败: %s", e)
@@ -383,7 +383,7 @@ class NumberBombGame:
         if not self.state_manager.is_valid_guess(chat_id, guess):
             min_range, max_range = self.state_manager.get_range_info(chat_id)
             try:
-                sent_message = await message.reply(f"⚠️ 请输入 {min_range}-{max_range} 范围内的数字！")
+                sent_message = await message.reply(f"请输入 {min_range}-{max_range} 范围内的数字！")
                 await self._schedule_auto_delete(sent_message, 10)
             except Exception as e:
                 self.log.error("发送范围提示失败: %s", e)
@@ -428,7 +428,7 @@ class NumberBombGame:
                 await self._send_guess_feedback(client, message, result, guess)
             else:
                 try:
-                    sent_message = await message.reply(f"⏰ 请等待{remaining_time}秒后再猜测！")
+                    sent_message = await message.reply(f"请等待{remaining_time}秒后再猜测！")
                     await self._schedule_auto_delete(sent_message, 5)
                 except Exception as e:
                     self.log.error("发送冷却提示失败: %s", e)
@@ -442,35 +442,35 @@ class NumberBombGame:
         if game_info:
             if result == "too_high":
                 distance = guess - game_info.get("original_bomb_number", game_info["bomb_number"])
-                feedback = f"📈 **{guess} 太大了！**\n\n请猜测更小的数字。"
+                feedback = f"**{guess} 太大了！**\n\n请猜测更小的数字。"
             elif result == "too_low":
                 distance = game_info.get("original_bomb_number", game_info["bomb_number"]) - guess
-                feedback = f"📉 **{guess} 太小了！**\n\n请猜测更大的数字。"
+                feedback = f"**{guess} 太小了！**\n\n请猜测更大的数字。"
             else:
                 return
             adjust_amount = self._calculate_shrink_amount(distance, result)
             if adjust_amount > 0:
-                feedback += f"\n\n🎯 奖励缩小了 {adjust_amount} 个数字！"
+                feedback += f"\n\n奖励缩小了 {adjust_amount} 个数字！"
             elif adjust_amount < 0:
-                feedback += f"\n\n🎯 惩罚扩大了 {abs(adjust_amount)} 个数字！"
+                feedback += f"\n\n惩罚扩大了 {abs(adjust_amount)} 个数字！"
         else:
             if result == "too_high":
-                feedback = f"📈 **{guess} 太大了！**\n\n请猜测更小的数字。"
+                feedback = f"**{guess} 太大了！**\n\n请猜测更小的数字。"
             elif result == "too_low":
-                feedback = f"📉 **{guess} 太小了！**\n\n请猜测更大的数字。"
+                feedback = f"**{guess} 太小了！**\n\n请猜测更大的数字。"
             else:
                 return
 
-        feedback += f"\n\n🎯 当前范围：**{min_range} - {max_range}**"
+        feedback += f"\n\n当前范围：**{min_range} - {max_range}**"
 
         pool_info = self.state_manager.get_pool_info(chat_id)
         if pool_info.get("enabled", False) and pool_info["amount"] > 0:
             winner_reward, system_cut = self.state_manager.calculate_pool_reward(chat_id)
             feedback += (
-                f"\n\n💰 **奖池信息**\n"
-                f"🎫 总奖池：{pool_info['amount']} 魔力\n"
-                f"👥 参与人数：{pool_info['participants']} 人\n"
-                f"🏆 预计奖励：{winner_reward} 魔力"
+                f"\n\n**奖池信息**\n"
+                f"总奖池：{pool_info['amount']} 魔力\n"
+                f"参与人数：{pool_info['participants']} 人\n"
+                f"预计奖励：{winner_reward} 魔力"
             )
         try:
             last_msg_id = self.state_manager.get_last_game_message_id(chat_id)
@@ -506,30 +506,30 @@ class NumberBombGame:
                     await self._award_magic_points(client, message, user_id, winner_reward)
                 pool_ratio = pool_info.get("pool_ratio", 0.5)
                 explosion_msg = (
-                    f"💥 **数字炸弹爆炸！**\n\n"
-                    f"🏆 获胜者：{message.from_user.first_name}\n"
-                    f"🎯 炸弹数字：{guess}\n\n"
-                    f"💰 **奖池结算**\n"
-                    f"🎫 总奖池：{pool_info['amount']} 魔力\n"
-                    f"🏆 中奖奖励：{winner_reward} 魔力 ({int(pool_ratio*100)}%)\n"
-                    f"💼 系统抽成：{system_cut} 魔力 ({int((1-pool_ratio)*100)}%)\n"
-                    f"👥 参与人数：{pool_info['participants']} 人\n\n"
-                    f"🎉 恭喜获胜！"
+                    f"**数字炸弹爆炸！**\n\n"
+                    f"获胜者：{message.from_user.first_name}\n"
+                    f"炸弹数字：{guess}\n\n"
+                    f"**奖池结算**\n"
+                    f"总奖池：{pool_info['amount']} 魔力\n"
+                    f"中奖奖励：{winner_reward} 魔力 ({int(pool_ratio*100)}%)\n"
+                    f"系统抽成：{system_cut} 魔力 ({int((1-pool_ratio)*100)}%)\n"
+                    f"参与人数：{pool_info['participants']} 人\n\n"
+                    f"恭喜获胜！"
                 )
             else:
                 explosion_msg = (
-                    f"💥 **数字炸弹爆炸！**\n\n"
-                    f"🏆 获胜者：{message.from_user.first_name}\n"
-                    f"🎯 炸弹数字：{guess}\n\n"
-                    f"💰 **奖池为空**\n"
-                    f"⚠️ 没有玩家参与奖池，无奖励发放\n\n"
-                    f"🎉 恭喜猜中！"
+                    f"**数字炸弹爆炸！**\n\n"
+                    f"获胜者：{message.from_user.first_name}\n"
+                    f"炸弹数字：{guess}\n\n"
+                    f"**奖池为空**\n"
+                    f"没有玩家参与奖池，无奖励发放\n\n"
+                    f"恭喜猜中！"
                 )
 
             if continuous:
-                explosion_msg += "\n\n🔄 **持续模式**：游戏已结束，3秒后自动开始新游戏"
+                explosion_msg += "\n\n**持续模式**：游戏已结束，3秒后自动开始新游戏"
             else:
-                explosion_msg += "\n\n🎯 **单次模式**：游戏已结束"
+                explosion_msg += "\n\n**单次模式**：游戏已结束"
 
             last_msg_id = self.state_manager.get_last_game_message_id(chat_id)
             if last_msg_id:
@@ -586,8 +586,8 @@ class NumberBombGame:
                 try:
                     hint_msg = await client.send_message(
                         chat_id,
-                        "⚠️ 参与无效！游戏已正式开始，参与通道已关闭。\n\n"
-                        "💸 本次魔力不退还，下次请在参与阶段回复开始消息参与哦～",
+                        "参与无效！游戏已正式开始，参与通道已关闭。\n\n"
+                        "本次魔力不退还，下次请在参与阶段回复开始消息参与哦～",
                         reply_to_message_id=transform_message.id if transform_message else None,
                     )
                     await self._schedule_auto_delete(hint_msg, 10)
@@ -605,9 +605,9 @@ class NumberBombGame:
                 pool_info = self.state_manager.get_pool_info(chat_id)
                 hint_msg = await client.send_message(
                     chat_id,
-                    f"⚠️ 参与无效！\n\n"
+                    f"参与无效！\n\n"
                     f"必须先**回复游戏开始消息**发送 +{pool_info.get('entry_fee', bonus)}，等待转账确认后才算参与。\n"
-                    f"直接发送转账不算参与，💸 本次魔力不退还哦～",
+                    f"直接发送转账不算参与，本次魔力不退还哦～",
                     reply_to_message_id=transform_message.id if transform_message else None,
                 )
                 await self._schedule_auto_delete(hint_msg, 10)
@@ -635,12 +635,12 @@ class NumberBombGame:
             try:
                 success_msg = await client.send_message(
                     chat_id,
-                    f"✅ **参与确认成功！**\n\n"
-                    f"👤 参与者：{user_name}\n"
-                    f"💰 参与金额：{bonus_amount} 魔力\n"
-                    f"🎫 当前奖池：{updated_pool_info['amount']} 魔力\n"
-                    f"👥 参与人数：{updated_pool_info['participants']} 人\n"
-                    f"🏆 预计奖励：{winner_reward} 魔力"
+                    f"**参与确认成功！**\n\n"
+                    f"参与者：{user_name}\n"
+                    f"参与金额：{bonus_amount} 魔力\n"
+                    f"当前奖池：{updated_pool_info['amount']} 魔力\n"
+                    f"参与人数：{updated_pool_info['participants']} 人\n"
+                    f"预计奖励：{winner_reward} 魔力"
                 )
                 await self._schedule_auto_delete(success_msg, 10)
             except Exception as e:

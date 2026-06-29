@@ -12,7 +12,7 @@ import asyncio
 __plugin__ = {
     "name": "转发复读",
     "id": "zf",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "AWdress",
     "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。",
     "scope": "user",
@@ -51,7 +51,7 @@ async def setup(ctx):
 
         reply = message.reply_to_message
         if not reply:
-            return await message.edit("❌ 请先回复一条要转发的消息")
+            return await message.edit("请先回复一条要转发的消息")
 
         # 解析次数
         parts = text.split()

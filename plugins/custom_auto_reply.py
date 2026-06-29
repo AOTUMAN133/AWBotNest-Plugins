@@ -9,7 +9,7 @@
 __plugin__ = {
     "name": "定时自动回复",
     "id": "custom_auto_reply",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "author": "AWdress",
     "description": "到点自动用你的账号往指定群/会话发消息。支持多个会话，每个会话可单独设时间和内容。时间支持每天定点、每隔几小时/几分钟、或 cron 表达式。",
     "scope": "user",
@@ -242,7 +242,7 @@ def _make_action(ctx, target, message_text):
                     # 级别/插件名/账号名由平台统一格式化，这里只给业务内容
                     try:
                         await ctx.notify(
-                            f"定时回复失败\n🎯 目标：{target}\n⚠️ 错误：{send_err}",
+                            f"定时回复失败\n目标：{target}\n错误：{send_err}",
                             level="error", category="定时回复", account=app,
                         )
                     except Exception:
@@ -254,7 +254,7 @@ def _make_action(ctx, target, message_text):
                 preview = message_text[:100] + ("..." if len(message_text) > 100 else "")
                 try:
                     await ctx.notify(
-                        f"定时回复已发送\n🎯 目标：{target}\n📝 内容：\n{preview}\n🔗 {link}",
+                        f"定时回复已发送\n目标：{target}\n内容：\n{preview}\n{link}",
                         level="success", category="定时回复", account=app,
                         disable_web_page_preview=True,
                     )

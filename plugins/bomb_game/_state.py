@@ -488,9 +488,9 @@ class GameStateManager:
             if not participants:
                 return
             return_msg = (
-                f"🔄 **游戏中断，奖池返还**\n\n"
-                f"💰 总奖池：{game_info.get('pool_amount', 0)} 魔力\n"
-                f"👥 参与人数：{len(participants)} 人\n\n"
+                f"**游戏中断，奖池返还**\n\n"
+                f"总奖池：{game_info.get('pool_amount', 0)} 魔力\n"
+                f"参与人数：{len(participants)} 人\n\n"
                 f"**返还详情：**\n"
             )
             for user_id_str, participant_info in participants.items():
@@ -566,33 +566,33 @@ class GameStateManager:
     # ── 状态文案 ─────────────────────────────────────────────────────────────
     def get_game_status(self, chat_id: int) -> Optional[str]:
         if not self.is_game_active(chat_id):
-            return "❌ 当前没有进行中的游戏"
+            return "当前没有进行中的游戏"
         game_info = self.get_game_info(chat_id)
         if not game_info:
-            return "❌ 游戏状态异常"
+            return "游戏状态异常"
         game_phase = self.get_game_phase(chat_id)
-        phase_text = "⏰ 等待参与阶段" if game_phase == "waiting" else "🎮 游戏进行中"
+        phase_text = "等待参与阶段" if game_phase == "waiting" else "游戏进行中"
         pool_info = self.get_pool_info(chat_id)
         if game_phase == "waiting":
             pending_count = len(game_info.get("pending_participants", {}))
             return (
-                f"🎯 **数字炸弹游戏准备中**\n\n"
-                f"📊 游戏阶段：{phase_text}\n"
-                f"💰 当前奖池：{pool_info['amount']} 魔力\n"
-                f"👥 已确认参与：{pool_info['participants']} 人\n"
-                f"⏳ 待确认参与：{pending_count} 人\n"
-                f"🎫 参与费用：{pool_info['entry_fee']} 魔力\n"
-                f"⏰ 开始时间：{game_info.get('start_time', '未知')}"
+                f"**数字炸弹游戏准备中**\n\n"
+                f"游戏阶段：{phase_text}\n"
+                f"当前奖池：{pool_info['amount']} 魔力\n"
+                f"已确认参与：{pool_info['participants']} 人\n"
+                f"待确认参与：{pending_count} 人\n"
+                f"参与费用：{pool_info['entry_fee']} 魔力\n"
+                f"开始时间：{game_info.get('start_time', '未知')}"
             )
         else:
             min_range, max_range = self.get_range_info(chat_id)
             guesses_count = self.get_guesses_count(chat_id)
             return (
-                f"🎯 **数字炸弹游戏进行中**\n\n"
-                f"📊 游戏阶段：{phase_text}\n"
-                f"🔢 猜测次数：{guesses_count}\n"
-                f"🎮 当前范围：{min_range} - {max_range}\n"
-                f"💰 当前奖池：{pool_info['amount']} 魔力\n"
-                f"👥 参与人数：{pool_info['participants']} 人\n"
-                f"⏰ 开始时间：{game_info.get('start_time', '未知')}"
+                f"**数字炸弹游戏进行中**\n\n"
+                f"游戏阶段：{phase_text}\n"
+                f"猜测次数：{guesses_count}\n"
+                f"当前范围：{min_range} - {max_range}\n"
+                f"当前奖池：{pool_info['amount']} 魔力\n"
+                f"参与人数：{pool_info['participants']} 人\n"
+                f"开始时间：{game_info.get('start_time', '未知')}"
             )

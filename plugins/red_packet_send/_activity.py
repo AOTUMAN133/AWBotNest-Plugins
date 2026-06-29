@@ -234,11 +234,11 @@ class ActivityManager:
                 if sticker_msg:
                     activity["msg_ids"].append(sticker_msg.id)
                 create_msg = (
-                    f"🎉 幸运红包活动创建成功！\n"
-                    f"📦 总金额：{total_amount} 魔力\n"
-                    f"🎯 红包数量：{packet_count} 个\n"
-                    f"🏷️ 参与方式：发送上方的贴图表情\n"
-                    f"💡 发送相同的贴图即可参与抢红包！"
+                    f"幸运红包活动创建成功！\n"
+                    f"总金额：{total_amount} 魔力\n"
+                    f"红包数量：{packet_count} 个\n"
+                    f"参与方式：发送上方的贴图表情\n"
+                    f"发送相同的贴图即可参与抢红包！"
                 )
                 txt_msg = await client.send_message(
                     chat_id=chat_id,
@@ -250,11 +250,11 @@ class ActivityManager:
             except Exception as e:  # noqa: BLE001
                 self.ctx.log.warning("[发红包] 发送贴图失败，回退文本: %r", e)
                 create_msg = (
-                    f"🎉 幸运红包活动创建成功！\n"
-                    f"📦 总金额：{total_amount} 魔力\n"
-                    f"🎯 红包数量：{packet_count} 个\n"
-                    f"🏷️ 参与方式：发送指定的贴图表情\n"
-                    f"💡 回复原始消息查看参与贴图！"
+                    f"幸运红包活动创建成功！\n"
+                    f"总金额：{total_amount} 魔力\n"
+                    f"红包数量：{packet_count} 个\n"
+                    f"参与方式：发送指定的贴图表情\n"
+                    f"回复原始消息查看参与贴图！"
                 )
                 txt_msg = await client.send_message(
                     chat_id=chat_id, text=create_msg, reply_to_message_id=reply_target_id
@@ -263,11 +263,11 @@ class ActivityManager:
                     activity["msg_ids"].append(txt_msg.id)
         else:
             create_msg = (
-                f"🎉 幸运红包活动创建成功！\n"
-                f"📦 总金额：{total_amount} 魔力\n"
-                f"🎯 红包数量：{packet_count} 个\n"
-                f"🔑 参与关键词：{keyword}\n"
-                f"💡 发送与关键词完全一致的消息即可参与抢红包！"
+                f"幸运红包活动创建成功！\n"
+                f"总金额：{total_amount} 魔力\n"
+                f"红包数量：{packet_count} 个\n"
+                f"参与关键词：{keyword}\n"
+                f"发送与关键词完全一致的消息即可参与抢红包！"
             )
             txt_msg = await client.send_message(
                 chat_id=chat_id, text=create_msg, reply_to_message_id=reply_target_id
@@ -426,17 +426,17 @@ class ActivityManager:
             )
             if sorted_p:
                 best = sorted_p[0]
-                lucky_line = f"\n\n🏆 手气最佳：{best['username']}（{int(round(best['amount']))} 魔力）"
+                lucky_line = f"\n\n手气最佳：{best['username']}（{int(round(best['amount']))} 魔力）"
             else:
                 lucky_line = ""
 
             end_msg = (
-                f"🎉 幸运红包活动已结束！\n"
-                f"📊 活动统计：\n"
-                f"👥 总参与人数：{len(participants)} 人\n"
-                f"💰 总发放金额：{int(round(activity['distributed_amount']))} 魔力\n"
-                f"📦 总红包数量：{activity['packet_count']} 个"
-                + (f"\n\n🧧 领取明细：\n{detail_lines}" if detail_lines else "")
+                f"幸运红包活动已结束！\n"
+                f"活动统计：\n"
+                f"总参与人数：{len(participants)} 人\n"
+                f"总发放金额：{int(round(activity['distributed_amount']))} 魔力\n"
+                f"总红包数量：{activity['packet_count']} 个"
+                + (f"\n\n领取明细：\n{detail_lines}" if detail_lines else "")
                 + lucky_line
             )
 
@@ -487,7 +487,7 @@ class ActivityManager:
             return False
         user_id = message.from_user.id if message.from_user else 0
         if activity["creator_id"] != user_id:
-            await message.reply("❌ 只有红包创建者才能结束活动")
+            await message.reply("只有红包创建者才能结束活动")
             return False
         await self.end_activity(client, chat_id)
         return True
@@ -506,30 +506,30 @@ class ActivityManager:
                 sticker_file_id = activity["keyword"].split(":", 2)[1]
                 await client.send_sticker(chat_id, sticker_file_id)
                 status_msg = (
-                    f"🎉 幸运红包活动进行中\n"
-                    f"📦 总金额：{activity['total_amount']} 魔力\n"
-                    f"🎯 剩余红包：{activity['remaining_count']} 个\n"
-                    f"👥 已参与：{len(participants)} 人\n"
-                    f"🏷️ 参与方式：发送上方的贴图表情\n"
-                    f"💰 剩余金额：{int(round(activity['remaining_amount']))} 魔力"
+                    f"幸运红包活动进行中\n"
+                    f"总金额：{activity['total_amount']} 魔力\n"
+                    f"剩余红包：{activity['remaining_count']} 个\n"
+                    f"已参与：{len(participants)} 人\n"
+                    f"参与方式：发送上方的贴图表情\n"
+                    f"剩余金额：{int(round(activity['remaining_amount']))} 魔力"
                 )
             except Exception:  # noqa: BLE001
                 status_msg = (
-                    f"🎉 幸运红包活动进行中\n"
-                    f"📦 总金额：{activity['total_amount']} 魔力\n"
-                    f"🎯 剩余红包：{activity['remaining_count']} 个\n"
-                    f"👥 已参与：{len(participants)} 人\n"
-                    f"🏷️ 参与方式：发送指定的贴图表情\n"
-                    f"💰 剩余金额：{int(round(activity['remaining_amount']))} 魔力"
+                    f"幸运红包活动进行中\n"
+                    f"总金额：{activity['total_amount']} 魔力\n"
+                    f"剩余红包：{activity['remaining_count']} 个\n"
+                    f"已参与：{len(participants)} 人\n"
+                    f"参与方式：发送指定的贴图表情\n"
+                    f"剩余金额：{int(round(activity['remaining_amount']))} 魔力"
                 )
         else:
             status_msg = (
-                f"🎉 幸运红包活动进行中\n"
-                f"📦 总金额：{activity['total_amount']} 魔力\n"
-                f"🎯 剩余红包：{activity['remaining_count']} 个\n"
-                f"👥 已参与：{len(participants)} 人\n"
-                f"🔑 参与关键词：\"{activity['keyword']}\"\n"
-                f"💰 剩余金额：{int(round(activity['remaining_amount']))} 魔力"
+                f"幸运红包活动进行中\n"
+                f"总金额：{activity['total_amount']} 魔力\n"
+                f"剩余红包：{activity['remaining_count']} 个\n"
+                f"已参与：{len(participants)} 人\n"
+                f"参与关键词：\"{activity['keyword']}\"\n"
+                f"剩余金额：{int(round(activity['remaining_amount']))} 魔力"
             )
         try:
             await client.send_message(chat_id, status_msg)

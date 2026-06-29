@@ -31,6 +31,7 @@ __plugin__ = {
     "scope": "user",           # 必填：user(用户账号) | bot(机器人) | both
     "author": "你",            # 可选
     "description": "干啥的",    # 可选
+    "icon": "",                # 可选：图标 URL，前端卡片用；留空回退平台 logo
     "default_enabled": False,  # 可选：放入本地 plugins/ 时是否默认启用
     "config_schema": { ... },  # 可选：前端自动生成配置表单
 }
@@ -127,12 +128,14 @@ async def teardown(ctx):
     "version": "1.0.0",
     "author": "你",
     "description": "...",
+    "icon": "https://.../i.png",
     "path": "plugins/my_feature.py"
   }
 }
 ```
 
 - `path`：单文件以 `.py` 结尾，文件夹以 `/` 结尾。
+- `icon`（可选）：市场卡片图标 URL，留空回退平台 logo；与插件 `__plugin__["icon"]`（已安装卡片用）保持一致即可。
 - **改了插件代码 → 必须同步抬高 `version`**，否则插件商店识别不到更新、已安装的平台收不到推送。
 - 商店里的插件**只在用户点「安装」时落盘，且绝不自动启用**（安全铁律），需用户在平台手动开启。
 
