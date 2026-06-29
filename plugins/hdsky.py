@@ -34,17 +34,12 @@ __plugin__ = {
             "type": "string", "default": "",
             "label": "自动发送的文字",
             "section": "自动发言",
-            "help": "gap >= auto_gap 时自动发送此消息后删除，为后续红包拉近活跃度。也为 /red 指令提供发送内容。为空则不发送。",
-        },
-        "auto_gap": {
-            "type": "slider", "default": 15, "label": "自动发送阈值(msg_id差)",
-            "min": 1, "max": 100, "step": 1, "section": "自动发言",
-            "help": "红包 msg_id 与最近自身发言差值超过此值时，自动发 auto_msg 拉近活跃度。值越小越激进。如果最近刚发过消息（gap < auto_gap）则不发送。",
+            "help": "群友发 /red 指令时自动发此消息后删除，拉近自身活跃度。也为 /red 指令提供发送内容。为空则不发送。",
         },
         "inactive_gap": {
             "type": "slider", "default": 20, "label": "不活跃阈值(msg_id差)",
             "min": 5, "max": 100, "step": 5, "section": "延迟策略",
-            "help": "红包 msg_id 与最近自身发言差值超过此值视为不活跃，等待 inactive_delay 秒后再抢。auto_gap 应小于此值。",
+            "help": "红包 msg_id 与最近自身发言差值超过此值视为不活跃，等待 inactive_delay 秒后再抢。",
         },
         "inactive_delay": {
             "type": "slider", "default": 5, "label": "不活跃时等待(秒)",
@@ -204,21 +199,9 @@ async def setup(ctx):
 
         # ── 活跃度判定 ──
         inactive_gap = int(cfg.get("inactive_gap", 20))
-        auto_gap = int(cfg.get("auto_gap", 15))
         last_id = await _get_last_self_id(ctx, chat_id)
         gap = message.id - last_id
         is_inactive = gap >= inactive_gap
-
-        # ── 主动拉近活跃度（gap >= auto_gap 且配置了 auto_msg）──
-        # 发消息不能改变当前红包的 gap，目的是为后续红包拉近活跃度
-        auto_msg = (cfg.get("auto_msg") or "").strip()
-        if auto_msg and gap >= auto_gap:
-            try:
-                sent = await message.reply(auto_msg)
-                await sent.delete()
-                ctx.log.info("已自动发消息 (gap=%s >= auto_gap=%s) chat=%s", gap, auto_gap, chat_id)
-            except Exception:
-                pass
 
         if is_inactive:
             inactive_delay = int(cfg.get("inactive_delay", 5) or 0)
