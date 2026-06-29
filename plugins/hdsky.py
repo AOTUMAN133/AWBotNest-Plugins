@@ -39,7 +39,7 @@ __plugin__ = {
         "auto_gap": {
             "type": "slider", "default": 15, "label": "自动发送阈值(msg_id差)",
             "min": 1, "max": 100, "step": 1, "section": "自动发言",
-            "help": "预留：gap 超过此值时的触发阈值。当前由 /red 指令触发 auto_msg，后续可扩展。",
+            "help": "群友发 /red 指令时，用此值与自身最后发言 msg_id 比，gap >= auto_gap 才发 auto_msg。值越小越敏感。",
         },
         "inactive_gap": {
             "type": "slider", "default": 20, "label": "不活跃阈值(msg_id差)",
@@ -158,7 +158,7 @@ async def setup(ctx):
         group=-9,
     )
     async def red_command_alert(client, message):
-        """监听群友发送的 /red 指令，发 auto_msg 后删除，拉近自身活跃度 gap。"""
+        """监听群友发送的 /red 指令，gap >= auto_gap 时才发 auto_msg 拉近活跃度。"""
         chat_id = message.chat.id
         groups = _parse_groups(cfg.get("enabled_groups", ""))
         if groups and chat_id not in groups:
@@ -167,10 +167,19 @@ async def setup(ctx):
         auto_msg = (cfg.get("auto_msg") or "").strip()
         if not auto_msg:
             return
+
+        # 自身最近是否活跃：用 /red 指令的 msg_id 与最后自身发言算 gap
+        auto_gap = int(cfg.get("auto_gap", 15))
+        last_id = await _get_last_self_id(ctx, chat_id)
+        gap = message.id - last_id
+        if gap < auto_gap:
+            ctx.log.debug("已活跃 gap=%s < auto_gap=%s，跳过 auto_msg", gap, auto_gap)
+            return
+
         try:
             sent = await message.reply(auto_msg)
             await sent.delete()
-            ctx.log.info("已响应 /red 发送 auto_msg chat=%s", chat_id)
+            ctx.log.info("已响应 /red 发送 auto_msg (gap=%s >= auto_gap=%s) chat=%s", gap, auto_gap, chat_id)
         except Exception:
             pass
 
