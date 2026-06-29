@@ -19,7 +19,7 @@ import time
 __plugin__ = {
     "name": "天空红包",
     "id": "hdsky",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "author": "Yy",
     "description": "天空小秘（bot 8907007783）拼手气红包自动抢：检测「抢红包」按钮自动点击，auto_msg 拉近活跃度 + gap 判定不活跃延迟。",
     "scope": "user",
@@ -32,14 +32,19 @@ __plugin__ = {
         },
         "auto_msg": {
             "type": "string", "default": "",
-            "label": "检测到红包时自动发送",
+            "label": "自动发送的文字",
             "section": "自动发言",
-            "help": "检测到拼手气红包时，自动发此消息后删除，用于拉近自身活跃度。为空则不发送。",
+            "help": "gap >= auto_gap 时自动发送此消息后删除，为后续红包拉近活跃度。也为 /red 指令提供发送内容。为空则不发送。",
+        },
+        "auto_gap": {
+            "type": "slider", "default": 15, "label": "自动发送阈值(msg_id差)",
+            "min": 1, "max": 100, "step": 1, "section": "自动发言",
+            "help": "红包 msg_id 与最近自身发言差值超过此值时，自动发 auto_msg 拉近活跃度。值越小越激进。如果最近刚发过消息（gap < auto_gap）则不发送。",
         },
         "inactive_gap": {
             "type": "slider", "default": 20, "label": "不活跃阈值(msg_id差)",
             "min": 5, "max": 100, "step": 5, "section": "延迟策略",
-            "help": "红包消息的 msg_id 与最近自身发言的 msg_id 差超过此值视为不活跃。发了 auto_msg 也不一定在红包之前，仍需比 gap。",
+            "help": "红包 msg_id 与最近自身发言差值超过此值视为不活跃，等待 inactive_delay 秒后再抢。auto_gap 应小于此值。",
         },
         "inactive_delay": {
             "type": "slider", "default": 5, "label": "不活跃时等待(秒)",
@@ -145,6 +150,29 @@ async def setup(ctx):
         _last_self_msg_id[f"{chat_id}"] = message.id
         await ctx.kv.set(f"hdsky_last_msg:{chat_id}", str(message.id))
 
+    # ─── /red 指令监听（发 auto_msg 拉近活跃度）──────────
+    @ctx.on_message(
+        ctx.filters.group
+        & ctx.filters.regex(r"/red\S*\s+\d+\s+\d+"),
+        group=-9,
+    )
+    async def red_command_alert(client, message):
+        """监听用户发送的 /red 指令，发配置的 auto_msg 后删除，拉近活跃度 gap。"""
+        chat_id = message.chat.id
+        groups = _parse_groups(cfg.get("enabled_groups", ""))
+        if groups and chat_id not in groups:
+            return
+
+        auto_msg = (cfg.get("auto_msg") or "").strip()
+        if not auto_msg:
+            return
+        try:
+            sent = await message.reply(auto_msg)
+            await sent.delete()
+            ctx.log.info("已响应 /red 发送 auto_msg chat=%s", chat_id)
+        except Exception:
+            pass
+
     # ─── 抢红包 Handler ────────────────────────────────
     @ctx.on_message(
         ctx.filters.group
@@ -173,19 +201,21 @@ async def setup(ctx):
             return
         _clicked[key] = time.time()
 
-        # ── 活跃度判定（先于 auto_msg，避免 auto_msg 污染 last_id）──
+        # ── 活跃度判定 ──
         inactive_gap = int(cfg.get("inactive_gap", 20))
+        auto_gap = int(cfg.get("auto_gap", 15))
         last_id = await _get_last_self_id(ctx, chat_id)
         gap = message.id - last_id
         is_inactive = gap >= inactive_gap
 
-        # ── 自动发消息（拉近后续红包的活跃度，可选）──
+        # ── 主动拉近活跃度（gap >= auto_gap 且配置了 auto_msg）──
+        # 发消息不能改变当前红包的 gap，目的是为后续红包拉近活跃度
         auto_msg = (cfg.get("auto_msg") or "").strip()
-        if auto_msg and is_inactive:
+        if auto_msg and gap >= auto_gap:
             try:
                 sent = await message.reply(auto_msg)
                 await sent.delete()
-                ctx.log.info("已自动发消息 chat=%s msg=%s", chat_id, message.id)
+                ctx.log.info("已自动发消息 (gap=%s >= auto_gap=%s) chat=%s", gap, auto_gap, chat_id)
             except Exception:
                 pass
 
