@@ -229,7 +229,7 @@ def _build_keyword_display(kv) -> str:
     for gid in sorted(_active_groups):
         profile = get_profile(gid, kv)
         if profile and profile.get("keywords"):
-            entries.append(format_keywords_display(profile, gid))
+            entries.append(format_keywords_display(profile))
     return "\n\n".join(entries) if entries else "（暂无自动学习的关键词）"
 
 
