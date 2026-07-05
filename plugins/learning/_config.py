@@ -38,7 +38,6 @@ class AiConfig:
         '    "emoji_freq": "emoji 使用频率（很少/偶尔/经常/几乎每条）",\n'
         '    "style_prompt": "一段可读的中文文本，完整描述这个人的说话风格，供 LLM 模仿"\n'
         '  }},\n'
-        '  "topics": ["话题1", "话题2"],\n'
         '  "keywords": ["关键词1", "关键词2"],\n'
         '  "summary": "一句话总结当前兴趣"\n'
         "}}"

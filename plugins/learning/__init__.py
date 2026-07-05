@@ -1,14 +1,13 @@
 # =============================================================================
 # AWBotNest 插件：智能学习参与（learning）
-#
-# 通过学习你的聊天偏好和说话风格，在匹配话题的群聊中智能参与对话。
-# 冷启动：未学到话题偏好前不参与任何群聊。
+#\n# 通过学习你的聊天偏好和说话风格，在匹配关键词的群聊中智能参与对话。
+# 冷启动：未学到偏好前不参与任何群聊。
 #
 # 工作流程：
 #   1. 监听自己发的消息 → 记录到缓冲，每 N 条（summarize_gap）做一次
-#      LLM 话题+风格总结，建立该群的偏好画像 + 全局说话风格。
+#      LLM 关键词+风格总结，建立该群的偏好画像 + 全局说话风格。
 #   2. 监听所有群消息 → 全量缓冲（供 summarize 取上下文参考）。
-#   3. 当群聊中有人发消息匹配画像的关键词/话题 → 按概率 roll，
+#   3. 当群聊中有人发消息匹配画像的关键词 → 按概率 roll，
 #      通过则用学到的说话风格生成自然回复。
 #   4. group ID 配置：一行一个，留空 = 不监听任何群。
 #
@@ -39,10 +38,10 @@ from ._social import record
 __plugin__ = {
     "name": "智能学习",
     "id": "learning",
-    "version": "2.7.1",
+    "version": "2.8.0",
     "author": "Yy",
     "description": (
-        "学习你的聊天偏好和说话风格，在匹配话题的群聊中智能参与对话。"
+        "学习你的聊天偏好和说话风格，在匹配关键词的群聊中智能参与对话。"
         "冷启动：未学到偏好前不参与。"
     ),
     "scope": "user",
@@ -59,13 +58,13 @@ __plugin__ = {
         },
         "model": {
             "type": "string", "default": "gpt-3.5-turbo", "label": "模型",
-            "section": "接口", "help": "用于话题风格分析和参与回复。",
+            "section": "接口", "help": "用于关键词风格分析和参与回复。",
         },
         # —— 学习 ——
         "summarize_gap": {
             "type": "slider", "default": 10, "label": "总结间隔(条)",
             "min": 3, "max": 100, "step": 1, "section": "学习",
-            "help": "每发这么多条消息，就总结一次话题偏好。越小越灵敏、越费 token。",
+            "help": "每发这么多条消息，就总结一次关键词偏好。越小越灵敏、越费 token。",
         },
         "max_context_lines": {
             "type": "slider", "default": 5, "label": "总结上下文行数",
@@ -92,7 +91,7 @@ __plugin__ = {
             "type": "slider", "default": 20, "label": "参与概率(%)",
             "min": 1, "max": 100, "step": 1, "section": "参与",
             "show_if": {"enable_participation": True},
-            "help": "匹配到偏好话题时，按此概率实际参与回复。20 = 20%概率。",
+            "help": "匹配到关键词偏好时，按此概率实际参与回复。20 = 20%概率。",
         },
         "participation_context_lines": {
             "type": "slider", "default": 5, "label": "参与时读取上文(条)",
@@ -142,7 +141,7 @@ __plugin__ = {
             "label": "当前画像（自动累积）",
             "section": "身份模拟",
             "help": (
-                "每次学习后自动更新，涵盖话题、关键词、语气、口癖、平均字数、\n"
+                "每次学习后自动更新，涵盖关键词、语气、口癖、平均字数、\n"
                 "标点习惯、emoji 频率、风格描述等全部维度。\n"
                 "仅供参考，不可编辑。如字段为空，发送消息触发学习后自动填充。"
             ),
@@ -151,10 +150,10 @@ __plugin__ = {
             "type": "text",
             "default": (
                 "请根据以下聊天记录，分析我的说话风格和兴趣偏好。\n\n"
-                "【上下文】群聊最近讨论的话题（请从中提取 topics 和 keywords）：\n{context}\n\n"
-                "【我的发言】以下消息中分析我的语气/风格/口癖/字数/标点/emoji：\n{my_messages}\n\n"
-                "⚠ 注意：topics 和 keywords 只从「上下文」中提取，不要从我的发言中提取；\n"
-                "voice 字段（tone/habits/avg_words/punctuation/emoji_freq/style_prompt）只从我的发言中分析。\n\n"
+                "【上下文】群聊最近讨论的内容（请从中提取 keywords）：\\n{context}\\n\\n"
+                "【我的发言】以下消息中分析我的语气/风格/口癖/字数/标点/emoji：\\n{my_messages}\\n\\n"
+                "⚠ 注意：keywords 只从「上下文」中提取，不要从我的发言中提取；\\n"
+                "voice 字段（tone/habits/avg_words/punctuation/emoji_freq/style_prompt）只从我的发言中分析。\\n\\n"
                 "输出格式（JSON）：\n"
                 '{{\n'
                 '  "voice": {{\n'
@@ -165,14 +164,13 @@ __plugin__ = {
                 '    "emoji_freq": "emoji 使用频率（很少/偶尔/经常/几乎每条）",\n'
                 '    "style_prompt": "一段可读的中文文本，完整描述这个人的说话风格，供 LLM 模仿"\n'
                 '  }},\n'
-                '  "topics": ["话题1", "话题2"],\n'
-                '  "keywords": ["关键词1", "关键词2"],\n'
+                '  "keywords": ["关键词1", "关键词2"],\\n'
                 '  "summary": "一句话总结当前兴趣"\n'
                 "}}"
             ),
             "label": "画像总结模板",
             "section": "身份模拟",
-            "help": "占位符：{context} = 上下文，{my_messages} = 我自己的发言。⚠ topics/keywords 从上下文提取，voice 从我的发言提取。",
+            "help": "占位符：{context} = 上下文，{my_messages} = 我自己的发言。⚠ keywords 从上下文提取，voice 从我的发言提取。",
         },
     },
 }
@@ -188,10 +186,6 @@ _auto_sending_chats: set[int] = set()
 def _format_profile_display(profile: dict) -> str:
     """将画像 dict 格式化成可读的多行文本，供配置页显示（不含关键词，关键词在独立字段中）。"""
     parts = []
-
-    topics = profile.get("topics", [])
-    if topics:
-        parts.append(f"【话题】{'、'.join(topics[:20])}")
 
     voice = profile.get("voice", {})
     if isinstance(voice, dict):
@@ -290,7 +284,7 @@ async def setup(ctx):
             # 学习：计数达标则 LLM 总结
             push_own_message(chat_id, text, kv)
 
-            # 手动消息热词追踪：用群聊上下文（别人聊的话题）匹配热词
+            # 手动消息热词追踪：用群聊上下文匹配热词
             if chat_id not in _auto_sending_chats:
                 ctx_lines = get_recent_context(chat_id, cfg.max_context_lines or 5)
                 if ctx_lines:
@@ -328,8 +322,8 @@ async def setup(ctx):
                     profile = await summarize(chat_id, kv, cfg, own_msgs)
                     if profile:
                         ctx.log.info(
-                            "[学习] 群 %s 画像已更新: topics=%s",
-                            chat_id, profile.get("topics", []),
+                            "[学习] 群 %s 画像已更新: keywords=%s",
+                            chat_id, profile.get("keywords", []),
                         )
                         _update_config(ctx, profile_display=_format_profile_display(profile), keyword_display=_build_keyword_display(kv))
                         reset_counter(chat_id, kv)

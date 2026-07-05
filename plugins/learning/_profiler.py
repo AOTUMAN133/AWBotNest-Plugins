@@ -1,5 +1,5 @@
 # =============================================================================
-# 学习插件：话题画像 + 说话风格学习
+# 学习插件：提问画像 + 说话风格学习
 # =============================================================================
 import json
 import re
@@ -42,7 +42,7 @@ def _extract_json(text: str) -> dict | None:
     return None
 
 
-# ── 话题画像访问 ─────────────────────────────────────────────────────
+# ── 画像访问 ─────────────────────────────────────────────────────
 
 def get_profile(chat_id: int, kv) -> dict:
     return kv.get(_PROFILE_KEY.format(chat_id), {})
@@ -134,13 +134,13 @@ def _safe_str(v) -> str:
     return str(v or "").strip()
 
 
-# ── LLM 总结（话题 + 风格一起出）────────────────────────────────────
+# ── LLM 总结（关键词 + 风格一起出）────────────────────────────────────
 
 async def summarize(chat_id: int, kv, cfg, own_messages: list[str]) -> dict | None:
-    """对该群做一次 LLM 话题总结 + 说话风格分析，**合并**保有画像。
+    """对该群做一次 LLM 总结 + 说话风格分析，**合并**保有画像。
 
     合并策略：
-      - topics / keywords → 新旧取并集（去重）
+      - keywords → 新旧取并集（去重）
       - voice.habits → 新旧取并集（去重）
       - voice.tone / avg_words / punctuation / emoji_freq → 用最新值
       - voice.style_prompt → LLM 在 prompt 中合并新旧风格，直接取最新结果
@@ -186,19 +186,15 @@ async def summarize(chat_id: int, kv, cfg, own_messages: list[str]) -> dict | No
 
     parsed = _extract_json(raw)
     if not parsed:
-        return old_profile if old_profile.get("ready") else {"topics": [], "keywords": [], "summary": "", "ready": False}
+        return old_profile if old_profile.get("ready") else {"keywords": [], "summary": "", "ready": False}
     else:
-        # —— 话题、关键词：并集 ——
-        new_topics = {str(t).strip() for t in parsed.get("topics", []) if t}
-        old_topics = {str(t).strip() for t in old_profile.get("topics", []) if t}
-        merged_topics = list(old_topics | new_topics)
+        # —— 关键词：并集 ——
 
         new_kws = {str(kw).strip().lower() for kw in parsed.get("keywords", []) if kw}
         old_kws = {str(kw).strip().lower() for kw in old_profile.get("keywords", []) if kw}
         merged_kws = list(old_kws | new_kws)
 
         profile = {
-            "topics": merged_topics,
             "keywords": merged_kws,
             "summary": str(parsed.get("summary", "") or ""),
             "ready": True,
@@ -349,7 +345,7 @@ def update_keyword_heat(chat_id: int, kv, matched_keyword: str):
 
 
 def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
-    """手动消息热词追踪：从话题文本中匹配关键词并累积 manual_count。
+    """手动消息热词追踪：从群聊文本中匹配关键词并累积 manual_count。
 
     对传入文本（群聊上下文/话题来源）做关键词提取，与画像 keywords 做
     子串匹配 + token 匹配，命中的关键词 manual_count +1。

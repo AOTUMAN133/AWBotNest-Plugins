@@ -27,7 +27,6 @@ async def participate(
         return None
 
     profile = get_profile(chat_id, kv)
-    topics = ", ".join(profile.get("topics", []) or ["闲聊"])
     summary = profile.get("summary", "")
 
     # === 核心：从画像直接读风格描述 ===
@@ -56,8 +55,6 @@ async def participate(
     pref_hint = ""
     if summary:
         pref_hint = f"\n你感兴趣的话题：{summary}"
-    if topics:
-        pref_hint += f"\n相关话题：{topics}"
 
     messages = [
         {"role": "system", "content": system},
