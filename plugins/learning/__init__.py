@@ -150,8 +150,10 @@ __plugin__ = {
             "type": "text",
             "default": (
                 "请根据以下聊天记录，分析我的说话风格和兴趣偏好。\n\n"
-                "上下文（群聊最近的几条消息）：\n{context}\n\n"
-                "我的发言：\n{my_messages}\n\n"
+                "【上下文】群聊最近讨论的话题（请从中提取 topics 和 keywords）：\n{context}\n\n"
+                "【我的发言】以下消息中分析我的语气/风格/口癖/字数/标点/emoji：\n{my_messages}\n\n"
+                "⚠ 注意：topics 和 keywords 只从「上下文」中提取，不要从我的发言中提取；\n"
+                "voice 字段（tone/habits/avg_words/punctuation/emoji_freq/style_prompt）只从我的发言中分析。\n\n"
                 "输出格式（JSON）：\n"
                 '{{\n'
                 '  "voice": {{\n'
@@ -169,7 +171,7 @@ __plugin__ = {
             ),
             "label": "画像总结模板",
             "section": "身份模拟",
-            "help": "占位符：{context} = 上下文，{my_messages} = 我自己的发言。输出含 voice 字段时自动提取风格描述。",
+            "help": "占位符：{context} = 上下文，{my_messages} = 我自己的发言。⚠ topics/keywords 从上下文提取，voice 从我的发言提取。",
         },
     },
 }
@@ -288,17 +290,11 @@ async def setup(ctx):
             # 学习：计数达标则 LLM 总结
             push_own_message(chat_id, text, kv)
 
-            # 手动消息热词追踪（自动回复消息跳过）
+            # 手动消息热词追踪：用群聊上下文（别人聊的话题）匹配热词
             if chat_id not in _auto_sending_chats:
-                # 用被回复的消息（话题来源）做热词匹配，与自动参与逻辑一致
-                trigger_text = ""
-                if message.reply_to_message and message.reply_to_message.text:
-                    rfu = message.reply_to_message.from_user
-                    # 排除自己回复自己 — 只有别人发的才算"我参与的话题"
-                    if rfu and not rfu.is_self:
-                        trigger_text = message.reply_to_message.text.strip()
-
-                if trigger_text:
+                ctx_lines = get_context_lines(chat_id, cfg.max_context_lines or 5)
+                if ctx_lines:
+                    trigger_text = "\n".join(ctx_lines)
                     hresult = update_manual_keyword_heat(chat_id, kv, trigger_text)
                     _update_config(ctx, keyword_display=_build_keyword_display(kv))
                     reason = hresult.get("reason")
@@ -315,9 +311,9 @@ async def setup(ctx):
                             msg += f" 命中={matched}"
                         if new:
                             msg += f" 新增={new}"
-                        ctx.log.info("%s | 话题=%s…", msg, trigger_text[:40])
+                        ctx.log.info("%s | 上下文=%d条…", msg, len(ctx_lines))
                 else:
-                    ctx.log.debug("[学习] 群 %s 无外部话题来源，跳过热词更新", chat_id)
+                    ctx.log.debug("[学习] 群 %s 无上下文记录，跳过热词更新", chat_id)
             else:
                 ctx.log.debug("[学习] 群 %s 自动回复消息，跳过热词", chat_id)
 
