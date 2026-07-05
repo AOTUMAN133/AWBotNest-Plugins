@@ -38,7 +38,7 @@ from ._social import record
 __plugin__ = {
     "name": "智能学习",
     "id": "learning",
-    "version": "2.8.2",
+    "version": "2.8.6",
     "author": "Yy",
     "description": (
         "学习你的聊天偏好和说话风格，在匹配关键词的群聊中智能参与对话。"
@@ -102,14 +102,17 @@ __plugin__ = {
         "min_participation_gap": {
             "type": "slider", "default": 60, "label": "发言冷却(秒)",
             "min": 10, "max": 600, "step": 10, "section": "参与",
-            "show_if": {"enable_participation": True},
-            "help": "每个群两次成功参与发言的最小间隔，防止刷屏。",
+            "help": "每个群两次参与发言（含你自己发的消息）的最小时间间隔，防止刷屏。",
+        },
+        "participation_msg_gap": {
+            "type": "slider", "default": 5, "label": "消息条数间隔",
+            "min": 1, "max": 50, "step": 1, "section": "参与",
+            "help": "上一条发言（含你自己发的）之后，需攒够 N 条别人消息才能再次自动参与。防止群活跃时刷屏。",
         },
         # —— 关键词（手动补充） ——
         "keywords": {
             "type": "text", "default": "", "label": "关键词（手动补充）",
-            "section": "参与",
-            "show_if": {"enable_participation": True},
+            "section": "关键词",
             "help": (
                 "补充你关心的关键词，每行或逗号分隔。\n"
                 "与自动学习的关键词合并，共同决定是否参与群聊。\n"
@@ -178,6 +181,8 @@ __plugin__ = {
 _active_groups: set[int] = set()
 # 发言冷却：chat_id -> 上次成功参与时间戳
 _last_participate_time: dict[int, float] = {}
+# 消息条数计数：chat_id -> 上次发言后收到的别人消息条数（用于 participation_msg_gap）
+_incoming_msg_count: dict[int, int] = {}
 # 自动回复中标记集：chat_id 在集合中时，on_own_messages 跳过热词追踪
 _auto_sending_chats: set[int] = set()
 
@@ -212,18 +217,44 @@ def _format_profile_display(profile: dict) -> str:
         parts.append(f"【兴趣总结】{summary}")
 
     if not parts:
-        return "（尚未学习到任何画像，发送消息后自动生成）"
+        return ""
     return "\n\n".join(parts)
 
 
-def _build_keyword_display(kv) -> str:
-    """跨所有活跃群构建带热度的关键词展示。"""
+def _build_profile_display(kv) -> str:
+    """跨所有活跃群构建画像展示，每个群独立标注。"""
+    parts = []
+    for gid in sorted(_active_groups):
+        profile = get_profile(gid, kv)
+        if not profile:
+            continue
+        text = _format_profile_display(profile)
+        if text:
+            parts.append(f"【群 {gid}】\n{text}")
+    return "\n\n".join(parts) if parts else "（尚未学习到任何画像，发送消息后自动生成）"
+
+
+def _build_keyword_display(kv, cfg=None) -> str:
+    """跨所有活跃群构建带热度的关键词展示。
+
+    合并 profile.keyword_heat 和 cfg.keywords（手动补充）。
+    """
+    extra_keywords: list[str] = []
+    max_kw = 20
+    if cfg:
+        if cfg.keywords:
+            extra_keywords = [kw.strip().lower() for kw in cfg.keywords.replace("\n", ",").split(",") if kw.strip()]
+        max_kw = getattr(cfg, "max_keywords", 20)
+
     entries = []
     for gid in sorted(_active_groups):
         profile = get_profile(gid, kv)
-        if profile and profile.get("keywords"):
-            entries.append(format_keywords_display(profile))
-    return "\n\n".join(entries) if entries else "（暂无自动学习的关键词）"
+        # 有自动关键词或手动关键词才展示
+        if profile and (profile.get("keywords") or extra_keywords):
+            entry = format_keywords_display(profile, extra_keywords=extra_keywords, max_keywords=max_kw)
+            if entry:
+                entries.append(f"【群 {gid}】\n{entry}")
+    return "\n\n".join(entries) if entries else "（暂无关键词）"
 
 
 def _group_allowed(chat_id: int, cfg) -> bool:
@@ -285,11 +316,15 @@ async def setup(ctx):
 
             # 手动消息热词追踪：用群聊上下文匹配热词
             if chat_id not in _auto_sending_chats:
+                # 手动发言也计入冷却 + 重置消息条数计数
+                _last_participate_time[chat_id] = time.time()
+                _incoming_msg_count[chat_id] = 0
                 ctx_lines = get_recent_context(chat_id, cfg.max_context_lines or 5)
                 if ctx_lines:
                     trigger_text = "\n".join(ctx_lines)
-                    hresult = update_manual_keyword_heat(chat_id, kv, trigger_text)
-                    _update_config(ctx, keyword_display=_build_keyword_display(kv))
+                    manual_kws = [kw.strip().lower() for kw in cfg.keywords.replace("\n", ",").split(",") if kw.strip()] if cfg.keywords else []
+                    hresult = update_manual_keyword_heat(chat_id, kv, trigger_text, extra_keywords=manual_kws)
+                    _update_config(ctx, keyword_display=_build_keyword_display(kv, cfg))
                     reason = hresult.get("reason")
                     if reason:
                         ctx.log.info(
@@ -324,7 +359,7 @@ async def setup(ctx):
                             "[学习] 群 %s 画像已更新: keywords=%s",
                             chat_id, profile.get("keywords", []),
                         )
-                        _update_config(ctx, profile_display=_format_profile_display(profile), keyword_display=_build_keyword_display(kv))
+                        _update_config(ctx, profile_display=_build_profile_display(kv), keyword_display=_build_keyword_display(kv, cfg))
                         reset_counter(chat_id, kv)
                         ctx.log.info(
                             "[学习] 群 %s 画像已更新，风格描述已写入 profile.voice.style_prompt",
@@ -354,6 +389,7 @@ async def setup(ctx):
             return
 
         push_all_message(chat_id, text, fu.id, fu.first_name or "", is_bot=fu.is_bot)
+        _incoming_msg_count[chat_id] = _incoming_msg_count.get(chat_id, 0) + 1
         _active_groups.add(chat_id)
 
     # ── 处理器 3：判定是否参与 ──
@@ -377,10 +413,12 @@ async def setup(ctx):
         if not _group_allowed(chat_id, cfg):
             return
 
-        # 发言冷却检查
+        # 发言冷却检查（时间 + 条数双重间隔）
         now = time.time()
         last_ts = _last_participate_time.get(chat_id, 0)
         if now - last_ts < cfg.min_participation_gap:
+            return
+        if _incoming_msg_count.get(chat_id, 0) < cfg.participation_msg_gap:
             return
 
         ok, matched_kw = should_participate(chat_id, text, cfg, kv)
@@ -400,7 +438,8 @@ async def setup(ctx):
         if reply:
             ctx.log.info("[学习] 群 %s 已回复: %s", chat_id, reply[:50])
             _last_participate_time[chat_id] = time.time()
-            _update_config(ctx, keyword_display=_build_keyword_display(kv))
+            _incoming_msg_count[chat_id] = 0
+            _update_config(ctx, keyword_display=_build_keyword_display(kv, cfg))
 
     # ── 定时兜底：检查未总结的群 ──
     async def summary_tick():
@@ -414,7 +453,7 @@ async def setup(ctx):
                 if own_msgs:
                     profile = await summarize(chat_id, kv, cfg, own_msgs)
                     if profile:
-                        _update_config(ctx, profile_display=_format_profile_display(profile), keyword_display=_build_keyword_display(kv))
+                        _update_config(ctx, profile_display=_build_profile_display(kv), keyword_display=_build_keyword_display(kv, cfg))
                         reset_counter(chat_id, kv)
 
     ctx.schedule(summary_tick, "interval", minutes=5, id="AI学习总结")
@@ -424,4 +463,5 @@ async def teardown(ctx):
     clear()
     _active_groups.clear()
     _last_participate_time.clear()
+    _incoming_msg_count.clear()
     _auto_sending_chats.clear()

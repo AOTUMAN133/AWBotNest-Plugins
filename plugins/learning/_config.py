@@ -23,6 +23,7 @@ class AiConfig:
     max_keywords: int = 20
     participation_context_lines: int = 5
     min_participation_gap: int = 60
+    participation_msg_gap: int = 5
     # —— 画像总结模板 ——
     profile_prompt_template: str = (
         "请根据以下聊天记录，分析我的说话风格和兴趣偏好。\n\n"
@@ -79,5 +80,6 @@ def parse_config(raw: dict) -> AiConfig:
         max_keywords=max(1, to_int(raw.get("max_keywords", 20), 20)),
         participation_context_lines=max(1, min(20, to_int(raw.get("participation_context_lines", 5), 5))),
         min_participation_gap=max(1, to_int(raw.get("min_participation_gap", 60), 60)),
+        participation_msg_gap=max(1, to_int(raw.get("participation_msg_gap", 5), 5)),
         profile_prompt_template=str(raw.get("profile_prompt_template", "") or AiConfig.profile_prompt_template),
     )

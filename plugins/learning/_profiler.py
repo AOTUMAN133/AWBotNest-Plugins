@@ -344,21 +344,27 @@ def update_keyword_heat(chat_id: int, kv, matched_keyword: str):
     kv.set(_PROFILE_KEY.format(chat_id), profile)
 
 
-def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
+def update_manual_keyword_heat(chat_id: int, kv, text: str, extra_keywords: list[str] | None = None) -> dict:
     """手动消息热词追踪：从群聊文本中匹配关键词并累积 manual_count。
 
     对传入文本（群聊上下文/话题来源）做关键词提取，与画像 keywords 做
     子串匹配 + token 匹配，命中的关键词 manual_count +1。
+    extra_keywords 为用户手动补充的关键词，也参与匹配。
 
     返回 dict 供调用方记录日志：
       - {"reason": "no_ready_profile"}  —— 画像尚未 ready
-      - {"reason": "no_keywords"}        —— 画像无关键词
+      - {"reason": "no_keywords"}        —— 画像无关键词（且无手动补充）
       - {"matched": [...], "new": [...]} —— 正常处理结果
     """
     profile = get_profile(chat_id, kv)
     if not profile or not profile.get("ready"):
         return {"reason": "no_ready_profile"}
-    kw_list = profile.get("keywords", [])
+    kw_list = list(profile.get("keywords", []))
+    # 合并手动补充的关键词
+    if extra_keywords:
+        for ek in extra_keywords:
+            if ek not in kw_list:
+                kw_list.append(ek)
     if not kw_list:
         return {"reason": "no_keywords"}
 
@@ -399,7 +405,39 @@ def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
     return {"matched": matched_kws, "new": new_kws}
 
 
-def format_keywords_display(kv) -> str:
-    """从 KV 读取所有画像的关键词并按热度排序展示"""
-    # 暂不实现，留空
-    return ""
+def format_keywords_display(profile: dict, extra_keywords: list[str] | None = None, max_keywords: int = 20) -> str:
+    """从 profile 的 keyword_heat + 手动补充关键词构建展示，按总热度排序。"""
+    heat = dict(profile.get("keyword_heat", {}))
+
+    # 合并手动关键词（没有热度数据的新词，count/manual_count 均为 0）
+    if extra_keywords:
+        for kw in extra_keywords:
+            if kw not in heat:
+                heat[kw] = {"count": 0, "manual_count": 0, "last_use": 0, "created_ts": 0}
+
+    if not heat:
+        return ""
+
+    sorted_kws = sorted(
+        heat.items(),
+        key=lambda item: item[1].get("count", 0) + item[1].get("manual_count", 0),
+        reverse=True,
+    )
+
+    if max_keywords > 0:
+        sorted_kws = sorted_kws[:max_keywords]
+
+    lines = []
+    for kw, data in sorted_kws:
+        total = data.get("count", 0) + data.get("manual_count", 0)
+        auto = data.get("count", 0)
+        manual = data.get("manual_count", 0)
+        line = f"{kw}（热度: {total}"
+        if auto:
+            line += f" | 自动: {auto}"
+        if manual:
+            line += f" | 手动: {manual}"
+        line += "）"
+        lines.append(line)
+
+    return "\n".join(lines)
