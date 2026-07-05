@@ -23,9 +23,9 @@ from ._participator import participate
 from ._profiler import (
     clear,
     format_keywords_display,
-    get_context_lines,
     get_message_count,
     get_profile,
+    get_recent_context,
     get_recent_own_messages,
     push_all_message,
     push_own_message,
@@ -38,7 +38,7 @@ from ._social import record
 __plugin__ = {
     "name": "智能学习",
     "id": "learning",
-    "version": "2.7.0",
+    "version": "2.7.1",
     "author": "Yy",
     "description": (
         "学习你的聊天偏好和说话风格，在匹配话题的群聊中智能参与对话。"
@@ -279,7 +279,6 @@ async def setup(ctx):
 
             fu = message.from_user
             me_name = getattr(fu, "first_name", "") if fu else ""
-            push_all_message(chat_id, text, getattr(fu, "id", 0), me_name)
 
             # 社交：回复了某人则记录
             if message.reply_to_message:
@@ -292,7 +291,7 @@ async def setup(ctx):
 
             # 手动消息热词追踪：用群聊上下文（别人聊的话题）匹配热词
             if chat_id not in _auto_sending_chats:
-                ctx_lines = get_context_lines(chat_id, cfg.max_context_lines or 5)
+                ctx_lines = get_recent_context(chat_id, cfg.max_context_lines or 5)
                 if ctx_lines:
                     trigger_text = "\n".join(ctx_lines)
                     hresult = update_manual_keyword_heat(chat_id, kv, trigger_text)
@@ -360,7 +359,7 @@ async def setup(ctx):
         if not text or text.startswith("/") or text.startswith("."):
             return
 
-        push_all_message(chat_id, text, fu.id, fu.first_name or "")
+        push_all_message(chat_id, text, fu.id, fu.first_name or "", is_bot=fu.is_bot)
         _active_groups.add(chat_id)
 
     # ── 处理器 3：判定是否参与 ──

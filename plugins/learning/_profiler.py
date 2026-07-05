@@ -12,7 +12,7 @@ from ._engine import generate
 _msg_buf: dict[int, deque] = {}
 _BUF_MAX = 100
 
-# 全消息缓冲
+# 全消息缓冲（仅人类文本，由 Handler 2 写入）
 _all_buf: dict[int, deque] = {}
 _ALL_MAX = 200
 
@@ -24,7 +24,7 @@ _buf_counter: dict[int, int] = {}
 # kv key 模板
 _PROFILE_KEY = "profile:{}"
 _COUNTER_KEY = "bufcnt:{}"
-# 说话风格直接存在 profile['voice']['style_prompt'] 中，无需单独 KV key
+# 说话风格直接存在 profile['voice']['style_prompt'] 中，无需独立 KV key
 
 _JSON_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 
@@ -61,16 +61,19 @@ def push_own_message(chat_id: int, text: str, kv):
     kv.set(_COUNTER_KEY.format(chat_id), cnt)
 
 
-def push_all_message(chat_id: int, text: str, user_id: int, name: str):
+def push_all_message(chat_id: int, text: str, user_id: int, name: str, is_bot: bool = False):
+    """推入全量缓冲（仅由 Handler 2 调用，只存人类文本）。"""
     buf = _all_buf.setdefault(chat_id, deque(maxlen=_ALL_MAX))
-    buf.append({"text": text, "user_id": user_id, "name": name, "ts": time.time()})
+    buf.append({"text": text, "user_id": user_id, "name": name, "is_bot": is_bot, "ts": time.time()})
 
 
 def _build_context_str(chat_id: int, n: int) -> str:
+    """构建群聊上下文文本（供 LLM summarize 使用），仅含人类消息。"""
     buf = _all_buf.get(chat_id)
     if not buf:
         return ""
-    recent = list(buf)[-n:]
+    human_msgs = [m for m in buf if not m.get("is_bot")]
+    recent = human_msgs[-n:]
     lines = []
     for m in recent:
         sender = m.get("name", f"user_{m['user_id']}")
@@ -93,6 +96,37 @@ def get_recent_own_messages(chat_id: int, n: int) -> list[str]:
     if not buf:
         return []
     return list(buf)[-n:]
+
+
+def get_recent_context(chat_id: int, n: int) -> list[str]:
+    """返回最近 n 条人类文本消息（纯文本，无前缀，不排除最后一条）。
+
+    供 Handler 1 热词匹配使用。Handler 1 不向 _all_buf 写入自己的消息，
+    所以直接取最后 n 条就是别人在聊的内容。
+    """
+    buf = _all_buf.get(chat_id)
+    if not buf:
+        return []
+    human_msgs = [m for m in buf if not m.get("is_bot")]
+    return [m["text"] for m in human_msgs[-n:] if m.get("text")]
+
+
+def get_context_lines(chat_id: int, n: int) -> list[str]:
+    """获取触发消息之前的 N 条群聊上下文文本（排除当前消息，仅人类）。
+
+    Handler 2 (group=11) 已把当前消息 push 进 _all_buf，
+    所以取倒数 n+1 条 ~ 倒数第 2 条 = 最近 N 条上文。
+    不足 N 条时返回全部（不含当前消息）。
+    供 Handler 3 参与回复使用。
+    """
+    buf = _all_buf.get(chat_id)
+    if not buf:
+        return []
+    human_msgs = [m for m in buf if not m.get("is_bot")]
+    if len(human_msgs) < 2:
+        return []
+    recent = human_msgs[-(n + 1):-1]
+    return [m.get("text", "") for m in recent if m.get("text")]
 
 
 def _safe_str(v) -> str:
@@ -317,7 +351,7 @@ def update_keyword_heat(chat_id: int, kv, matched_keyword: str):
 def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
     """手动消息热词追踪：从话题文本中匹配关键词并累积 manual_count。
 
-    对传入文本（被回复的消息/话题来源）做关键词提取，与画像 keywords 做
+    对传入文本（群聊上下文/话题来源）做关键词提取，与画像 keywords 做
     子串匹配 + token 匹配，命中的关键词 manual_count +1。
 
     返回 dict 供调用方记录日志：
@@ -369,48 +403,7 @@ def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
     return {"matched": matched_kws, "new": new_kws}
 
 
-def prune_keywords(chat_id: int, kv, max_keywords: int):
-    """从 KV 读取画像，执行关键词裁剪并写回。"""
-    profile = get_profile(chat_id, kv)
-    if not profile:
-        return
-    _prune_inplace(profile, max_keywords)
-    kv.set(_PROFILE_KEY.format(chat_id), profile)
-
-
-def format_keywords_display(profile: dict, chat_id: int) -> str:
-    """按手动消息命中热度降序格式化关键词展示文本。"""
-    keywords = profile.get("keywords", [])
-    heat = profile.get("keyword_heat", {})
-    if not keywords:
-        return "（暂无自动学习的关键词，发送消息后自动生成）"
-    # 按手动消息命中次数降序，相同按最后命中时间降序
-    def _sort_key(kw):
-        entry = heat.get(kw, {})
-        manual_count = entry.get("manual_count", 0)
-        last_manual = entry.get("last_manual_use", entry.get("last_use", 0))
-        return (manual_count, last_manual)
-    sorted_kws = sorted(keywords, key=_sort_key, reverse=True)
-    lines = [f"群 {chat_id}"]
-    for kw in sorted_kws:
-        entry = heat.get(kw, {})
-        manual_count = entry.get("manual_count", 0)
-        if manual_count > 0:
-            lines.append(f"  {kw}（手动{manual_count}次）")
-        else:
-            lines.append(f"  {kw}（未手动发送过）")
-    return "\n".join(lines)
-
-
-def get_context_lines(chat_id: int, n: int) -> list[str]:
-    """获取触发消息之前的 N 条群聊上下文文本（排除当前消息）。
-    
-    handler2 (group=11) 已把当前消息 push 进 _all_buf，
-    所以取倒数 n+1 条 ~ 倒数第 2 条 = 最近 N 条上文。
-    不足 N 条时返回全部（不含当前消息）。
-    """
-    buf = _all_buf.get(chat_id)
-    if not buf or len(buf) < 2:
-        return []
-    recent = list(buf)[-(n + 1):-1]
-    return [m.get("text", "") for m in recent if m.get("text")]
+def format_keywords_display(kv) -> str:
+    """从 KV 读取所有画像的关键词并按热度排序展示"""
+    # 暂不实现，留空
+    return ""
