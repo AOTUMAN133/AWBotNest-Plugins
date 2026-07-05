@@ -315,10 +315,10 @@ def update_keyword_heat(chat_id: int, kv, matched_keyword: str):
 
 
 def update_manual_keyword_heat(chat_id: int, kv, text: str) -> dict:
-    """手动消息热词追踪：从用户手动发送的消息中匹配关键词并累积 manual_count。
+    """手动消息热词追踪：从话题文本中匹配关键词并累积 manual_count。
 
-    对消息文本做关键词提取，与画像 keywords 做子串匹配 + token 匹配，
-    命中的关键词 manual_count +1，仅以手动发送消息为准。
+    对传入文本（被回复的消息/话题来源）做关键词提取，与画像 keywords 做
+    子串匹配 + token 匹配，命中的关键词 manual_count +1。
 
     返回 dict 供调用方记录日志：
       - {"reason": "no_ready_profile"}  —— 画像尚未 ready

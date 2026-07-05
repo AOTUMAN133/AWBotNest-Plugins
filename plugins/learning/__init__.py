@@ -290,23 +290,34 @@ async def setup(ctx):
 
             # 手动消息热词追踪（自动回复消息跳过）
             if chat_id not in _auto_sending_chats:
-                hresult = update_manual_keyword_heat(chat_id, kv, text)
-                _update_config(ctx, keyword_display=_build_keyword_display(kv))
-                reason = hresult.get("reason")
-                if reason:
-                    ctx.log.info(
-                        "[学习] 群 %s 手动热词跳过: %s",
-                        chat_id, reason,
-                    )
+                # 用被回复的消息（话题来源）做热词匹配，与自动参与逻辑一致
+                trigger_text = ""
+                if message.reply_to_message and message.reply_to_message.text:
+                    rfu = message.reply_to_message.from_user
+                    # 排除自己回复自己 — 只有别人发的才算"我参与的话题"
+                    if rfu and not rfu.is_self:
+                        trigger_text = message.reply_to_message.text.strip()
+
+                if trigger_text:
+                    hresult = update_manual_keyword_heat(chat_id, kv, trigger_text)
+                    _update_config(ctx, keyword_display=_build_keyword_display(kv))
+                    reason = hresult.get("reason")
+                    if reason:
+                        ctx.log.info(
+                            "[学习] 群 %s 手动热词跳过: %s",
+                            chat_id, reason,
+                        )
+                    else:
+                        matched = hresult.get("matched", [])
+                        new = hresult.get("new", [])
+                        msg = f"[学习] 群 {chat_id} 手动热词:"
+                        if matched:
+                            msg += f" 命中={matched}"
+                        if new:
+                            msg += f" 新增={new}"
+                        ctx.log.info("%s | 话题=%s…", msg, trigger_text[:40])
                 else:
-                    matched = hresult.get("matched", [])
-                    new = hresult.get("new", [])
-                    msg = f"[学习] 群 {chat_id} 手动热词:"
-                    if matched:
-                        msg += f" 命中={matched}"
-                    if new:
-                        msg += f" 新增={new}"
-                    ctx.log.info("%s | 消息=%s…", msg, text[:40])
+                    ctx.log.debug("[学习] 群 %s 无外部话题来源，跳过热词更新", chat_id)
             else:
                 ctx.log.debug("[学习] 群 %s 自动回复消息，跳过热词", chat_id)
 
