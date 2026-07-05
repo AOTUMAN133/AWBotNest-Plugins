@@ -1,16 +1,16 @@
 {
   "hdsky": {
     "name": "天空红包",
-    "version": "1.4.0",
+    "version": "2.0.0",
     "author": "Yy",
-    "description": "天空小秘（bot 8907007783）拼手气红包自动抢：检测「抢红包」按钮自动点击，支持不活跃延迟、自动发消息拉近活跃度。",
+    "description": "天空小秘（bot 8907007783）拼手气红包自动抢：检测「抢红包」按钮即时点击，遇10秒限制自动等够重试。",
     "path": "plugins/hdsky.py"
   },
-  "water_group": {
-    "name": "水群",
-    "version": "1.0.0",
+  "learning": {
+    "name": "智能学习",
+    "version": "2.7.0",
     "author": "Yy",
-    "description": "定时从发言列表中随机选 N 条发送到指定群组，x 秒后自动删除。",
-    "path": "plugins/water_group.py"
+    "description": "学习你的聊天偏好和说话风格，在匹配话题的群聊中智能参与对话。冷启动：未学到偏好前不参与。",
+    "path": "plugins/learning/"
   }
 }
