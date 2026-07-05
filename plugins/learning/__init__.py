@@ -23,6 +23,7 @@ from ._participator import participate
 from ._profiler import (
     clear,
     format_keywords_display,
+    get_context_lines,
     get_message_count,
     get_profile,
     get_recent_context,
