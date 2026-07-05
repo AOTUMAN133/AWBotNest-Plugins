@@ -38,7 +38,7 @@ from ._social import record
 __plugin__ = {
     "name": "智能学习",
     "id": "learning",
-    "version": "2.8.1",
+    "version": "2.8.2",
     "author": "Yy",
     "description": (
         "学习你的聊天偏好和说话风格，在匹配关键词的群聊中智能参与对话。"
@@ -116,17 +116,17 @@ __plugin__ = {
                 "留空则只使用自动学习的关键词。"
             ),
         },
+        # —— 关键词 ——
         "max_keywords": {
             "type": "slider", "default": 20, "label": "关键词上限",
-            "min": 5, "max": 100, "step": 5, "section": "参与",
-            "show_if": {"enable_participation": True},
+            "min": 5, "max": 100, "step": 5, "section": "关键词",
             "help": "自动学习的关键词数量上限。超出时按参与热度淘汰低频关键词。",
         },
         "keyword_display": {
             "type": "text",
             "default": "",
-            "label": "关键词（按参与热度）",
-            "section": "身份模拟",
+            "label": "已学关键词",
+            "section": "关键词",
             "help": (
                 "自动学习的关键词，按你手动发送消息命中次数降序排列。\\n"
                 "手动次数越高表示你越常聊这个关键词。\\n"
