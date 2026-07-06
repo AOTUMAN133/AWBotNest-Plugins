@@ -12,5 +12,12 @@
     "author": "Yy",
     "description": "学习你的聊天偏好和说话风格，在匹配关键词的群聊中智能参与对话。冷启动：未学到偏好前不参与。",
     "path": "plugins/learning/"
+  },
+  "scratch": {
+    "name": "天空刮奖",
+    "version": "1.4.0",
+    "author": "Yy",
+    "description": "散财童子刮刮乐自动挂机。手动发 /scratch 启动，filter 层过滤 Bot+回复，每轮自动连锁，连续亏损自动停止。",
+    "path": "plugins/scratch.py"
   }
 }
