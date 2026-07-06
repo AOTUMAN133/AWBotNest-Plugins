@@ -15,9 +15,9 @@
   },
   "scratch": {
     "name": "天空刮奖",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "author": "Yy",
-    "description": "散财童子刮刮乐自动挂机。手动发 /scratch 启动，filter 层过滤 Bot+回复，每轮自动连锁，连续亏损自动停止。",
+    "description": "散财童子刮刮乐自动挂机。按钮点击+发送命令双重试，filter 层过滤 Bot+回复，每轮自动连锁。",
     "path": "plugins/scratch.py"
   }
 }

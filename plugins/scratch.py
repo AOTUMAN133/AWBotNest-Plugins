@@ -14,9 +14,9 @@ import time
 __plugin__ = {
     "name": "🎰天空刮奖",
     "id": "scratch",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "author": "Yy",
-    "description": "散财童子刮刮乐自动挂机。手动发 /scratch 启动，只处理 Bot 回复你的卡片，赢一把自动连锁。",
+    "description": "散财童子刮刮乐自动挂机。按钮点击+发送命令双重试，filter 层过滤 Bot+回复，每轮自动连锁。",
     "scope": "user",
     "config_schema": {
         "target_group": {
@@ -136,6 +136,79 @@ def _prune_seen() -> None:
         _seen.pop(k, None)
 
 
+# ── 重试工具 ────────────────────────────────────────
+
+_SCRATCH_BOT_ID = 0  # 运行时注入
+
+
+async def _click_btn(ctx, client, chat_id, msg_id, row, col, label="格子") -> bool:
+    """点击按钮，带重试（重新拉消息看按钮还在不在）。返回 True=成功。"""
+    for attempt in range(3):
+        try:
+            msg = await client.get_messages(chat_id, msg_id)
+            if not msg:
+                ctx.log.warning("get_messages 返回空 msg=%s", msg_id)
+                return False
+
+            # 检查按钮还在不在
+            markup = getattr(msg, "reply_markup", None)
+            if not markup or not getattr(markup, "inline_keyboard", None):
+                ctx.log.warning("消息已无键盘 msg=%s", msg_id)
+                return False
+            if row >= len(markup.inline_keyboard) or col >= len(markup.inline_keyboard[row]):
+                ctx.log.warning("按钮 (%d,%d) 已消失 msg=%s", row, col, msg_id)
+                return False
+
+            await msg.click(x=col, y=row)
+            return True
+
+        except Exception as e:
+            err_s = str(e).upper()
+            if "FLOOD_WAIT" in err_s:
+                fm = re.search(r"(\d+)", str(e))
+                s = int(fm.group(1)) if fm else 3
+                ctx.log.warning("⏳ FloodWait %ss (%s)", s, label)
+                await asyncio.sleep(s)
+                continue
+            elif "BUTTON_DATA_INVALID" in err_s or "MESSAGE_ID_INVALID" in err_s:
+                ctx.log.warning("消息已失效 msg=%s (%s)", msg_id, label)
+                return False
+            else:
+                if attempt < 2:
+                    ctx.log.warning(
+                        "点击%s失败 (attempt %d/3): %s，1s后重试",
+                        label, attempt + 1, e,
+                    )
+                    await asyncio.sleep(1)
+                else:
+                    ctx.log.warning("点击%s失败 (attempt %d/3): %s", label, attempt + 1, e)
+    return False
+
+
+async def _send_scratch(ctx, chat_id, label="") -> bool:
+    """发送 /scratch，带重试。返回 True=成功。"""
+    for attempt in range(3):
+        try:
+            await ctx.user.send(chat_id, "/scratch")
+            return True
+        except Exception as e:
+            err_s = str(e).upper()
+            if "FLOOD_WAIT" in err_s:
+                fm = re.search(r"(\d+)", str(e))
+                s = int(fm.group(1)) if fm else 3
+                ctx.log.warning("⏳ 发送 /scratch FloodWait %ss", s)
+                await asyncio.sleep(s)
+                continue
+            else:
+                ctx.log.warning(
+                    "发送 /scratch 失败 (attempt %d/3)%s: %s",
+                    attempt + 1, label, e,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(2)
+    return False
+
+
 # ── 刮奖策略 ────────────────────────────────────────
 
 async def _play_card(ctx, client, message, cfg) -> dict | None:
@@ -159,12 +232,13 @@ async def _play_card(ctx, client, message, cfg) -> dict | None:
     click_delay = float(cfg.get("click_delay", 0.6))
 
     for cell_num in remaining:
+        # 重新拉消息看当前键盘状态
         refetched = await client.get_messages(chat_id, msg_id)
         if not refetched:
-            ctx.log.warning("get_messages 返回空 chat=%s msg=%s", chat_id, msg_id)
-            break
+            ctx.log.warning("get_messages 返回空 msg=%s", msg_id)
+            continue
 
-        _, current_cells, _ = _parse_card(refetched)
+        _, current_cells, current_abandon = _parse_card(refetched)
         if cell_num not in current_cells:
             continue
 
@@ -173,29 +247,22 @@ async def _play_card(ctx, client, message, cfg) -> dict | None:
         delay = click_delay * random.uniform(0.8, 1.2)
         await asyncio.sleep(delay)
 
-        try:
-            await refetched.click(x=col, y=row)
-        except Exception as e:
-            err_s = str(e).upper()
-            if "FLOOD_WAIT" in err_s:
-                fm = re.search(r"(\d+)", str(e))
-                if fm:
-                    s = int(fm.group(1))
-                    ctx.log.warning("FloodWait %ss", s)
-                    await asyncio.sleep(s)
-                    try:
-                        await refetched.click(x=col, y=row)
-                    except Exception as e2:
-                        ctx.log.warning("FloodWait 后重试仍失败: %s", e2)
-                        break
-                else:
-                    break
-            elif "BUTTON_DATA_INVALID" in err_s or "MESSAGE_ID_INVALID" in err_s:
-                ctx.log.warning("消息已失效 msg=%s", msg_id)
-                break
-            else:
-                ctx.log.warning("点击格子 %s 失败: %s", cell_num, e)
-                break
+        ok = await _click_btn(ctx, client, chat_id, msg_id, row, col, f"格{cell_num}")
+        if not ok:
+            # BUTTON_DATA_INVALID / 按钮消失 → 当前卡报废
+            refetched = await client.get_messages(chat_id, msg_id)
+            if refetched:
+                cum_payout = _parse_payout(refetched.text or "")
+            cost = cells_revealed * 100
+            net = cum_payout - cost
+            ctx.log.warning("卡#%s 中断 格%s失效 累计%d 净%d", card_id, cell_num, cum_payout, net)
+            return {
+                "card_id": card_id,
+                "cells": cells_revealed,
+                "payout": cum_payout,
+                "cost": cost,
+                "net": net,
+            } if cells_revealed > 0 else None
 
         cells_revealed += 1
         await asyncio.sleep(0.6)
@@ -212,14 +279,12 @@ async def _play_card(ctx, client, message, cfg) -> dict | None:
         if cum_payout >= cells_revealed * 100:
             ctx.log.info("✅ 回本 卡#%s %d格 累计%d", card_id, cells_revealed, cum_payout)
 
+            # 点「放弃」按钮（重新拉消息拿最新位置）
             refetched = await client.get_messages(chat_id, msg_id)
             if refetched:
                 _, _, ab_pos = _parse_card(refetched)
                 if ab_pos:
-                    try:
-                        await refetched.click(x=ab_pos[1], y=ab_pos[0])
-                    except Exception as e:
-                        ctx.log.warning("点击放弃失败: %s", e)
+                    await _click_btn(ctx, client, chat_id, msg_id, ab_pos[0], ab_pos[1], "放弃")
 
             net = cum_payout - cells_revealed * 100
             await ctx.notify(
@@ -238,6 +303,7 @@ async def _play_card(ctx, client, message, cfg) -> dict | None:
                 "net": net,
             }
 
+    # 全刮完或中断
     cost = cells_revealed * 100
     net = cum_payout - cost
     emoji = "❌" if net < 0 else "⚠️"
@@ -360,11 +426,9 @@ async def setup(ctx):
             wait = cooldown + random.uniform(0, 3)
             ctx.log.info("🔄 %.1fs 后群内发送 /scratch（连续亏损=%d）", wait, _consecutive_loss)
             await asyncio.sleep(wait)
-            try:
-                await ctx.user.send(tg, "/scratch")
+            ok = await _send_scratch(ctx, tg, f" 连续亏损={_consecutive_loss}")
+            if ok:
                 ctx.log.info("📤 已在群内发送 /scratch")
-            except Exception as e:
-                ctx.log.warning("发送 /scratch 失败: %s", e)
         except Exception:
             ctx.log.exception("刮奖流程异常")
         finally:
