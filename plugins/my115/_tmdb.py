@@ -11,9 +11,9 @@ import httpx
 class TmdbApi:
     """TMDB 识别匹配（异步）。"""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, language: str = "zh"):
         self.api_key = api_key
-        self.language = "zh"
+        self.language = language
         self.base_url = "https://api.themoviedb.org/3"
 
     def _client(self) -> httpx.AsyncClient:
