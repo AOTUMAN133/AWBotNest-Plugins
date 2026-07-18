@@ -24,7 +24,7 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "author": "AWdress",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
@@ -812,7 +812,15 @@ async def setup(ctx):
         # 构建发言池：用户词条 + 随机歌词（如果开启）
         pool = list(user_phrases)
         if use_lyrics and _LYRICS:
-            pool.extend(random.sample(list(_LYRICS), min(10, len(_LYRICS))))
+            # 随机抽 10 条歌词，每条只取前半句（逗号/句号前）
+            raw_lyrics = random.sample(list(_LYRICS), min(10, len(_LYRICS)))
+            for l in raw_lyrics:
+                for sep in ("，", "。", "；", "！", "？", ","):
+                    if sep in l:
+                        l = l.split(sep)[0].strip()
+                        break
+                if l:
+                    pool.append(l)
         if len(pool) < 2:
             return
 
