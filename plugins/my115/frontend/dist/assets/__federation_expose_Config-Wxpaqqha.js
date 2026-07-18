@@ -1,0 +1,393 @@
+import { importShared } from './__federation_fn_import-GzAXfPDJ.js';
+
+const _export_sfc = (sfc, props) => {
+  const target = sfc.__vccOpts || sfc;
+  for (const [key, val] of props) {
+    target[key] = val;
+  }
+  return target;
+};
+
+const {normalizeClass:_normalizeClass,createElementVNode:_createElementVNode,vModelText:_vModelText,withDirectives:_withDirectives,createTextVNode:_createTextVNode,vModelCheckbox:_vModelCheckbox,toDisplayString:_toDisplayString,vShow:_vShow,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment} = await importShared('vue');
+
+
+const _hoisted_1 = { class: "mm" };
+const _hoisted_2 = { class: "tabs" };
+const _hoisted_3 = { class: "layout" };
+const _hoisted_4 = { class: "card" };
+const _hoisted_5 = { class: "row" };
+const _hoisted_6 = { class: "fld" };
+const _hoisted_7 = { class: "chips" };
+const _hoisted_8 = { class: "chip" };
+const _hoisted_9 = ["checked"];
+const _hoisted_10 = { class: "chip" };
+const _hoisted_11 = ["checked"];
+const _hoisted_12 = { class: "row switch" };
+const _hoisted_13 = { class: "card" };
+const _hoisted_14 = { class: "row" };
+const _hoisted_15 = { class: "row" };
+const _hoisted_16 = { class: "card" };
+const _hoisted_17 = { class: "row" };
+const _hoisted_18 = { class: "row" };
+const _hoisted_19 = { class: "row switch" };
+const _hoisted_20 = { class: "card" };
+const _hoisted_21 = { class: "row" };
+const _hoisted_22 = { class: "row" };
+const _hoisted_23 = { class: "row switch" };
+const _hoisted_24 = { class: "card" };
+const _hoisted_25 = { class: "row" };
+const _hoisted_26 = { class: "savebar" };
+const _hoisted_27 = ["disabled"];
+const _hoisted_28 = { class: "pane" };
+const _hoisted_29 = { class: "card" };
+const _hoisted_30 = { class: "kv" };
+const _hoisted_31 = { class: "kv" };
+const _hoisted_32 = { class: "kv" };
+const _hoisted_33 = ["disabled"];
+const _hoisted_34 = { class: "pane" };
+const _hoisted_35 = { class: "toolbar" };
+const _hoisted_36 = { class: "muted" };
+const _hoisted_37 = {
+  key: 0,
+  class: "tbl"
+};
+const _hoisted_38 = { class: "muted" };
+const _hoisted_39 = {
+  key: 1,
+  class: "empty muted"
+};
+
+const {ref,reactive,computed,onMounted} = await importShared('vue');
+
+
+
+const _sfc_main = {
+  __name: 'Config',
+  props: { pluginId: String, host: Object },
+  setup(__props) {
+
+const props = __props;
+const tab = ref('settings');
+const saving = ref(false);
+const testing = ref(false);
+const s = reactive({});
+const testMsg = ref('');
+const testOk = ref(false);
+const logs = ref([]);
+const cfg = reactive({
+  monitor_ids: '', media_types: ['movie', 'tv'], only_complete_series: false,
+  tmdb_api_key: '', tmdb_language: 'zh-CN',
+  emby_url: '', emby_api_key: '', skip_emby_check: false,
+  cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
+  pan115_cookie: '',
+});
+
+const mediaTypes = computed({
+  get: () => Array.isArray(cfg.media_types) ? cfg.media_types : [],
+  set: (v) => { cfg.media_types = v; },
+});
+
+function toggleMedia(type) {
+  const arr = mediaTypes.value;
+  const i = arr.indexOf(type);
+  if (i >= 0) arr.splice(i, 1); else arr.push(type);
+}
+
+onMounted(async () => {
+  try {
+    const saved = await props.host.getConfig();
+    Object.assign(cfg, saved || {});
+  } catch (e) {
+    props.host.toast.error('读取配置失败：' + (e.message || e));
+  }
+});
+
+async function save() {
+  saving.value = true;
+  try {
+    await props.host.saveConfig({ ...cfg });
+    props.host.toast.success('配置已保存');
+  } catch (e) {
+    props.host.toast.error('保存失败：' + (e.message || e));
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function loadStatus() {
+  try {
+    const r = await props.host.callApi('/status');
+    Object.assign(s, r || {});
+  } catch {}
+}
+
+async function testServices() {
+  testing.value = true; testMsg.value = '';
+  try {
+    const r = await props.host.callApi('/test', { method: 'POST', body: {} });
+    testOk.value = r.ok; testMsg.value = r.message || '';
+    await loadStatus();
+  } catch (e) {
+    testOk.value = false; testMsg.value = e.message || '测试失败';
+  } finally { testing.value = false; }
+}
+
+async function loadLogs() {
+  try {
+    const r = await props.host.callApi('/logs');
+    logs.value = (r && r.logs) || [];
+  } catch {}
+}
+
+return (_ctx, _cache) => {
+  return (_openBlock(), _createElementBlock("div", _hoisted_1, [
+    _createElementVNode("div", _hoisted_2, [
+      _createElementVNode("button", {
+        class: _normalizeClass(['tab', { on: tab.value === 'settings' }]),
+        onClick: _cache[0] || (_cache[0] = $event => (tab.value = 'settings'))
+      }, "⚙ 设置", 2),
+      _createElementVNode("button", {
+        class: _normalizeClass(['tab', { on: tab.value === 'status' }]),
+        onClick: _cache[1] || (_cache[1] = $event => {loadStatus(); tab.value = 'status';})
+      }, "📊 状态", 2),
+      _createElementVNode("button", {
+        class: _normalizeClass(['tab', { on: tab.value === 'logs' }]),
+        onClick: _cache[2] || (_cache[2] = $event => {loadLogs(); tab.value = 'logs';})
+      }, "📝 记录", 2)
+    ]),
+    _withDirectives(_createElementVNode("div", _hoisted_3, [
+      _createElementVNode("section", _hoisted_4, [
+        _cache[21] || (_cache[21] = _createElementVNode("h3", null, "监控范围", -1)),
+        _createElementVNode("label", _hoisted_5, [
+          _cache[16] || (_cache[16] = _createElementVNode("span", null, "监控群组", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((cfg.monitor_ids) = $event)),
+            class: "inp",
+            placeholder: "群ID逗号分隔，留空=所有会话"
+          }, null, 512), [
+            [_vModelText, cfg.monitor_ids]
+          ])
+        ]),
+        _createElementVNode("div", _hoisted_6, [
+          _cache[19] || (_cache[19] = _createElementVNode("span", { class: "lbl" }, "转存类型", -1)),
+          _createElementVNode("div", _hoisted_7, [
+            _createElementVNode("label", _hoisted_8, [
+              _createElementVNode("input", {
+                type: "checkbox",
+                checked: mediaTypes.value.includes('movie'),
+                onChange: _cache[4] || (_cache[4] = $event => (toggleMedia('movie')))
+              }, null, 40, _hoisted_9),
+              _cache[17] || (_cache[17] = _createTextVNode(" 电影", -1))
+            ]),
+            _createElementVNode("label", _hoisted_10, [
+              _createElementVNode("input", {
+                type: "checkbox",
+                checked: mediaTypes.value.includes('tv'),
+                onChange: _cache[5] || (_cache[5] = $event => (toggleMedia('tv')))
+              }, null, 40, _hoisted_11),
+              _cache[18] || (_cache[18] = _createTextVNode(" 电视剧", -1))
+            ])
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_12, [
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((cfg.only_complete_series) = $event)),
+            type: "checkbox"
+          }, null, 512), [
+            [_vModelCheckbox, cfg.only_complete_series]
+          ]),
+          _cache[20] || (_cache[20] = _createElementVNode("span", null, "剧集仅转存完结", -1))
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_13, [
+        _cache[24] || (_cache[24] = _createElementVNode("h3", null, "TMDB", -1)),
+        _createElementVNode("label", _hoisted_14, [
+          _cache[22] || (_cache[22] = _createElementVNode("span", null, "API Key", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((cfg.tmdb_api_key) = $event)),
+            class: "inp",
+            type: "password",
+            placeholder: "必填"
+          }, null, 512), [
+            [_vModelText, cfg.tmdb_api_key]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_15, [
+          _cache[23] || (_cache[23] = _createElementVNode("span", null, "语言", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((cfg.tmdb_language) = $event)),
+            class: "inp",
+            placeholder: "zh-CN"
+          }, null, 512), [
+            [_vModelText, cfg.tmdb_language]
+          ])
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_16, [
+        _cache[28] || (_cache[28] = _createElementVNode("h3", null, "Emby", -1)),
+        _createElementVNode("label", _hoisted_17, [
+          _cache[25] || (_cache[25] = _createElementVNode("span", null, "地址", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((cfg.emby_url) = $event)),
+            class: "inp",
+            placeholder: "http://emby.local:8096"
+          }, null, 512), [
+            [_vModelText, cfg.emby_url]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_18, [
+          _cache[26] || (_cache[26] = _createElementVNode("span", null, "API Key", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((cfg.emby_api_key) = $event)),
+            class: "inp",
+            type: "password"
+          }, null, 512), [
+            [_vModelText, cfg.emby_api_key]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_19, [
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((cfg.skip_emby_check) = $event)),
+            type: "checkbox"
+          }, null, 512), [
+            [_vModelCheckbox, cfg.skip_emby_check]
+          ]),
+          _cache[27] || (_cache[27] = _createElementVNode("span", null, "跳过 Emby 查重", -1))
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_20, [
+        _cache[32] || (_cache[32] = _createElementVNode("h3", null, "转发", -1)),
+        _createElementVNode("label", _hoisted_21, [
+          _cache[29] || (_cache[29] = _createElementVNode("span", null, "目标", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((cfg.cms_bot_username) = $event)),
+            class: "inp",
+            placeholder: "如 @cmsbot 或 me"
+          }, null, 512), [
+            [_vModelText, cfg.cms_bot_username]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_22, [
+          _cache[30] || (_cache[30] = _createElementVNode("span", null, "标签", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((cfg.forward_label) = $event)),
+            class: "inp",
+            placeholder: "115 网盘"
+          }, null, 512), [
+            [_vModelText, cfg.forward_label]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_23, [
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((cfg.forward_to_saved) = $event)),
+            type: "checkbox"
+          }, null, 512), [
+            [_vModelCheckbox, cfg.forward_to_saved]
+          ]),
+          _cache[31] || (_cache[31] = _createElementVNode("span", null, "转发到收藏夹", -1))
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_24, [
+        _cache[34] || (_cache[34] = _createElementVNode("h3", null, "115 网盘", -1)),
+        _createElementVNode("label", _hoisted_25, [
+          _cache[33] || (_cache[33] = _createElementVNode("span", null, "Cookie", -1)),
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((cfg.pan115_cookie) = $event)),
+            class: "inp",
+            type: "password",
+            placeholder: "可选"
+          }, null, 512), [
+            [_vModelText, cfg.pan115_cookie]
+          ])
+        ])
+      ]),
+      _createElementVNode("div", _hoisted_26, [
+        _createElementVNode("button", {
+          class: "btn primary lg",
+          disabled: saving.value,
+          onClick: save
+        }, _toDisplayString(saving.value ? '保存中…' : '保存配置'), 9, _hoisted_27)
+      ])
+    ], 512), [
+      [_vShow, tab.value === 'settings']
+    ]),
+    _withDirectives(_createElementVNode("div", _hoisted_28, [
+      _createElementVNode("div", _hoisted_29, [
+        _createElementVNode("div", _hoisted_30, [
+          _cache[35] || (_cache[35] = _createElementVNode("span", null, "TMDB", -1)),
+          _createElementVNode("b", {
+            class: _normalizeClass(s.tmdb_ok ? 'ok' : 'err')
+          }, _toDisplayString(s.tmdb_status || '未检测'), 3)
+        ]),
+        _createElementVNode("div", _hoisted_31, [
+          _cache[36] || (_cache[36] = _createElementVNode("span", null, "Emby", -1)),
+          _createElementVNode("b", {
+            class: _normalizeClass(s.emby_ok ? 'ok' : 'err')
+          }, _toDisplayString(s.emby_status || '未检测'), 3)
+        ]),
+        _createElementVNode("div", _hoisted_32, [
+          _cache[37] || (_cache[37] = _createElementVNode("span", null, "Emby 库", -1)),
+          _createElementVNode("b", null, _toDisplayString(s.emby_items ?? '-') + " 项", 1)
+        ])
+      ]),
+      _createElementVNode("button", {
+        class: "btn",
+        disabled: testing.value,
+        onClick: testServices
+      }, _toDisplayString(testing.value ? '测试中…' : '测试连接'), 9, _hoisted_33),
+      (testMsg.value)
+        ? (_openBlock(), _createElementBlock("p", {
+            key: 0,
+            class: _normalizeClass(['test-msg', testOk.value ? 'ok' : 'err'])
+          }, _toDisplayString(testMsg.value), 3))
+        : _createCommentVNode("", true)
+    ], 512), [
+      [_vShow, tab.value === 'status']
+    ]),
+    _withDirectives(_createElementVNode("div", _hoisted_34, [
+      _createElementVNode("div", _hoisted_35, [
+        _createElementVNode("button", {
+          class: "btn",
+          onClick: loadLogs
+        }, "刷新"),
+        _createElementVNode("span", _hoisted_36, _toDisplayString(logs.value.length) + " 条", 1)
+      ]),
+      (logs.value.length)
+        ? (_openBlock(), _createElementBlock("table", _hoisted_37, [
+            _cache[38] || (_cache[38] = _createElementVNode("thead", null, [
+              _createElementVNode("tr", null, [
+                _createElementVNode("th", null, "时间"),
+                _createElementVNode("th", null, "标题"),
+                _createElementVNode("th", null, "TMDB"),
+                _createElementVNode("th", null, "操作")
+              ])
+            ], -1)),
+            _createElementVNode("tbody", null, [
+              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(logs.value, (l, i) => {
+                return (_openBlock(), _createElementBlock("tr", { key: i }, [
+                  _createElementVNode("td", _hoisted_38, _toDisplayString(l.time), 1),
+                  _createElementVNode("td", null, _toDisplayString(l.title), 1),
+                  _createElementVNode("td", null, [
+                    _createElementVNode("code", null, _toDisplayString(l.tmdb_id || '-'), 1)
+                  ]),
+                  _createElementVNode("td", null, [
+                    _createElementVNode("span", {
+                      class: _normalizeClass('tag-' + l.action)
+                    }, _toDisplayString(l.action), 3)
+                  ])
+                ]))
+              }), 128))
+            ])
+          ]))
+        : (_openBlock(), _createElementBlock("div", _hoisted_39, "暂无处理记录"))
+    ], 512), [
+      [_vShow, tab.value === 'logs']
+    ])
+  ]))
+}
+}
+
+};
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1bc29bf3"]]);
+
+export { Config as default };
