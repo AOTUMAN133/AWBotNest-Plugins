@@ -31,6 +31,9 @@ class TmdbApi:
             r["media_type"] = "tv"
         return movie + tv
 
+    async def multi_search(self, title: str, year: str = None) -> List[dict]:
+        return await self.search_all(title, year)
+
     def _auth(self):
         """兼容 TMDB v3 API Key（URL 参数）与 v4 Read Access Token（Bearer 头）。"""
         key = (self.api_key or "").strip()
@@ -103,9 +106,10 @@ async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type:
         return bool(items)
 
 
-async def get_emby_tmdb_ids(emby_server: str, emby_api: str, title: str,
-                            media_type: Optional[str], log=None) -> List[str]:
-    """查 Emby 媒体库里某标题已有项的 TMDB ID 列表。"""
+async def get_emby_tmdb_ids(emby_server: str, emby_api: str,
+                            title: str = "", media_type: Optional[str] = None,
+                            log=None) -> List[str]:
+    """查 Emby 媒体库里已有项的 TMDB ID 列表。title 为空时返回全部。"""
     if not emby_server or not emby_api:
         return []
     if media_type and media_type.lower() == "movie":
@@ -119,9 +123,11 @@ async def get_emby_tmdb_ids(emby_server: str, emby_api: str, title: str,
     params = {
         "IncludeItemTypes": item_types or "",
         "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path",
-        "StartIndex": 0, "Recursive": "true", "SearchTerm": title,
+        "StartIndex": 0, "Recursive": "true",
         "Limit": 10, "IncludeSearchTypes": "false", "api_key": emby_api,
     }
+    if title:
+        params["SearchTerm"] = title
     # Emby 直连、绕过平台出站代理；失败让异常冒泡给上层处理。
     async with httpx.AsyncClient(timeout=10, verify=False, trust_env=False) as client:
         resp = await client.get(url, params=params)
