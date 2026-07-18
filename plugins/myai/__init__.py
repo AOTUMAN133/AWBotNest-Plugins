@@ -24,7 +24,7 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "author": "AWdress",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
@@ -809,19 +809,33 @@ async def setup(ctx):
         if not user_phrases and not use_lyrics:
             return
 
-        # 构建发言池：用户词条 + 随机歌词（如果开启）
-        pool = list(user_phrases)
+        # 构建发言池
+        class PoolItem:
+            __slots__ = ("text", "next_text")
+        pool = [PoolItem() for _ in range(len(user_phrases))]
+        for i, p in enumerate(user_phrases):
+            pool[i].text = p
+            pool[i].next_text = None
+
         if use_lyrics and _LYRICS:
-            # 随机抽 10 条歌词，每条只取前半句（逗号/句号前）
-            raw_lyrics = random.sample(list(_LYRICS), min(10, len(_LYRICS)))
-            for l in raw_lyrics:
-                for sep in ("，", "。", "；", "！", "？", ","):
+            for l in random.sample(list(_LYRICS), min(10, len(_LYRICS))):
+                parts = None
+                for sep in ("，", "。", "；", "！", "？", ",", "?"):
                     if sep in l:
-                        l = l.split(sep)[0].strip()
+                        s = l.split(sep, 1)
+                        parts = (s[0].strip(), s[1].strip())
                         break
-                if l:
-                    pool.append(l)
-        if len(pool) < 2:
+                if parts and parts[0]:
+                    item = PoolItem()
+                    item.text = parts[0]
+                    item.next_text = parts[1] if parts[1] else None
+                    pool.append(item)
+                elif l:
+                    item = PoolItem()
+                    item.text = l
+                    item.next_text = None
+                    pool.append(item)
+        if len(pool) < 1:
             return
 
         # 时间区间检查
@@ -863,13 +877,18 @@ async def setup(ctx):
 
         chosen = random.sample(pool, min(random.randint(1, 3), len(pool)))
         for chat_id in cids:
-            for i, msg in enumerate(chosen):
+            msgs = []
+            for item in chosen:
+                msgs.append(item.text)
+                if item.next_text:
+                    msgs.append(item.next_text)
+            for i, msg in enumerate(msgs):
                 try:
                     await client.send_message(chat_id, msg)
                     ctx.log.info("[AI] 自动发言 group=%s: %s", chat_id, msg[:30])
                 except Exception as e:  # noqa: BLE001
                     ctx.log.warning("[AI] 自动发言发送失败 group=%s: %r", chat_id, e)
-                if i == 0:
+                if i < len(msgs) - 1:
                     await asyncio.sleep(random.uniform(3, 8))
             await asyncio.sleep(1)
 
