@@ -84,7 +84,7 @@ async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type:
     """直接用 TMDB ID 查 Emby 是否已入库（最可靠，无需标题匹配）。"""
     if not emby_server or not emby_api or not tmdb_id:
         return False
-    url = f"{emby_server}emby/Items"
+    url = f"{emby_server.rstrip('/')}/emby/Items"
     params = {
         "Recursive": "true",
         "AnyProviderIdEquals": f"tmdb.{tmdb_id}",
@@ -119,7 +119,7 @@ async def get_emby_tmdb_ids(emby_server: str, emby_api: str,
     else:
         item_types = None
 
-    url = f"{emby_server}emby/Items"
+    url = f"{emby_server.rstrip('/')}/emby/Items"
     params = {
         "IncludeItemTypes": item_types or "",
         "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path",
