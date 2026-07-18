@@ -3,7 +3,7 @@ const currentImports = {};
       let moduleMap = {
 "./Config":()=>{
       dynamicLoadingCss(["__federation_expose_Config-c1zSQMoJ.css"], false, './Config');
-      return __federation_import('/api/plugins/ai/fe/assets/__federation_expose_Config-CG_D6Aml.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
+      return __federation_import('/api/plugins/myai/fe/assets/__federation_expose_Config-CG_D6Aml.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
       const seen = {};
       const dynamicLoadingCss = (cssFilePaths, dontAppendStylesToHead, exposeItemName) => {
         const metaUrl = import.meta.url;
@@ -13,7 +13,7 @@ const currentImports = {};
         }
 
         const curUrl = metaUrl.substring(0, metaUrl.lastIndexOf('remoteEntry.js'));
-        const base = '/api/plugins/ai/fe/';
+        const base = '/api/plugins/myai/fe/';
         'assets';
 
         cssFilePaths.forEach(cssPath => {
