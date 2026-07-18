@@ -53,6 +53,7 @@ DEFAULTS = {
     "enable_auto_say": False, "auto_say_chat_ids": "",
     "auto_say_phrases": "", "auto_say_min_minutes": 5, "auto_say_max_minutes": 8,
     "auto_say_use_lyrics": True,
+    "auto_say_time_start": "09:00", "auto_say_time_end": "23:00",
     "enable_explain_command": True, "enable_explain_prompt": False,
     "explain_prompt": (
         "你是一个群聊消息解读助手。请根据用户【回复的消息内容】进行解释与答疑，简明清晰。\n"
@@ -814,6 +815,21 @@ async def setup(ctx):
             pool.extend(random.sample(list(_LYRICS), min(10, len(_LYRICS))))
         if len(pool) < 2:
             return
+
+        # 时间区间检查
+        try:
+            t_start = str(cfg.get("auto_say_time_start", "00:00") or "00:00")
+            t_end = str(cfg.get("auto_say_time_end", "23:59") or "23:59")
+            from datetime import datetime as _dt
+            now_str = _dt.now().strftime("%H:%M")
+            if t_start <= t_end:
+                ok = t_start <= now_str <= t_end
+            else:
+                ok = now_str >= t_start or now_str <= t_end
+            if not ok:
+                return
+        except Exception:
+            pass
 
         now = time.time()
         next_ts = ctx.kv.get("auto_say_next_ts", None)
