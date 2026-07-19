@@ -79,7 +79,7 @@ def _item_types(media_type: Optional[str]) -> Optional[str]:
     return None
 
 
-async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type: Optional[str],
+async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type: Optional[str] = None,
                            log=None) -> bool:
     """直接用 TMDB ID 查 Emby 是否已入库（最可靠，无需标题匹配）。"""
     if not emby_server or not emby_api or not tmdb_id:
