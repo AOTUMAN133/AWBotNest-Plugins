@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -114,7 +114,7 @@ async def setup(ctx):
             for r in recent:
                 lines.append(f"{r['t']} {r['r']} {r['a']} (累计{r['p']})")
             rec_text = "\n" + "\n".join(lines)
-        ctx.update_config({"_stats": f"赢{wins} 输{losses} 胜率{rate} 连错{streak} 总盈亏{_fmt(profit)}{rec_text}"})
+        ctx.update_config({"_stats": f"连错{streak} 总盈亏{_fmt(profit)} 赢{wins} 输{losses} 胜率{rate}\n━━━━━━━━━━━━━━\n{rec_text}"})
 
     ctx.schedule(stats_pusher, "interval", seconds=30, id="mybet_stats")
 
