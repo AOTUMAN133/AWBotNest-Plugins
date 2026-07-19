@@ -13,12 +13,86 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。完整流程同my115。",
     "scope": "user",
     "default_enabled": False,
     "requirements": [],
+    "config_schema": {
+        "source_chat": {
+            "type": "number", "default": 0, "label": "来源频道ID",
+            "section": "扫描", "help": "扫描哪个频道的历史消息", "order": 1
+        },
+        "cms_bot_username": {
+            "type": "string", "default": "", "label": "CMS机器人用户名",
+            "section": "转发", "help": "转发给哪个机器人入库", "order": 2
+        },
+        "forward_label": {
+            "type": "string", "default": "115 网盘", "label": "转发标签",
+            "section": "转发", "help": "转发的消息前缀标签", "order": 3
+        },
+        "tmdb_api_key": {
+            "type": "string", "default": "", "label": "TMDB API Key",
+            "section": "TMDB", "help": "www.themoviedb.org 获取", "order": 4
+        },
+        "tmdb_language": {
+            "type": "string", "default": "zh-CN", "label": "TMDB 语言",
+            "section": "TMDB", "order": 5
+        },
+        "emby_url": {
+            "type": "string", "default": "", "label": "Emby 地址",
+            "section": "Emby", "help": "例如 http://192.168.1.1:8096", "order": 6
+        },
+        "emby_api_key": {
+            "type": "string", "default": "", "label": "Emby API Key",
+            "section": "Emby", "order": 7
+        },
+        "skip_emby_check": {
+            "type": "boolean", "default": False, "label": "跳过Emby查重",
+            "section": "Emby", "order": 8
+        },
+        "media_types": {
+            "type": "select", "default": "all", "label": "媒体类型",
+            "section": "过滤", "options": {"all": "全部", "movie": "仅电影", "tv": "仅剧集"}, "order": 9
+        },
+        "only_complete_series": {
+            "type": "boolean", "default": False, "label": "剧集仅转存完结",
+            "section": "过滤", "order": 10
+        },
+        "exclude_genres": {
+            "type": "string", "default": "", "label": "排除类型",
+            "section": "过滤", "help": "填TMDB类型名，逗号分隔", "order": 11
+        },
+        "dedup_hours": {
+            "type": "number", "default": 24, "label": "去重冷却(小时)",
+            "section": "过滤", "min": 0, "max": 720, "order": 12
+        },
+        "delay": {
+            "type": "number", "default": 2, "label": "每条间隔(秒)",
+            "section": "速度", "min": 1, "max": 30, "order": 13
+        },
+        "batch_size": {
+            "type": "number", "default": 200, "label": "每批拉取条数",
+            "section": "速度", "min": 50, "max": 1000, "order": 14
+        },
+        "_status": {
+            "type": "info", "label": "状态",
+            "section": "状态"
+        },
+        "start_scan": {
+            "type": "action", "label": "▶ 开始扫描",
+            "section": "状态", "action": "start_scan", "danger": True
+        },
+        "stop_scan": {
+            "type": "action", "label": "⏹ 停止扫描",
+            "section": "状态", "action": "stop_scan", "danger": True
+        },
+        "reset_scan": {
+            "type": "action", "label": "🔄 重置进度",
+            "section": "状态", "action": "reset_scan", "danger": True
+        },
+    },
 }
 
 # ── 配置默认值 ──
