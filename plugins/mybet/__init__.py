@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -228,20 +228,33 @@ async def _run_strategy(ctx, client, message, matrix_str):
     chips = [50000000, 5000000, 1000000, 250000, 50000, 20000, 2000, 500]
     remaining = current_bet
     success = False
+    has_click = hasattr(message, "click")
     for chip in chips:
         while remaining >= chip:
             btn_text = f"押{target} {chip:,}"
             clicked = False
-            try:
-                await message.click(btn_text)
-                ctx.log.info("[下注] ✅ 点击: %s", btn_text)
-                clicked = True
-            except (ValueError, AttributeError) as e:
-                ctx.log.warning("[下注] 点击失败 %s: %r", btn_text, e)
-                break
-            except Exception as e:
-                ctx.log.warning("[下注] 点击异常 %s: %r", btn_text, e)
-                break
+            if has_click:
+                try:
+                    await message.click(btn_text)
+                    ctx.log.info("[下注] ✅ 点击: %s", btn_text)
+                    clicked = True
+                except ValueError:
+                    ctx.log.warning("[下注] 按钮不存在 %s", btn_text)
+                    break
+                except Exception as e:
+                    ctx.log.warning("[下注] 点击异常 %s: %r", btn_text, e)
+                    break
+            else:
+                # 没有 click 方法，用用户账号发文本
+                try:
+                    apps = list(ctx.user_apps or [])
+                    if apps:
+                        await apps[0].send_message(message.chat.id, btn_text)
+                        ctx.log.info("[下注] ✅ 发送: %s", btn_text)
+                        clicked = True
+                except Exception as e2:
+                    ctx.log.warning("[下注] 发送失败: %r", e2)
+                    break
             if clicked:
                 remaining -= chip
                 success = True
