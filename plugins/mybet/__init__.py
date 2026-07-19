@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.5",
+    "version": "0.3.6",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -206,7 +206,13 @@ async def _run_strategy(ctx, client, message, matrix_str):
     loss_threshold = int(cfg.get("loss_streak", 5) or 5)
 
     # 顺势策略
-    target, mode_name, streak, _ = analyze_trend(matrix_str, 99, 99)
+    target, mode_name, streak, _ = analyze_trend(
+        matrix_str,
+        dragon_start=int(cfg.get("dragon_start", 5) or 5),
+        dragon_kill=int(cfg.get("dragon_kill", 8) or 8),
+        enable_anti_alt=cfg.get("enable_anti_alt", False),
+        enable_anti_double=cfg.get("enable_anti_double", False),
+    )
     if target == "挂起":
         return
 
