@@ -10,7 +10,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.7.0",
+    "version": "0.7.1",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -36,21 +36,29 @@ __plugin__ = {
             "type": "number", "default": 50000, "label": "第2次错",
             "section": "下注", "min": 100, "max": 100000000, "help": "连错第2局下这个数", "order": 5
         },
+        "step3_bet": {
+            "type": "number", "default": 50000, "label": "第3次错",
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错第3局下这个数", "order": 6
+        },
+        "step4_bet": {
+            "type": "number", "default": 50000, "label": "第4次错",
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错第4局下这个数", "order": 7
+        },
         "loss_streak": {
-            "type": "number", "default": 3, "label": "连错几次进反击",
-            "section": "下注", "min": 1, "max": 50, "help": "连错达到N局后进入反击模式(大注倍投)", "order": 6
+            "type": "number", "default": 5, "label": "连错几次进反击",
+            "section": "下注", "min": 1, "max": 50, "help": "连错达到N局后进入反击模式(大注倍投)", "order": 8
         },
         "big_bet": {
-            "type": "number", "default": 5000, "label": "反击大注起始",
-            "section": "下注", "min": 100, "max": 100000000, "help": "反击模式第一次下这个数", "order": 7
+            "type": "number", "default": 5000000, "label": "反击大注起始",
+            "section": "下注", "min": 100, "max": 100000000, "help": "反击模式第一次下这个数", "order": 9
         },
         "big_bet_mult": {
             "type": "number", "default": 2, "label": "反击大注倍率",
-            "section": "下注", "min": 1, "max": 10, "help": "反击模式还输就乘这个倍数继续", "order": 8
+            "section": "下注", "min": 1, "max": 10, "help": "反击模式还输就乘这个倍数继续", "order": 10
         },
         "max_bet": {
             "type": "number", "default": 50000000, "label": "单局封顶",
-            "section": "下注", "min": 100, "max": 50000000, "help": "下注封顶，平台上限5000万", "order": 9
+            "section": "下注", "min": 100, "max": 50000000, "help": "下注封顶，平台上限5000万", "order": 11
         },
         "take_profit": {
             "type": "number", "default": 100000, "label": "止盈线",
@@ -218,8 +226,10 @@ async def _run_strategy(ctx, client, message, matrix_str):
     bb = int(cfg.get("base_bet", 500) or 500)
     s1 = int(cfg.get("step1_bet", 20000) or 20000)
     s2 = int(cfg.get("step2_bet", 50000) or 50000)
-    lt = int(cfg.get("loss_streak", 3) or 3)
-    bg = int(cfg.get("big_bet", 5000) or 5000)
+    s3 = int(cfg.get("step3_bet", 50000) or 50000)
+    s4 = int(cfg.get("step4_bet", 50000) or 50000)
+    lt = int(cfg.get("loss_streak", 5) or 5)
+    bg = int(cfg.get("big_bet", 5000000) or 5000000)
     bm = float(cfg.get("big_bet_mult", 2) or 2)
     mx = int(cfg.get("max_bet", 50000000) or 50000000)
 
@@ -238,8 +248,14 @@ async def _run_strategy(ctx, client, message, matrix_str):
         cb, ml = bb, "平常"
     elif ls == 1:
         cb, ml = s1, "第1次错"
+    elif ls == 2:
+        cb, ml = s2, "第2次错"
+    elif ls == 3:
+        cb, ml = s3, "第3次错"
+    elif ls == 4:
+        cb, ml = s4, "第4次错"
     elif ls < lt:
-        cb, ml = s2, f"第{ls}次错"
+        cb, ml = s4, f"第{ls}次错"
     else:
         extra = ls - lt + 1
         cb = int(bg * (bm ** (extra - 1)))
