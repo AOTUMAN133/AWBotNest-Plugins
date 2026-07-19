@@ -98,6 +98,7 @@ async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type:
     # 连接失败让异常冒泡，由上层决定「跳过转发」而非误判为不在库。
     async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
         resp = await client.get(url, params=params)
+        resp.raise_for_status()
         res = resp.json()
         items = (res or {}).get("Items") or []
         for it in items:
@@ -131,6 +132,7 @@ async def get_emby_tmdb_ids(emby_server: str, emby_api: str,
     # Emby 直连、绕过平台出站代理；失败让异常冒泡给上层处理。
     async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
         resp = await client.get(url, params=params)
+        resp.raise_for_status()
         res = resp.json()
         items = res.get("Items") if res else None
         if not items:
