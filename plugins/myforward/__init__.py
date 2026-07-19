@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 __plugin__ = {
     "name": "历史消息转发",
     "id": "myforward",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息，从最早到最新，按顺序转发到目标频道，带速度控制。",
     "scope": "user",
@@ -81,8 +81,8 @@ async def setup(ctx):
             return {"ok": False, "message": "未设置目标频道"}
         _stop_flag = False
         _running = True
+        ctx.kv.set("myforward_stop", False)  # 清除停止标记
         ctx.update_config({"_status": "转发中…"})
-        # 在后台运行
         asyncio.create_task(_do_forward(ctx, src, dst))
         return {"ok": True, "message": "开始转发"}
 
