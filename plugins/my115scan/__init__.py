@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.6.1",
+    "version": "0.6.3",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -602,6 +602,42 @@ async def setup(ctx):
         ctx.update_config({"_scan_status": f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"})
 
     ctx.schedule(_scan_status_pusher, "interval", seconds=15, id="my115scan_status")
+
+    # ───────── 扫描 API ─────────
+    @ctx.on_api("/start_scan", methods=["POST"])
+    async def _api_start_scan(req):
+        cfg = ctx.config
+        src = int(cfg.get("source_chat", 0) or 0)
+        if not src:
+            return {"ok": False, "message": "未设置来源频道"}
+        if not cfg.get("cms_bot_username", "").strip():
+            return {"ok": False, "message": "未设置CMS机器人"}
+        if not cfg.get("tmdb_api_key", "").strip():
+            return {"ok": False, "message": "未设置TMDB API Key"}
+        ctx.kv.set("my115scan_stop", False)
+        asyncio.create_task(_do_scan(ctx, src))
+        return {"ok": True, "message": "开始扫描"}
+
+    @ctx.on_api("/stop_scan", methods=["POST"])
+    async def _api_stop_scan(req):
+        ctx.kv.set("my115scan_stop", True)
+        return {"ok": True, "message": "已停止"}
+
+    @ctx.on_api("/reset_scan", methods=["POST"])
+    async def _api_reset_scan(req):
+        ctx.kv.set("my115scan_stop", True)
+        ctx.kv.set("my115scan_last_id", 0)
+        ctx.kv.set("my115scan_total", 0)
+        ctx.kv.set("my115scan_forwarded", 0)
+        return {"ok": True, "message": "已重置"}
+
+    @ctx.on_api("/scan_status", methods=["GET"])
+    async def _api_scan_status(req):
+        running = not ctx.kv.get("my115scan_stop", True)
+        total = int(ctx.kv.get("my115scan_total", 0) or 0)
+        fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
+        last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
+        return {"status": f"扫描{total}条, 转发{fwd}条, 最后ID={last}", "running": running}
 
 
 async def _do_scan(ctx, src):
