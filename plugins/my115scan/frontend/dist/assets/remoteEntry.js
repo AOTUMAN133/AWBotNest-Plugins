@@ -3,7 +3,7 @@ const currentImports = {};
       let moduleMap = {
 "./Config":()=>{
       dynamicLoadingCss(["style-D9XUeN5n.css"], false, './Config');
-      return __federation_import('/api/plugins/my115/fe/assets/__federation_expose_Config-Cf1Zakuo.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
+      return __federation_import('/api/plugins/my115scan/fe/assets/__federation_expose_Config-Cf1Zakuo.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
       const seen = {};
       const dynamicLoadingCss = (cssFilePaths, dontAppendStylesToHead, exposeItemName) => {
         const metaUrl = import.meta.url;
@@ -13,7 +13,7 @@ const currentImports = {};
         }
 
         const curUrl = metaUrl.substring(0, metaUrl.lastIndexOf('remoteEntry.js'));
-        const base = '/api/plugins/my115/fe/';
+        const base = '/api/plugins/my115scan/fe/';
         'assets';
 
         cssFilePaths.forEach(cssPath => {
