@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.3.4",
+    "version": "1.4.0",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -246,10 +246,29 @@ async def _process(client, cfg, message, ctx):
         return
 
     if media_type == "tv" and cfg.get("only_complete_series", False):
-        if not _COMPLETE_PATTERN.search(text):
-            ctx.log.info("[115监控] 剧集未完结，跳过: %d", tmdb_id)
-            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过"})
-            return
+        # 先看消息文本有没有完结关键词（快速判断）
+        if _COMPLETE_PATTERN.search(text):
+            pass  # 文本明确写了完结
+        else:
+            # 文本没写，查 TMDB 确认是否完结
+            detail = None
+            try:
+                api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+                detail = await api.get_details(tmdb_id, media_type)
+                if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
+                    pass  # TMDB 确认已完结
+                elif detail.get("in_production") is False:
+                    pass  # 不再制作中=完结
+                else:
+                    ctx.log.info("[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                    return
+            except Exception:  # noqa: BLE001
+                # TMDB 查不到，按文本判断结果为准
+                if not _COMPLETE_PATTERN.search(text):
+                    ctx.log.info("[115监控] 剧集未完结(文本), 跳过: %d", tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                    return
 
     if not cfg.get("skip_emby_check", False):
         emby_url = cfg.get("emby_url")
