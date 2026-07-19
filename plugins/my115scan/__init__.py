@@ -1,6 +1,13 @@
-# -*- coding: utf-8 -*-
-# AWBotNest 插件：115历史扫描 (my115scan)
-# 基于 my115 改造，扫描历史消息走完整流程
+# =============================================================================
+# AWBotNest 插件：115 频道监控（movie_monitor_115）
+#
+# 通用监控：监听会话里的 115 分享消息，不依赖固定频道格式——
+#   1) 优先直接读取消息里写好的「TMDB ID」；
+#   2) 读不到再用标题/年份走 TMDB 搜索识别；
+#   3) 查 Emby 媒体库，库里没有的把 115 链接转发给 CMS 入库机器人。
+# 链接支持多域名（115.com / 115cdn.com …）与「超链接」形式（藏在文字里）。
+# 也支持 /getmedia 手动查 TMDB。用你的用户账号监听，参数都在配置里填。
+# =============================================================================
 
 import asyncio
 import re
@@ -11,95 +18,21 @@ from datetime import datetime
 from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 
 __plugin__ = {
-    "name": "115历史扫描",
-    "id": "my115scan",
-    "version": "0.3.1",
+    "name": "115频道监控",
+    "id": "my115",
+    "version": "1.4.1",
     "author": "凹凸曼",
-    "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。完整流程同my115。",
+    "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
     "default_enabled": False,
+    "render_mode": "vue",
     "requirements": [],
-    "config_schema": {
-        "source_chat": {
-            "type": "number", "default": 0, "label": "来源频道ID",
-            "section": "扫描", "help": "扫描哪个频道的历史消息", "order": 1
-        },
-        "cms_bot_username": {
-            "type": "string", "default": "", "label": "CMS机器人用户名",
-            "section": "转发", "help": "转发给哪个机器人入库", "order": 2
-        },
-        "forward_label": {
-            "type": "string", "default": "115 网盘", "label": "转发标签",
-            "section": "转发", "help": "转发的消息前缀标签", "order": 3
-        },
-        "tmdb_api_key": {
-            "type": "string", "default": "", "label": "TMDB API Key",
-            "section": "TMDB", "help": "www.themoviedb.org 获取", "order": 4
-        },
-        "tmdb_language": {
-            "type": "string", "default": "zh-CN", "label": "TMDB 语言",
-            "section": "TMDB", "order": 5
-        },
-        "emby_url": {
-            "type": "string", "default": "", "label": "Emby 地址",
-            "section": "Emby", "help": "例如 http://192.168.1.1:8096", "order": 6
-        },
-        "emby_api_key": {
-            "type": "string", "default": "", "label": "Emby API Key",
-            "section": "Emby", "order": 7
-        },
-        "skip_emby_check": {
-            "type": "boolean", "default": False, "label": "跳过Emby查重",
-            "section": "Emby", "order": 8
-        },
-        "media_types": {
-            "type": "select", "default": "all", "label": "媒体类型",
-            "section": "过滤", "options": {"all": "全部", "movie": "仅电影", "tv": "仅剧集"}, "order": 9
-        },
-        "only_complete_series": {
-            "type": "boolean", "default": False, "label": "剧集仅转存完结",
-            "section": "过滤", "order": 10
-        },
-        "exclude_genres": {
-            "type": "string", "default": "", "label": "排除类型",
-            "section": "过滤", "help": "填TMDB类型名，逗号分隔", "order": 11
-        },
-        "dedup_hours": {
-            "type": "number", "default": 24, "label": "去重冷却(小时)",
-            "section": "过滤", "min": 0, "max": 720, "order": 12
-        },
-        "delay": {
-            "type": "number", "default": 2, "label": "每条间隔(秒)",
-            "section": "速度", "min": 1, "max": 30, "order": 13
-        },
-        "batch_size": {
-            "type": "number", "default": 200, "label": "每批拉取条数",
-            "section": "速度", "min": 50, "max": 1000, "order": 14
-        },
-        "_status": {
-            "type": "info", "label": "状态",
-            "section": "状态"
-        },
-        "start_scan": {
-            "type": "action", "label": "▶ 开始扫描",
-            "section": "状态", "action": "start_scan", "danger": True
-        },
-        "stop_scan": {
-            "type": "action", "label": "⏹ 停止扫描",
-            "section": "状态", "action": "stop_scan", "danger": True
-        },
-        "reset_scan": {
-            "type": "action", "label": "🔄 重置进度",
-            "section": "状态", "action": "reset_scan", "danger": True
-        },
-    },
 }
 
 # ── 配置默认值 ──
 DEFAULTS = {
-    "source_chat": 0,
-    "cms_bot_username": "",
-    "forward_label": "115 网盘",
+    "shareswitch": False,
+    "monitor_ids": "",
     "media_types": ["movie", "tv"],
     "only_complete_series": False,
     "tmdb_api_key": "",
@@ -107,32 +40,88 @@ DEFAULTS = {
     "emby_url": "",
     "emby_api_key": "",
     "skip_emby_check": False,
-    "exclude_genres": "",
+    "cms_bot_username": "",
+    "forward_label": "115 网盘",
     "dedup_hours": 24,
-    "only_complete_series": False,
-    "delay": 2,
-    "batch_size": 200,
+    "forward_to_saved": False,
+    "pan115_cookie": "",
+    "exclude_genres": "",
 }
 
-# 115分享链接
+# ── 运行态 ──
+_logs = deque(maxlen=200)
+
+# 115 分享链接
 _LINK_PATTERN = re.compile(
     r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]】]+", re.IGNORECASE
 )
+_TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)", re.IGNORECASE)
+_COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集")
+_GETMEDIA_TTL = 30
 
-_COMPLETE_PATTERN = re.compile(r"完结|全\d+集|全集|全季", re.IGNORECASE)
 
-_logs = deque(maxlen=200)
+def _effective_cfg(ctx) -> dict:
+    return {**DEFAULTS, **dict(ctx.config or {})}
 
 
-def _fmt(n):
+def _fmt_getmedia(result, title, year, limit=8) -> str:
+    yr = year if year and year != "0" else ""
+    if not result:
+        return f"❌ TMDB 无结果：{title} {yr}".rstrip()
+    lines = [f"🔍 {title} {yr}".rstrip() + f"  ·  {len(result)} 条"]
+    for it in result[:limit]:
+        name = it.get("title") or it.get("name") or "?"
+        date = it.get("release_date") or it.get("first_air_date") or ""
+        y = date[:4] if date else "----"
+        mt = "电影" if it.get("media_type") == "movie" else "剧集"
+        vote = it.get("vote_average") or 0
+        lines.append(f"• [{mt}] {name} ({y})  id={it.get('id')}  ⭐{vote}")
+    if len(result) > limit:
+        lines.append(f"… 其余 {len(result) - limit} 条略")
+    return "\n".join(lines)
+
+
+def _lines(raw) -> list[str]:
+    return [s.strip() for s in str(raw or "").splitlines() if s.strip()]
+
+
+def _normalize(raw):
+    s = str(raw or "").strip().lower()
+    s = re.sub(r"[\s\-_\.]+", "", s)
+    return s
+
+
+def _monitor_ids(cfg) -> list[int]:
+    raw = cfg.get("monitor_ids", "")
+    if isinstance(raw, list):
+        return [int(x) for x in raw if x]
+    ids = []
+    for tok in re.split(r"[,，\s]+", str(raw or "").strip()):
+        if tok:
+            try:
+                ids.append(int(tok))
+            except ValueError:
+                pass
+    return ids
+
+
+def _pan115_id(cfg):
+    ck = str(cfg.get("pan115_cookie") or "").strip()
+    if not ck:
+        return None
     try:
-        return f"{int(n):,}"
-    except (ValueError, TypeError):
-        return "0"
+        from ._pan115 import Pan115
+        return Pan115(ck)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _msg_text(message) -> str:
+    return (message.text or message.caption or "").strip()
 
 
 def _extract_links(message) -> list[str]:
-    text = message.text or message.caption or ""
+    text = _msg_text(message)
     found = list(_LINK_PATTERN.finditer(text))
     if found:
         return [m.group(0) for m in found]
@@ -146,260 +135,362 @@ def _extract_links(message) -> list[str]:
     return links
 
 
-def _extract_tmdb_id(text: str) -> int | None:
-    m = re.search(r"TMDB[：:\s]*(\d+)", text, re.IGNORECASE)
+def _extract_tmdb_id(text: str):
+    m = _TMDB_ID_PATTERN.search(text)
     return int(m.group(1)) if m else None
 
 
-def _guess_type(text: str) -> str | None:
-    if re.search(r"电视剧|剧集|TV|剧", text):
-        return "tv"
-    if re.search(r"电影|电影|Movie|movie", text):
+def _guess_type(text: str):
+    lower = text.lower()
+    if any(k in lower for k in ["电影", "movie", "film"]):
         return "movie"
+    if any(k in lower for k in ["剧集", "电视剧", "tv", "series"]):
+        return "tv"
     return None
 
 
-def _extract_title_year(text: str) -> tuple[str, str]:
-    year_match = re.search(r"\((\d{4})\)", text)
-    year = year_match.group(1) if year_match else ""
-    title = re.sub(r"\(.*?\)", "", text).strip()
-    title = re.sub(r"[\d]+[pP].*", "", title).strip()
-    title = re.sub(r"★.*", "", title).strip()
-    title = re.sub(r"🎬.*", "", title).strip()
-    title = re.sub(r"完结|更新中", "", title).strip()
-    title = re.sub(r"第\d+季", "", title).strip()
-    title = re.sub(r"全\d+集", "", title).strip()
-    title = title.strip(" -–—")
+def _extract_title_year(text: str):
+    lines = _lines(text)
+    if not lines:
+        return "", ""
+    first = lines[0]
+    year_m = re.search(r"\b(19\d{2}|20\d{2})\b", first)
+    year = year_m.group(1) if year_m else ""
+    title = re.sub(r"\b(19\d{2}|20\d{2})\b", "", first).strip()
+    title = re.sub(r"[【\[].*?[】\]]", "", title).strip()
     return title, year
 
 
-async def _resolve_by_search(cfg, title, year, ctx) -> tuple[int | None, str | None]:
-    key = cfg.get("tmdb_api_key", "")
-    if not key or not title:
-        return None, None
-    api = TmdbApi(key, cfg.get("tmdb_language", "zh-CN"))
+def _parse_pan115(text: str):
+    lines = _lines(text)
+    if not lines:
+        return {}
+    code = ""
+    m = re.search(r"(?:提取码|访问码|口令|密码)[：:]\s*(\w+)", text, re.IGNORECASE)
+    if m:
+        code = m.group(1)
+    return {"raw": lines[0], "access_code": code}
+
+
+async def _resolve_target(client, target, ctx):
+    if target == "me":
+        return "me"
+    if target.startswith("@"):
+        try:
+            chat = await client.get_chat(target)
+            return chat.id
+        except Exception as e:  # noqa: BLE001
+            ctx.log.error("[115监控] 解析转发目标失败 %s: %r", target, e)
+            return None
     try:
-        results = await api.multi_search(title, year)
-        if results:
-            return results[0].get("id"), results[0].get("media_type")
-    except Exception as e:
-        ctx.log.warning("[115扫描] TMDB搜索失败: %r", e)
-    return None, None
+        return int(target)
+    except ValueError:
+        return None
 
 
 async def _send_links(client, cfg, links, label, ctx):
-    cms = cfg.get("cms_bot_username", "").strip()
-    if not cms:
+    target = cfg.get("cms_bot_username") or ""
+    if cfg.get("forward_to_saved"):
+        target = "me"
+    if not target:
         return
-    text = f"{label}:\n" + "\n".join(links)
-    ctx.log.info("[115扫描] 转发到 %s: %s", cms, text[:50])
+    tid = await _resolve_target(client, target, ctx)
+    if not tid:
+        return
+    text = f"{label}\n" + "\n".join(links)
     try:
-        await client.send_message(cms, text)
-    except Exception as e:
-        ctx.log.warning("[115扫描] 转发失败: %r", e)
+        await client.send_message(tid, text)
+    except Exception as e:  # noqa: BLE001
+        ctx.log.error("[115监控] 转发失败: %r", e)
 
 
-async def _process_one(client, cfg, msg, ctx):
-    """处理单条消息（完整流程，同my115）"""
-    text = msg.text or msg.caption or ""
-    if not text:
-        return None
+async def _resolve_by_search(cfg, title, year, ctx):
+    if not (cfg.get("tmdb_api_key") and title):
+        return None, None
+    api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+    try:
+        result = await api.multi_search(title, year)
+    except Exception as e:  # noqa: BLE001
+        ctx.log.error("[115监控] TMDB 搜索失败: %r", e)
+        return None, None
+    if not result:
+        return None, None
+    first = result[0]
+    tmdb_id = first.get("id")
+    media_type = first.get("media_type")
+    return tmdb_id, media_type
 
-    links = _extract_links(msg)
+
+async def _process(client, cfg, message, ctx):
+    links = _extract_links(message)
     if not links:
-        return None
-
+        return
+    ctx.log.info("[115监控] 检测到 %d 条 115 链接", len(links))
+    text = _msg_text(message)
     tmdb_id = _extract_tmdb_id(text)
     media_type = _guess_type(text)
 
     if not tmdb_id:
         title, year = _extract_title_year(text)
-        if title:
-            tmdb_id, guessed = await _resolve_by_search(cfg, title, year, ctx)
-            if not media_type:
-                media_type = guessed
+        tmdb_id, guessed_type = await _resolve_by_search(cfg, title, year, ctx)
+        if not media_type:
+            media_type = guessed_type
 
     if not tmdb_id:
-        return None
+        ctx.log.info("[115监控] 未识别 TMDB: %s", text[:50])
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": None, "action": "跳过"})
+        return
 
-    # 媒体类型过滤
-    mt = cfg.get("media_types", ["movie", "tv"])
-    if media_type and mt and media_type not in mt:
-        return {"action": "类型跳过", "tmdb_id": tmdb_id}
+    allowed = cfg.get("media_types", ["movie", "tv"])
+    if media_type and media_type not in allowed:
+        ctx.log.info("[115监控] 跳过类型 %s: %d", media_type, tmdb_id)
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过"})
+        return
 
-    # 仅完结检查
-    if cfg.get("only_complete_series", False) and media_type == "tv":
-        if not _COMPLETE_PATTERN.search(text):
+    if media_type == "tv" and cfg.get("only_complete_series", False):
+        # 先看消息文本有没有完结关键词（快速判断）
+        if _COMPLETE_PATTERN.search(text):
+            pass  # 文本明确写了完结
+        else:
+            # 文本没写，查 TMDB 确认是否完结
+            detail = None
             try:
-                api = TmdbApi(cfg.get("tmdb_api_key", ""), cfg.get("tmdb_language", "zh-CN"))
+                api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
                 detail = await api.get_details(tmdb_id, media_type)
-                if detail and detail.get("status") not in ("Ended", "Cancelled"):
-                    return {"action": "未完结跳过", "tmdb_id": tmdb_id}
-            except Exception:
-                pass
+                if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
+                    pass  # TMDB 确认已完结
+                elif detail.get("in_production") is False:
+                    pass  # 不再制作中=完结
+                else:
+                    ctx.log.info("[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                    return
+            except Exception:  # noqa: BLE001
+                # TMDB 查不到，按文本判断结果为准
+                if not _COMPLETE_PATTERN.search(text):
+                    ctx.log.info("[115监控] 剧集未完结(文本), 跳过: %d", tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                    return
 
-    # Emby查重
     if not cfg.get("skip_emby_check", False):
-        emby_url = cfg.get("emby_url", "")
-        emby_key = cfg.get("emby_api_key", "")
+        emby_url = cfg.get("emby_url")
+        emby_key = cfg.get("emby_api_key")
         if emby_url and emby_key:
             try:
-                has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id, media_type)
+                has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
                 if has:
-                    return {"action": "Emby已有", "tmdb_id": tmdb_id}
-            except Exception as e:
-                ctx.log.warning("[115扫描] Emby查询失败: %r", e)
+                    ctx.log.info("[115监控] Emby 已有 %d，跳过", tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有"})
+                    return
+                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
+            except Exception as e:  # noqa: BLE001
+                err = str(e) or e.__class__.__name__
+                ctx.log.warning("[115监控] Emby 查询失败: %r", e)
+                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
+        else:
+            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
+    else:
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "已跳过查重"})
 
-    # 排除类型
-    exclude_raw = cfg.get("exclude_genres", "").strip()
-    if exclude_raw:
+    # 排除类型检查
+    exclude_raw = str(cfg.get("exclude_genres", "") or "").strip()
+    if exclude_raw and media_type and tmdb_id:
         exclude_list = [g.strip().lower() for g in exclude_raw.replace("，", ",").split(",") if g.strip()]
         if exclude_list:
             try:
-                api = TmdbApi(cfg.get("tmdb_api_key", ""), cfg.get("tmdb_language", "zh-CN"))
+                api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
                 detail = await api.get_details(tmdb_id, media_type)
-                if detail:
-                    genres = [g.get("name", "").lower() for g in (detail.get("genres") or [])]
-                    matched = [ex for ex in exclude_list if ex in genres]
-                    if matched:
-                        for ex in matched:
-                            if ex == "animation" and cfg.get("exclude_anime_only", False):
-                                orig_lang = (detail.get("original_language") or "").lower()
-                                if orig_lang != "ja":
-                                    matched.remove(ex)
-                        if matched:
-                            return {"action": "排除类型跳过", "tmdb_id": tmdb_id}
-            except Exception:
+                # 获取 genre 英文名（兼容语言设置）
+                _GENRE_IDS = {12:"adventure",14:"fantasy",16:"animation",18:"drama",27:"horror",28:"action",35:"comedy",36:"history",37:"western",53:"thriller",80:"crime",99:"documentary",878:"science fiction",964:"mystery",10402:"music",10749:"romance",10751:"family",10752:"war",10759:"action & adventure",10762:"kids",10763:"news",10764:"reality",10765:"sci-fi & fantasy",10766:"soap",10767:"talk",10768:"war & politics",10770:"tv movie"}
+                genre_ids = [g.get("id") for g in (detail.get("genres") or [])]
+                genre_names = [_GENRE_IDS.get(gid) for gid in genre_ids if _GENRE_IDS.get(gid)]
+                is_animation = 16 in genre_ids
+
+                skip = False
+                for rule in exclude_list:
+                    if rule.startswith("animation:") and is_animation:
+                        country = rule.split(":", 1)[1]
+                        origin = detail.get("origin_country") or []
+                        if country == "cn" and "CN" in origin:
+                            skip = True
+                        elif country == "jp" and "JP" in origin:
+                            # 日语原声且没有中文配音 → 跳过
+                            langs = [l.get("iso_639_1","") for l in (detail.get("spoken_languages") or [])]
+                            if "zh" not in langs:
+                                skip = True
+                        elif country == "us" and "US" in origin:
+                            skip = True
+                        elif country == "other" and origin:
+                            if not any(c in origin for c in ("CN", "JP", "US")):
+                                skip = True
+                    elif rule in genre_names:
+                        skip = True
+                    if skip:
+                        break
+
+                if skip:
+                    ctx.log.info("[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
+                    return
+            except Exception:  # noqa: BLE001
                 pass
 
-    # 转发去重
+    label = cfg.get("forward_label", "115 网盘")
+    # 转发去重：同一TMDB ID在冷却期内不重复转发
     dedup_hours = int(cfg.get("dedup_hours", 24) or 24)
-    if dedup_hours > 0:
-        dedup_key = f"my115scan_dedup_{tmdb_id}"
+    if tmdb_id and dedup_hours > 0:
+        dedup_key = f"my115_dedup_{tmdb_id}"
         last_ts = ctx.kv.get(dedup_key, 0) or 0
         now = time.time()
         if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
-            return {"action": "重复跳过", "tmdb_id": tmdb_id}
+            ctx.log.info("[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
+            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
+            return
         ctx.kv.set(dedup_key, now)
-
-    # 转发到CMS
-    label = cfg.get("forward_label", "115 网盘")
     await _send_links(client, cfg, links, label, ctx)
-    return {"action": "转发", "tmdb_id": tmdb_id}
+    ctx.log.info("[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
+    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
+
+
+async def _cmd_getmedia(client, message, ctx):
+    text = message.text or ""
+    parts = text.split(maxsplit=2)
+    if len(parts) < 2:
+        return
+    query = parts[1]
+    year = parts[2] if len(parts) > 2 else ""
+    cfg = _effective_cfg(ctx)
+    if not cfg.get("tmdb_api_key"):
+        return
+    api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+    try:
+        result = await api.multi_search(query, year)
+        summary = _fmt_getmedia(result, query, year)
+    except Exception as e:  # noqa: BLE001
+        summary = f"❌ 查询失败：{e}"
+    try:
+        await message.edit(f"```\n{summary}\n```")
+    except Exception:
+        pass
+    await asyncio.sleep(_GETMEDIA_TTL)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+async def _cmd_find(client, message, ctx):
+    text = message.text or ""
+    m = re.search(r"/find\s+(\d+)", text, re.IGNORECASE)
+    if not m:
+        return
+    tmdb_id = int(m.group(1))
+    cfg = _effective_cfg(ctx)
+    emby_url = cfg.get("emby_url")
+    emby_key = cfg.get("emby_api_key")
+    if not (emby_url and emby_key):
+        return
+    try:
+        has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
+        reply = f"✅ Emby 有 TMDB {tmdb_id}" if has else f"❌ Emby 无 TMDB {tmdb_id}"
+    except Exception as e:  # noqa: BLE001
+        reply = f"❌ 查询失败：{e}"
+    try:
+        await message.edit(reply)
+    except Exception:
+        pass
+    await asyncio.sleep(_GETMEDIA_TTL)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 async def setup(ctx):
-    ctx.update_config({"_status": "就绪"})
+    # ───────── Vue 模式后端 API ─────────
+    @ctx.on_api("/status", methods=["GET"])
+    async def _api_status(req):
+        cfg = _effective_cfg(ctx)
+        tmdb_ok = bool(cfg.get("tmdb_api_key"))
+        emby_ok = bool(cfg.get("emby_url") and cfg.get("emby_api_key"))
+        items = 0
+        if emby_ok:
+            try:
+                ids = await get_emby_tmdb_ids(cfg["emby_url"], cfg["emby_api_key"])
+                items = len(ids)
+            except Exception:  # noqa: BLE001
+                pass
+        return {
+            "tmdb_ok": tmdb_ok,
+            "tmdb_status": "已配置" if tmdb_ok else "未配置",
+            "emby_ok": emby_ok,
+            "emby_status": "连接正常" if emby_ok else "未配置",
+            "emby_items": items,
+        }
 
-    @ctx.action("start_scan")
-    async def _start(req=None):
-        cfg = ctx.config
-        src = int(cfg.get("source_chat", 0) or 0)
-        if not src:
-            return {"ok": False, "message": "未设置来源频道"}
-        if not cfg.get("cms_bot_username", "").strip():
-            return {"ok": False, "message": "未设置CMS机器人"}
-        if not cfg.get("tmdb_api_key", "").strip():
-            return {"ok": False, "message": "未设置TMDB API Key"}
-        ctx.kv.set("my115scan_stop", False)
-        ctx.update_config({"_status": "扫描中…"})
-        asyncio.create_task(_do_scan(ctx, src))
-        return {"ok": True, "message": "开始扫描"}
+    @ctx.on_api("/test", methods=["POST"])
+    async def _api_test(req):
+        cfg = _effective_cfg(ctx)
+        msgs = []
 
-    @ctx.action("stop_scan")
-    async def _stop(req=None):
-        ctx.kv.set("my115scan_stop", True)
-        ctx.update_config({"_status": "已停止"})
-        return {"ok": True, "message": "已停止"}
+        if cfg.get("tmdb_api_key"):
+            api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+            try:
+                await api.multi_search("复仇者联盟", "2012")
+                msgs.append("TMDB: ✅")
+            except Exception as e:  # noqa: BLE001
+                msgs.append(f"TMDB: ❌ {e}")
+        else:
+            msgs.append("TMDB: 未配置")
 
-    @ctx.action("reset_scan")
-    async def _reset(req=None):
-        ctx.kv.set("my115scan_stop", True)
-        ctx.kv.set("my115scan_last_id", 0)
-        ctx.kv.set("my115scan_total", 0)
-        ctx.kv.set("my115scan_forwarded", 0)
-        ctx.update_config({"_status": "已重置"})
-        return {"ok": True, "message": "进度已重置"}
+        if cfg.get("emby_url") and cfg.get("emby_api_key"):
+            try:
+                await get_emby_tmdb_ids(cfg["emby_url"], cfg["emby_api_key"])
+                msgs.append("Emby: ✅")
+            except Exception as e:  # noqa: BLE001
+                err = str(e) or e.__class__.__name__
+                ctx.log.warning("[115监控] Emby测试失败: %r", e)
+                msgs.append(f"Emby: ❌ {err}")
+        else:
+            msgs.append("Emby: 未配置")
 
-    async def status_pusher():
-        total = int(ctx.kv.get("my115scan_total", 0) or 0)
-        fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
-        last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
-        ctx.update_config({"_status": f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"})
+        ok = all("✅" in m for m in msgs)
+        return {"ok": ok, "message": " | ".join(msgs)}
 
-    ctx.schedule(status_pusher, "interval", seconds=10, id="my115scan_status")
+    @ctx.on_api("/logs", methods=["GET"])
+    async def _api_logs(req):
+        return {"logs": list(_logs)}
 
+    @ctx.on_api("/update_config", methods=["POST"])
+    async def _api_update_config(req):
+        body = await req.json()
+        # shareswitch 从 enabled 推导
+        body["shareswitch"] = body.get("shareswitch", True)
+        ctx.update_config(body)
+        return {"ok": True}
 
-async def _do_scan(ctx, src):
-    """执行扫描任务"""
-    try:
-        apps = list(ctx.user_apps or [])
-        if not apps:
-            ctx.log.error("[115扫描] 没有可用用户账号")
-            ctx.update_config({"_status": "失败：无可用账号"})
+    # ───────── 监听 115 分享消息 ─────────
+    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7)
+    async def monitor_channels(client, message):
+        cfg = _effective_cfg(ctx)
+        if not cfg.get("shareswitch", False):
             return
-        client = apps[0]
+        monitor_ids = _monitor_ids(cfg)
+        if monitor_ids and message.chat.id not in monitor_ids:
+            return
+        try:
+            await _process(client, cfg, message, ctx)
+        except Exception as e:  # noqa: BLE001
+            ctx.log.error("[115监控] 处理消息异常: %r", e)
 
-        cfg = ctx.config
-        delay = int(cfg.get("delay", 2) or 2)
-        batch = int(cfg.get("batch_size", 200) or 200)
-        last_id = int(ctx.kv.get("my115scan_last_id", 0) or 0)
-        total = int(ctx.kv.get("my115scan_total", 0) or 0)
-        forwarded = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
-
-        ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
-
-        offset = 0
-        while True:
-            if ctx.kv.get("my115scan_stop", False):
-                break
-
-            ids = []
-            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
-                ids.append(m.id)
-            if not ids:
-                break
-            if last_id:
-                ids = [mid for mid in ids if mid > last_id]
-                if not ids:
-                    break
-            offset = ids[-1]
-
-            # 从旧到新处理
-            for mid in reversed(ids):
-                if ctx.kv.get("my115scan_stop", False):
-                    break
-                try:
-                    msg = await client.get_messages(src, mid)
-                    if not msg:
-                        continue
-                    result = await _process_one(client, cfg, msg, ctx)
-                    if result and result.get("action") == "转发":
-                        forwarded += 1
-                        ctx.log.info("[115扫描] ✅ 转发 TMDB%s: %s", result["tmdb_id"], (msg.text or msg.caption or "")[:30])
-                    total += 1
-                except Exception as e:
-                    ctx.log.warning("[115扫描] 消息%s处理异常: %r", mid, e)
-
-                await asyncio.sleep(delay)
-
-            ctx.kv.set("my115scan_last_id", ids[-1])
-            ctx.kv.set("my115scan_total", total)
-            ctx.kv.set("my115scan_forwarded", forwarded)
-            ctx.log.info("[115扫描] 进度: 扫描%s条, 转发%s条", total, forwarded)
-
-            if len(ids) < batch:
-                break
-
-        ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
-        ctx.kv.set("my115scan_total", total)
-        ctx.kv.set("my115scan_forwarded", forwarded)
-        ctx.update_config({"_status": f"完成: 扫描{total}条, 转发{forwarded}条"})
-        ctx.log.info("[115扫描] ✅ 完成, 扫描%s条, 转发%s条", total, forwarded)
-
-    except Exception as e:
-        ctx.log.error("[115扫描] 异常: %r", e)
-        ctx.update_config({"_status": f"异常: {e}"})
+    # ───────── 命令：/getmedia 和 /find ─────────
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-9)
+    async def commands(client, message):
+        text = message.text or ""
+        if re.match(r"^[/\.]getmedia(?:\s|$)", text, re.IGNORECASE):
+            await _cmd_getmedia(client, message, ctx)
+        elif re.match(r"^[/\.]find(?:\s|$)", text, re.IGNORECASE):
+            await _cmd_find(client, message, ctx)
 
 
 async def teardown(ctx):
