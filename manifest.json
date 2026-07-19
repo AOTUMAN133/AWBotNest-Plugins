@@ -12,5 +12,12 @@
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "path": "plugins/my115/"
+  },
+  "mybet": {
+    "name": "自动下注",
+    "version": "0.1.0",
+    "author": "凹凸曼",
+    "description": "监听彩票开奖结果，按追龙/斩龙/斐波那契等策略自动押大押小。",
+    "path": "plugins/mybet/"
   }
 }
