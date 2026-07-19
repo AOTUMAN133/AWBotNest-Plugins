@@ -43,13 +43,12 @@
       </section>
       <section class="card">
         <h3>排除类型</h3>
-        <p class="tip">勾选后匹配到该类型的资源自动跳过不转发</p>
+        <p class="tip">勾选后匹配到该类型的资源自动跳过不转发。动画按产地细分：国漫/日漫/美漫/其他，国语配音的国外动画不会误杀。</p>
         <div class="genre-grid">
-          <div v-for="g in genreList" :key="g.en" class="chip" :class="{ on: excludeSet.has(g.en) }" @click="toggleGenre(g)">
-            <span>{{ g.cn }}<br><small>{{ g.en }}</small></span>
+          <div v-for="g in genreList" :key="g.en" class="chip" :class="{ on: excludeSet.has(g.en.toLowerCase()) }" @click="toggleGenre(g)">
+            <span>{{ g.cn }}</span>
           </div>
         </div>
-        <label class="row switch" style="margin-top:10px"><input v-model="cfg.exclude_anime_only" type="checkbox" /><span>动画仅排除日本动画（日语原声）</span></label>
       </section>
       <div class="savebar"><button class="btn primary lg" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
     </div>
@@ -99,7 +98,6 @@ const cfg = reactive({
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
   pan115_cookie: '',
   exclude_genres: '',
-  exclude_anime_only: false,
 })
 
 const mediaTypes = computed({
@@ -123,29 +121,32 @@ onMounted(async () => {
 })
 
 const genreList = [
-  { en: 'Animation', cn: '动画' },
-  { en: 'Comedy', cn: '喜剧' },
-  { en: 'Documentary', cn: '纪录片' },
-  { en: 'Drama', cn: '剧情' },
-  { en: 'Action', cn: '动作' },
-  { en: 'Adventure', cn: '冒险' },
-  { en: 'Fantasy', cn: '奇幻' },
-  { en: 'Science Fiction', cn: '科幻' },
-  { en: 'Horror', cn: '恐怖' },
-  { en: 'Thriller', cn: '惊悚' },
-  { en: 'Romance', cn: '爱情' },
-  { en: 'Mystery', cn: '悬疑' },
-  { en: 'Crime', cn: '犯罪' },
-  { en: 'War', cn: '战争' },
-  { en: 'Western', cn: '西部' },
-  { en: 'History', cn: '历史' },
-  { en: 'Music', cn: '音乐' },
-  { en: 'Family', cn: '家庭' },
-  { en: 'Kids', cn: '儿童' },
-  { en: 'Reality', cn: '真人秀' },
-  { en: 'Soap', cn: '肥皂剧' },
-  { en: 'Talk', cn: '脱口秀' },
-  { en: 'News', cn: '新闻' },
+  { en: 'animation:cn', cn: '国漫' },
+  { en: 'animation:jp', cn: '日漫' },
+  { en: 'animation:us', cn: '美漫' },
+  { en: 'animation:other', cn: '其他动画' },
+  { en: 'comedy', cn: '喜剧' },
+  { en: 'documentary', cn: '纪录片' },
+  { en: 'drama', cn: '剧情' },
+  { en: 'action', cn: '动作' },
+  { en: 'adventure', cn: '冒险' },
+  { en: 'fantasy', cn: '奇幻' },
+  { en: 'science fiction', cn: '科幻' },
+  { en: 'horror', cn: '恐怖' },
+  { en: 'thriller', cn: '惊悚' },
+  { en: 'romance', cn: '爱情' },
+  { en: 'mystery', cn: '悬疑' },
+  { en: 'crime', cn: '犯罪' },
+  { en: 'war', cn: '战争' },
+  { en: 'western', cn: '西部' },
+  { en: 'history', cn: '历史' },
+  { en: 'music', cn: '音乐' },
+  { en: 'family', cn: '家庭' },
+  { en: 'kids', cn: '儿童' },
+  { en: 'reality', cn: '真人秀' },
+  { en: 'soap', cn: '肥皂剧' },
+  { en: 'talk', cn: '脱口秀' },
+  { en: 'news', cn: '新闻' },
 ]
 const excludeSet = computed(() => {
   const raw = (cfg.exclude_genres || '').toLowerCase()
