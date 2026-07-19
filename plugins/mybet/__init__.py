@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -65,6 +65,10 @@ __plugin__ = {
             "type": "info", "label": "战绩",
             "section": "战绩"
         },
+        "reset_bet": {
+            "type": "action", "label": "🔄 重置下注状态",
+            "section": "战绩", "action": "reset_bet", "danger": True
+        },
     },
 }
 
@@ -81,6 +85,18 @@ def _fmt(n):
 async def setup(ctx):
     # 初始化战绩面板
     ctx.update_config({"_stats": "启动中…"})
+
+    # 重置下注状态动作
+    @ctx.action("reset_bet")
+    async def _reset_bet(req):
+        keys = ["mybet_last_matrix", "mybet_last_target", "mybet_last_amount", "mybet_betted",
+                "mybet_wins", "mybet_losses", "mybet_profit", "mybet_lose_streak",
+                "mybet_fibo_step", "mybet_paroli_step", "mybet_total_bet", "mybet_locked",
+                "mybet_records"]
+        for k in keys:
+            ctx.kv.delete(k)
+        ctx.update_config({"_stats": "已重置"})
+        return {"ok": True, "message": "下注状态已重置"}
 
     @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing, group=5)
     async def monitor_bet(client, message):
