@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.6.3",
+    "version": "0.6.7",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -310,13 +310,13 @@ async def _process(client, cfg, message, ctx):
 
     if not tmdb_id:
         ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
-        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": None, "action": "跳过"})
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": None, "action": "跳过(未识别TMDB)"})
         return
 
     allowed = cfg.get("media_types", ["movie", "tv"])
     if media_type and media_type not in allowed:
         ctx.log.info("[115扫描] 跳过类型 %s: %d", media_type, tmdb_id)
-        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过"})
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"跳过(类型{media_type})"})
         return
 
     if media_type == "tv" and cfg.get("only_complete_series", False):
@@ -402,7 +402,7 @@ async def _process(client, cfg, message, ctx):
 
                 if skip:
                     ctx.log.info("[115扫描] 排除类型 %s: %d", exclude_raw, tmdb_id)
-                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"排除类型({','.join(matched)})"})
                     return
             except Exception:  # noqa: BLE001
                 pass
