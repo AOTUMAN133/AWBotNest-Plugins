@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -92,7 +92,7 @@ async def setup(ctx):
 
     # 重置下注状态动作
     @ctx.action("reset_bet")
-    async def _reset_bet(req):
+    async def _reset_bet(req=None):
         keys = ["mybet_last_matrix", "mybet_last_target", "mybet_last_amount", "mybet_betted",
                 "mybet_wins", "mybet_losses", "mybet_profit", "mybet_lose_streak",
                 "mybet_fibo_step", "mybet_paroli_step", "mybet_total_bet", "mybet_locked",
