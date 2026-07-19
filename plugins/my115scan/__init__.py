@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.6.8",
+    "version": "0.6.9",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -663,7 +663,9 @@ async def _do_scan(ctx, src):
         while True:
             if ctx.kv.get("my115scan_stop", False):
                 return
-            chunk = await client.get_chat_history(src, limit=batch, offset_id=offset)
+            chunk = []
+            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
+                chunk.append(m)
             if not chunk:
                 break
             ids = [m.id for m in chunk]
