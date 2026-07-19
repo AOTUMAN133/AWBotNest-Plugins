@@ -18,11 +18,11 @@ from datetime import datetime
 from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 
 __plugin__ = {
-    "name": "115频道监控",
-    "id": "my115",
-    "version": "1.4.1",
+    "name": "115历史扫描",
+    "id": "my115scan",
+    "version": "0.4.1",
     "author": "凹凸曼",
-    "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
+    "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。完整流程同115频道监控。",
     "scope": "user",
     "default_enabled": False,
     "render_mode": "vue",
