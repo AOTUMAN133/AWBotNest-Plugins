@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.4.2",
+    "version": "0.5.0",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -60,6 +60,10 @@ __plugin__ = {
         "stop_loss": {
             "type": "number", "default": 50000, "label": "止损线",
             "section": "风控", "min": 0, "max": 100000000, "help": "累计亏损达此值自动停", "order": 9
+        },
+        "max_loss_streak": {
+            "type": "number", "default": 10, "label": "最大连错数",
+            "section": "风控", "min": 1, "max": 100, "help": "连错达到此数强制锁仓停赌，手动重置才能恢复", "order": 10
         },
         "_stats": {
             "type": "info", "label": "战绩",
@@ -196,6 +200,12 @@ async def _settle(ctx, matrix_str):
     ctx.kv.set("mybet_profit", profit)
     ctx.kv.set("mybet_lose_streak", lose_streak)
     ctx.kv.set("mybet_betted", False)
+
+    # 最大连错保护
+    max_streak = int(cfg.get("max_loss_streak", 10) or 10)
+    if not is_win and max_streak > 0 and lose_streak >= max_streak:
+        ctx.kv.set("mybet_locked", True)
+        ctx.log.info("[下注] 🛑 连错达%s局，强制锁仓停赌！", lose_streak)
 
     # 存储最近记录（保留最近20条）
     records = ctx.kv.get("mybet_records", []) or []
