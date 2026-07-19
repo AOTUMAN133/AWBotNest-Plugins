@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -47,11 +47,11 @@ DEFAULTS = {
 }
 
 # ── 运行态 ──
-_logs = deque(maxlen=100)
+_logs = deque(maxlen=200)
 
 # 115 分享链接
 _LINK_PATTERN = re.compile(
-    r"https?://(?:[\w-]*115[\w-]*\.com|anxia\.com)/s/[^\s)\]】]+", re.IGNORECASE
+    r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]】]+", re.IGNORECASE
 )
 _TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)", re.IGNORECASE)
 _COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集")
@@ -223,6 +223,7 @@ async def _process(client, cfg, message, ctx):
     links = _extract_links(message)
     if not links:
         return
+    ctx.log.info("[115监控] 检测到 %d 条 115 链接", len(links))
     text = _msg_text(message)
     tmdb_id = _extract_tmdb_id(text)
     media_type = _guess_type(text)
