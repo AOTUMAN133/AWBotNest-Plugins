@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -61,8 +61,6 @@ __plugin__ = {
 
 # ── 配置默认值 ──
 DEFAULTS = {
-    "shareswitch": False,
-    "monitor_ids": "",
     "media_types": ["movie", "tv"],
     "only_complete_series": False,
     "tmdb_api_key": "",
@@ -210,7 +208,7 @@ async def _resolve_target(client, target, ctx):
             chat = await client.get_chat(target)
             return chat.id
         except Exception as e:  # noqa: BLE001
-            ctx.log.error("[115监控] 解析转发目标失败 %s: %r", target, e)
+            ctx.log.error("[115扫描] 解析转发目标失败 %s: %r", target, e)
             return None
     try:
         return int(target)
@@ -231,7 +229,7 @@ async def _send_links(client, cfg, links, label, ctx):
     try:
         await client.send_message(tid, text)
     except Exception as e:  # noqa: BLE001
-        ctx.log.error("[115监控] 转发失败: %r", e)
+        ctx.log.error("[115扫描] 转发失败: %r", e)
 
 
 async def _resolve_by_search(cfg, title, year, ctx):
@@ -241,7 +239,7 @@ async def _resolve_by_search(cfg, title, year, ctx):
     try:
         result = await api.multi_search(title, year)
     except Exception as e:  # noqa: BLE001
-        ctx.log.error("[115监控] TMDB 搜索失败: %r", e)
+        ctx.log.error("[115扫描] TMDB 搜索失败: %r", e)
         return None, None
     if not result:
         return None, None
@@ -255,7 +253,7 @@ async def _process(client, cfg, message, ctx):
     links = _extract_links(message)
     if not links:
         return
-    ctx.log.info("[115监控] 检测到 %d 条 115 链接", len(links))
+    ctx.log.info("[115扫描] 检测到 %d 条 115 链接", len(links))
     text = _msg_text(message)
     tmdb_id = _extract_tmdb_id(text)
     media_type = _guess_type(text)
@@ -267,13 +265,13 @@ async def _process(client, cfg, message, ctx):
             media_type = guessed_type
 
     if not tmdb_id:
-        ctx.log.info("[115监控] 未识别 TMDB: %s", text[:50])
+        ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": None, "action": "跳过"})
         return
 
     allowed = cfg.get("media_types", ["movie", "tv"])
     if media_type and media_type not in allowed:
-        ctx.log.info("[115监控] 跳过类型 %s: %d", media_type, tmdb_id)
+        ctx.log.info("[115扫描] 跳过类型 %s: %d", media_type, tmdb_id)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过"})
         return
 
@@ -292,13 +290,13 @@ async def _process(client, cfg, message, ctx):
                 elif detail.get("in_production") is False:
                     pass  # 不再制作中=完结
                 else:
-                    ctx.log.info("[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
+                    ctx.log.info("[115扫描] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
             except Exception:  # noqa: BLE001
                 # TMDB 查不到，按文本判断结果为准
                 if not _COMPLETE_PATTERN.search(text):
-                    ctx.log.info("[115监控] 剧集未完结(文本), 跳过: %d", tmdb_id)
+                    ctx.log.info("[115扫描] 剧集未完结(文本), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
 
@@ -309,13 +307,13 @@ async def _process(client, cfg, message, ctx):
             try:
                 has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
                 if has:
-                    ctx.log.info("[115监控] Emby 已有 %d，跳过", tmdb_id)
+                    ctx.log.info("[115扫描] Emby 已有 %d，跳过", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有"})
                     return
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
             except Exception as e:  # noqa: BLE001
                 err = str(e) or e.__class__.__name__
-                ctx.log.warning("[115监控] Emby 查询失败: %r", e)
+                ctx.log.warning("[115扫描] Emby 查询失败: %r", e)
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
         else:
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
@@ -359,7 +357,7 @@ async def _process(client, cfg, message, ctx):
                         break
 
                 if skip:
-                    ctx.log.info("[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
+                    ctx.log.info("[115扫描] 排除类型 %s: %d", exclude_raw, tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
                     return
             except Exception:  # noqa: BLE001
@@ -373,12 +371,12 @@ async def _process(client, cfg, message, ctx):
         last_ts = ctx.kv.get(dedup_key, 0) or 0
         now = time.time()
         if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
-            ctx.log.info("[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
+            ctx.log.info("[115扫描] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
             return
         ctx.kv.set(dedup_key, now)
     await _send_links(client, cfg, links, label, ctx)
-    ctx.log.info("[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
+    ctx.log.info("[115扫描] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
 
 
@@ -479,7 +477,7 @@ async def setup(ctx):
                 msgs.append("Emby: ✅")
             except Exception as e:  # noqa: BLE001
                 err = str(e) or e.__class__.__name__
-                ctx.log.warning("[115监控] Emby测试失败: %r", e)
+                ctx.log.warning("[115扫描] Emby测试失败: %r", e)
                 msgs.append(f"Emby: ❌ {err}")
         else:
             msgs.append("Emby: 未配置")
@@ -511,7 +509,7 @@ async def setup(ctx):
         try:
             await _process(client, cfg, message, ctx)
         except Exception as e:  # noqa: BLE001
-            ctx.log.error("[115监控] 处理消息异常: %r", e)
+            ctx.log.error("[115扫描] 处理消息异常: %r", e)
 
     # ───────── 命令：/getmedia 和 /find ─────────
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-9)
