@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 __plugin__ = {
     "name": "历史消息转发",
     "id": "myforward",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息，从最早到最新，按顺序转发到目标频道，带速度控制。",
     "scope": "user",
@@ -136,42 +136,40 @@ async def _do_forward(ctx, src, dst):
         # 如果没有记录 last_id，先找到最旧消息
         if not last_id:
             ctx.log.info("[转发] 无记录，获取最旧消息…")
-            # 从最新消息开始，不断往前翻，直到翻到最旧
             all_msgs = []
             offset = 0
             while True:
-                chunk = await client.get_chat_history(src, limit=batch, offset_id=offset)
+                chunk = []
+                async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
+                    chunk.append(m)
                 if not chunk:
                     break
                 all_msgs.extend(chunk)
-                offset = chunk[-1].id  # 最旧的消息ID作为下次offset
+                offset = chunk[-1].id
                 ctx.log.info("[转发] 已收集%s条消息…", len(all_msgs))
                 if len(chunk) < batch:
-                    break  # 到底了
-            # 反转：从最旧到最新
+                    break
             all_msgs.reverse()
             ctx.log.info("[转发] 共收集%s条消息，开始转发", len(all_msgs))
         else:
-            # 有记录，获取比 last_id 更新的消息
             ctx.log.info("[转发] 继续转发，从ID=%s之后", last_id)
             all_msgs = []
             offset = 0
             while True:
-                # 用 offset_id 作为基准，获取比它旧的消息
-                chunk = await client.get_chat_history(src, limit=batch, offset_id=offset)
+                chunk = []
+                async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
+                    chunk.append(m)
                 if not chunk:
                     break
-                # 只保留比 last_id 新的（即ID更大的）
                 new_msgs = [m for m in chunk if m.id > last_id]
                 all_msgs.extend(new_msgs)
                 oldest = chunk[-1]
                 if oldest.id <= last_id:
-                    break  # 已经翻到 last_id 之前了
+                    break
                 offset = oldest.id
                 ctx.log.info("[转发] 已收集%s条新消息…", len(all_msgs))
                 if len(chunk) < batch:
                     break
-            # 按ID排序（从旧到新）
             all_msgs.sort(key=lambda m: m.id)
 
         # 开始转发
