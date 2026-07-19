@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 __plugin__ = {
     "name": "历史消息转发",
     "id": "myforward",
-    "version": "0.2.2",
+    "version": "0.3.0",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息，从最早到最新，按顺序转发到目标频道，带速度控制。",
     "scope": "user",
@@ -159,20 +159,36 @@ async def _do_forward(ctx, src, dst):
 
         ctx.log.info("[转发] 收集完毕，共%s条，开始转发", len(all_msgs))
 
-        # ── 转发阶段：从旧到新 ──
-        for msg in all_msgs:
+        # ── 转发阶段：从旧到新，批量转发 ──
+        batch_size = 100  # Telegram 单次批量上限
+        for i in range(0, len(all_msgs), batch_size):
             if ctx.kv.get("myforward_stop", False):
                 ctx.log.info("[转发] 收到停止信号")
                 break
+            batch_ids = [m.id for m in all_msgs[i:i + batch_size]]
             try:
-                await msg.forward(dst)
-                total += 1
-                last_id = msg.id
+                await client.forward_messages(dst, src, batch_ids)
+                total += len(batch_ids)
+                last_id = batch_ids[-1]
+                ctx.log.info("[转发] 批量转发%s条 (累计%s/%s)", len(batch_ids), total, len(all_msgs))
             except Exception as e:
-                ctx.log.warning("[转发] 消息%s转发失败: %r", msg.id, e)
-                last_id = msg.id
-            await asyncio.sleep(delay)
-            if total % 20 == 0:
+                ctx.log.warning("[转发] 批量%s条转发失败: %r", len(batch_ids), e)
+                # 逐条重试
+                for mid in batch_ids:
+                    if ctx.kv.get("myforward_stop", False):
+                        break
+                    try:
+                        msg = await client.get_messages(src, mid)
+                        if msg:
+                            await msg.forward(dst)
+                            total += 1
+                            last_id = mid
+                    except Exception as e2:
+                        ctx.log.warning("[转发] 单条%s转发失败: %r", mid, e2)
+                        last_id = mid
+                    await asyncio.sleep(1)
+            await asyncio.sleep(0.5)  # 批量间间隔半秒即可
+            if total % 100 == 0:
                 ctx.kv.set("myforward_last_id", last_id)
                 ctx.kv.set("myforward_total", total)
                 ctx.update_config({"_status": f"转发中… {total}/{len(all_msgs)}条"})
