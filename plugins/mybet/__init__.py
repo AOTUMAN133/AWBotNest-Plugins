@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -30,12 +30,16 @@ __plugin__ = {
             "section": "下注", "min": 100, "max": 10000000, "order": 3
         },
         "big_bet": {
-            "type": "number", "default": 5000, "label": "大注金额",
-            "section": "下注", "min": 100, "max": 100000000, "help": "连错达到阈值后下这个数", "order": 4
+            "type": "number", "default": 5000, "label": "大注起始",
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错达到阈值后第一次下这个数", "order": 4
+        },
+        "big_bet_mult": {
+            "type": "number", "default": 2, "label": "大注倍率",
+            "section": "下注", "min": 1, "max": 10, "help": "大注还输就乘这个倍数继续下，直到赢为止", "order": 5
         },
         "loss_streak": {
             "type": "number", "default": 5, "label": "连错几次下大注",
-            "section": "下注", "min": 1, "max": 50, "help": "连续输N局后下一把下大注", "order": 5
+            "section": "下注", "min": 1, "max": 50, "help": "连续输N局后下一把开始下大注", "order": 6
         },
         "take_profit": {
             "type": "number", "default": 100000, "label": "止盈线",
@@ -188,7 +192,12 @@ async def _run_strategy(ctx, client, message, matrix_str):
     # 判断是否下大注
     lose_streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
     use_big = lose_streak >= loss_threshold
-    current_bet = big_bet if use_big else base_bet
+    if use_big:
+        big_bet_mult = float(cfg.get("big_bet_mult", 2) or 2)
+        extra = lose_streak - loss_threshold + 1
+        current_bet = int(big_bet * (big_bet_mult ** (extra - 1)))
+    else:
+        current_bet = base_bet
 
     ctx.log.info("[下注] 策略: %s → %s, 连错%s, 注码%s(%s)",
                   mode_name, target, lose_streak,
