@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.3",
+    "version": "0.3.4",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -224,23 +224,30 @@ async def _run_strategy(ctx, client, message, matrix_str):
                   mode_name, target, lose_streak,
                   _fmt(current_bet), "大注" if use_big else "平常")
 
-    btn_text = f"押{target} {current_bet:,}"
+    # 用筹码组合下注（按钮面额固定）
+    chips = [50000000, 5000000, 1000000, 250000, 50000, 20000, 2000, 500]
+    remaining = current_bet
     success = False
-    try:
-        await message.click(btn_text)
-        ctx.log.info("[下注] ✅ 点击: %s", btn_text)
-        success = True
-    except AttributeError:
-        try:
-            apps = list(ctx.user_apps or [])
-            if apps:
-                await apps[0].send_message(message.chat.id, btn_text)
-                ctx.log.info("[下注] ✅ 发送: %s", btn_text)
+    for chip in chips:
+        while remaining >= chip:
+            btn_text = f"押{target} {chip:,}"
+            clicked = False
+            try:
+                await message.click(btn_text)
+                ctx.log.info("[下注] ✅ 点击: %s", btn_text)
+                clicked = True
+            except (ValueError, AttributeError) as e:
+                ctx.log.warning("[下注] 点击失败 %s: %r", btn_text, e)
+                break
+            except Exception as e:
+                ctx.log.warning("[下注] 点击异常 %s: %r", btn_text, e)
+                break
+            if clicked:
+                remaining -= chip
                 success = True
-        except Exception as e2:
-            ctx.log.warning("[下注] 文本下注失败: %r", e2)
-    except Exception as e:
-        ctx.log.warning("[下注] 点击失败: %r", e)
+                await asyncio.sleep(0.3)
+    if remaining > 0:
+        ctx.log.warning("[下注] ⚠️ 剩余 %s 无法下注", _fmt(remaining))
 
     if success:
         ctx.kv.set("mybet_last_target", target)
