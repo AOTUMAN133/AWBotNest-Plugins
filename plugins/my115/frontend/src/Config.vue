@@ -7,6 +7,7 @@
     </div>
 
     <div v-show="tab === 'settings'" class="layout">
+      <label class="row switch big"><input v-model="cfg.shareswitch" type="checkbox" /><span>启用监控</span></label>
       <section class="card">
         <h3>监控范围</h3>
         <label class="row"><span>监控群组</span><input v-model="cfg.monitor_ids" class="inp" placeholder="群ID逗号分隔，留空=所有会话" /></label>
@@ -82,7 +83,7 @@ const testMsg = ref('')
 const testOk = ref(false)
 const logs = ref([])
 const cfg = reactive({
-  monitor_ids: '', media_types: ['movie', 'tv'], only_complete_series: false,
+  shareswitch: false, monitor_ids: '', media_types: ['movie', 'tv'], only_complete_series: false,
   tmdb_api_key: '', tmdb_language: 'zh-CN',
   emby_url: '', emby_api_key: '', skip_emby_check: false,
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
@@ -158,6 +159,7 @@ async function loadLogs() {
 .card h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary, #e8ebf0); }
 .row { display: flex; align-items: center; gap: 10px; }
 .row.switch { justify-content: flex-start; }
+.row.switch.big { padding: 12px; margin-bottom: 8px; background: var(--bg-elevated, #1a1d27); border: 1px solid var(--border-light, #2a2e3a); border-radius: 10px; }
 .row > span:first-child { min-width: 80px; font-size: 13px; color: var(--text-secondary, #b9c0cc); }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .lbl { font-size: 13px; color: var(--text-secondary, #b9c0cc); }
