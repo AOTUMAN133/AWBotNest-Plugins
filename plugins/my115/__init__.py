@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -364,7 +364,9 @@ async def setup(ctx):
                 await get_emby_tmdb_ids(cfg["emby_url"], cfg["emby_api_key"])
                 msgs.append("Emby: ✅")
             except Exception as e:  # noqa: BLE001
-                msgs.append(f"Emby: ❌ {e}")
+                err = str(e) or e.__class__.__name__
+                ctx.log.warning("[115监控] Emby测试失败: %r", e)
+                msgs.append(f"Emby: ❌ {err}")
         else:
             msgs.append("Emby: 未配置")
 
