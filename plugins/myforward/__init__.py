@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 __plugin__ = {
     "name": "历史消息转发",
     "id": "myforward",
-    "version": "0.1.3",
+    "version": "0.2.0",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息，从最早到最新，按顺序转发到目标频道，带速度控制。",
     "scope": "user",
@@ -28,7 +28,11 @@ __plugin__ = {
         },
         "batch_size": {
             "type": "number", "default": 200, "label": "每批条数",
-            "section": "速度控制", "min": 50, "max": 1000, "help": "每次从API拉取多少条，越大越快但占用越高。默认200", "order": 4
+            "section": "速度控制", "min": 50, "max": 1000, "help": "每次从API拉取多少条，越大越快。默认200", "order": 4
+        },
+        "fast_mode": {
+            "type": "boolean", "default": False, "label": "快速模式(先收集后转发)",
+            "section": "速度控制", "help": "开启后先把所有消息拉下来再转发，拉取阶段无间隔。适合首次大批量转发", "order": 5
         },
         "_status": {
             "type": "info", "label": "状态",
@@ -127,66 +131,41 @@ async def _do_forward(ctx, src, dst):
         cfg = ctx.config
         delay = int(cfg.get("delay", 3) or 3)
         batch = int(cfg.get("batch_size", 200) or 200)
+        fast = cfg.get("fast_mode", False)
         last_id = int(ctx.kv.get("myforward_last_id", 0) or 0)
         total = int(ctx.kv.get("myforward_total", 0) or 0)
 
-        ctx.log.info("[转发] 开始: 来源%s → 目标%s, 从ID=%s起, 每批%s条, 间隔%s秒",
-                      src, dst, last_id or "最旧", batch, delay)
+        ctx.log.info("[转发] 开始: 来源%s → 目标%s, 每批%s条, 间隔%s秒, 快速=%s",
+                      src, dst, batch, delay, fast)
 
-        # 从最新消息往前翻，边翻边转
-        forward_queue = []
+        # ── 收集阶段：从最新翻到最旧 ──
+        all_msgs = []
         offset = 0
-        reached_end = False
-
-        while not reached_end:
+        while True:
             if ctx.kv.get("myforward_stop", False):
                 ctx.log.info("[转发] 收到停止信号")
-                break
-
-            # 拉一批
+                return
             chunk = []
             async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
                 chunk.append(m)
             if not chunk:
                 break
-
-            # 如果是首次，或者没有 last_id，收集到最旧的消息
-            if not last_id:
-                forward_queue = chunk + forward_queue  # 新拉的在前面，拼到前面
-            else:
-                new_msgs = [m for m in chunk if m.id > last_id]
-                forward_queue = new_msgs + forward_queue
-                if chunk[-1].id <= last_id:
-                    reached_end = True
-
-            offset = chunk[-1].id
-            ctx.log.info("[转发] 已缓存%s条待转发", len(forward_queue))
-
-            if len(chunk) < batch:
-                reached_end = True  # 到底了
-
-            # 每收集到一批，转一批（从队列头部取，保证顺序）
-            while forward_queue:
-                msg = forward_queue.pop(0)
-                if ctx.kv.get("myforward_stop", False):
+            if last_id:
+                chunk = [m for m in chunk if m.id > last_id]
+                if not chunk:
                     break
-                try:
-                    await msg.forward(dst)
-                    total += 1
-                    last_id = msg.id
-                except Exception as e:
-                    ctx.log.warning("[转发] 消息%s转发失败: %r", msg.id, e)
-                    last_id = msg.id
-                await asyncio.sleep(delay)
-                # 每10条存一次进度
-                if total % 10 == 0:
-                    ctx.kv.set("myforward_last_id", last_id)
-                    ctx.kv.set("myforward_total", total)
+            all_msgs = chunk + all_msgs  # chunk是最新→最旧，拼到前面后反转
+            offset = chunk[-1].id
+            ctx.log.info("[转发] 已收集%s条…", len(all_msgs))
+            if len(chunk) < batch:
+                break
 
-        # 把队列里剩余的转完
-        while forward_queue:
-            msg = forward_queue.pop(0)
+        ctx.log.info("[转发] 收集完毕，共%s条，开始转发", len(all_msgs))
+
+        # ── 转发阶段：从旧到新 ──
+        for msg in all_msgs:
             if ctx.kv.get("myforward_stop", False):
+                ctx.log.info("[转发] 收到停止信号")
                 break
             try:
                 await msg.forward(dst)
@@ -196,9 +175,10 @@ async def _do_forward(ctx, src, dst):
                 ctx.log.warning("[转发] 消息%s转发失败: %r", msg.id, e)
                 last_id = msg.id
             await asyncio.sleep(delay)
-            if total % 10 == 0:
+            if total % 20 == 0:
                 ctx.kv.set("myforward_last_id", last_id)
                 ctx.kv.set("myforward_total", total)
+                ctx.update_config({"_status": f"转发中… {total}/{len(all_msgs)}条"})
 
         ctx.kv.set("myforward_last_id", last_id)
         ctx.kv.set("myforward_total", total)
