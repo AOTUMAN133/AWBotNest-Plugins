@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -44,6 +44,7 @@ DEFAULTS = {
     "forward_to_saved": False,
     "pan115_cookie": "",
     "exclude_genres": "",
+    "exclude_anime_only": False,
 }
 
 # ── 运行态 ──
@@ -287,9 +288,14 @@ async def _process(client, cfg, message, ctx):
                         genres.append(en)
                 matched = [ex for ex in exclude_list if ex in genres]
                 if matched:
-                    ctx.log.info("[115监控] 排除类型 %s: %d", ",".join(matched), tmdb_id)
-                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
-                    return
+                    # 动画仅排除日本动画
+                    if cfg.get("exclude_anime_only", False) and "animation" in matched:
+                        if detail.get("original_language") != "ja":
+                            matched.remove("animation")
+                    if matched:
+                        ctx.log.info("[115监控] 排除类型 %s: %d", ",".join(matched), tmdb_id)
+                        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
+                        return
             except Exception:  # noqa: BLE001
                 pass
 

@@ -45,11 +45,11 @@
         <h3>排除类型</h3>
         <p class="tip">勾选后匹配到该类型的资源自动跳过不转发</p>
         <div class="genre-grid">
-          <label v-for="g in genreList" :key="g.en" class="chip" :class="{ on: excludeSet.has(g.en) || excludeSet.has(g.cn) }">
-            <input type="checkbox" :checked="excludeSet.has(g.en) || excludeSet.has(g.cn)" @change="toggleGenre(g)" />
+          <div v-for="g in genreList" :key="g.en" class="chip" :class="{ on: excludeSet.has(g.en) }" @click="toggleGenre(g)">
             <span>{{ g.cn }}<br><small>{{ g.en }}</small></span>
-          </label>
+          </div>
         </div>
+        <label class="row switch" style="margin-top:10px"><input v-model="cfg.exclude_anime_only" type="checkbox" /><span>动画仅排除日本动画（日语原声）</span></label>
       </section>
       <div class="savebar"><button class="btn primary lg" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
     </div>
@@ -99,6 +99,7 @@ const cfg = reactive({
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
   pan115_cookie: '',
   exclude_genres: '',
+  exclude_anime_only: false,
 })
 
 const mediaTypes = computed({
