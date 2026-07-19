@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.6",
+    "version": "0.3.7",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -145,7 +145,8 @@ async def _settle(ctx, matrix_str):
         return
 
     is_win = (target == "大" and latest == "1") or (target == "小" and latest == "0")
-    net = -amount if not is_win else amount
+    fee = int(amount * 0.01)  # 1%手续费
+    net = amount - fee if is_win else -amount
 
     # 更新统计
     wins = int(ctx.kv.get("mybet_wins", 0) or 0)
