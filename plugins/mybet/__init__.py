@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.5.3",
+    "version": "0.5.4",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -128,6 +128,7 @@ async def setup(ctx):
 
         # 解析走势矩阵
         if "[近 40 次结果]" in text:
+            ctx.log.info("[下注] 收到矩阵消息")
             lines = text.split("\n")
             matrix_str = ""
             for line in lines:
@@ -136,7 +137,12 @@ async def setup(ctx):
                     if len(digits) >= 5:
                         matrix_str += digits
             if matrix_str:
+                ctx.log.info("[下注] 解析到矩阵: %s...", matrix_str[:20])
                 await _handle_matrix(ctx, client, message, matrix_str)
+            else:
+                ctx.log.info("[下注] 矩阵解析为空")
+        else:
+            ctx.log.info("[下注] 收到消息但非矩阵: %s...", text[:30])
 
     # 定时更新战绩
     async def stats_pusher():
