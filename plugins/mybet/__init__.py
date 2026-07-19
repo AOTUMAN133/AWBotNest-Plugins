@@ -10,7 +10,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -230,34 +230,42 @@ async def setup(ctx):
         await _run_strategy(client, message, matrix_str)
 
     # ── 消息监听 ──
-    @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing)
+    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7)
     async def monitor_bet(client, message):
-        cfg = ctx.config
-        if not cfg.get("enable_bet", False):
-            return
-        tc = int(cfg.get("target_chat", 0) or 0)
-        if not tc or message.chat.id != tc:
-            return
-        if ctx.kv.get("mybet_locked", False):
-            ctx.log.info("[下注] 已锁仓，跳过")
-            return
-        text = (message.text or message.caption or "").strip()
-        if not text:
-            return
-        if "[近 40 次结果]" not in text:
-            return
-        ctx.log.info("[下注] 收到矩阵消息，开始解析")
-        lines = text.split("\n")
-        ms = ""
-        for line in lines:
-            if "[" in line and "]" in line and "近 40 次结果" not in line and "由近及远" not in line:
-                d = re.sub(r"[^\d]", "", line)
-                if len(d) >= 5:
-                    ms += d
-        if not ms:
-            ctx.log.info("[下注] 矩阵解析为空")
-            return
-        await _handle_matrix(client, message, ms)
+        try:
+            cfg = ctx.config
+            if not cfg.get("enable_bet", False):
+                return
+            tc = int(cfg.get("target_chat", 0) or 0)
+            if not tc:
+                ctx.log.info("[下注] 未设置目标群")
+                return
+            if message.chat.id != tc:
+                return
+            if ctx.kv.get("mybet_locked", False):
+                ctx.log.info("[下注] 已锁仓，跳过")
+                return
+            text = (message.text or message.caption or "").strip()
+            if not text:
+                ctx.log.info("[下注] 消息为空")
+                return
+            ctx.log.info("[下注] 收到消息: %s...", text[:50])
+            if "[近 40 次结果]" not in text:
+                return
+            ctx.log.info("[下注] 收到矩阵消息，开始解析")
+            lines = text.split("\n")
+            ms = ""
+            for line in lines:
+                if "[" in line and "]" in line and "近 40 次结果" not in line and "由近及远" not in line:
+                    d = re.sub(r"[^\d]", "", line)
+                    if len(d) >= 5:
+                        ms += d
+            if not ms:
+                ctx.log.info("[下注] 矩阵解析为空")
+                return
+            await _handle_matrix(client, message, ms)
+        except Exception as e:
+            ctx.log.error("[下注] 处理异常: %r", e)
 
     # ── 战绩推送 ──
     async def stats_pusher():
