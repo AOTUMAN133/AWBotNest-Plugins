@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.6.7",
+    "version": "0.6.8",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -656,38 +656,48 @@ async def _do_scan(ctx, src):
         total = int(ctx.kv.get("my115scan_total", 0) or 0)
         forwarded = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
         ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
+
+        # 先收集所有消息ID
+        all_ids = []
         offset = 0
         while True:
             if ctx.kv.get("my115scan_stop", False):
+                return
+            chunk = await client.get_chat_history(src, limit=batch, offset_id=offset)
+            if not chunk:
                 break
-            ids = []
-            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
-                ids.append(m.id)
-            if not ids:
-                break
-            if last_id:
-                ids = [mid for mid in ids if mid > last_id]
-                if not ids:
-                    break
+            ids = [m.id for m in chunk]
+            all_ids = ids + all_ids
             offset = ids[-1]
-            for mid in reversed(ids):
-                if ctx.kv.get("my115scan_stop", False):
-                    break
-                try:
-                    msg = await client.get_messages(src, mid)
-                    if not msg:
-                        continue
-                    await _process(client, cfg, msg, ctx)
-                    total += 1
-                except Exception as e:
-                    ctx.log.warning("[115扫描] 消息%s异常: %r", mid, e)
-                await asyncio.sleep(delay)
-            ctx.kv.set("my115scan_last_id", ids[-1])
-            ctx.kv.set("my115scan_total", total)
-            ctx.kv.set("my115scan_forwarded", forwarded)
             if len(ids) < batch:
                 break
-        ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
+            if len(all_ids) % 1000 == 0:
+                ctx.log.info("[115扫描] 已收集%s条消息ID", len(all_ids))
+
+        if last_id:
+            all_ids = [mid for mid in all_ids if mid > last_id]
+
+        ctx.log.info("[115扫描] 收集完毕，共%s条待处理", len(all_ids))
+
+        # 从旧到新逐条处理
+        for mid in all_ids:
+            if ctx.kv.get("my115scan_stop", False):
+                break
+            try:
+                msg = await client.get_messages(src, mid)
+                if not msg:
+                    continue
+                await _process(client, cfg, msg, ctx)
+                total += 1
+            except Exception as e:
+                ctx.log.warning("[115扫描] 消息%s异常: %r", mid, e)
+            await asyncio.sleep(delay)
+            if total % 10 == 0:
+                ctx.kv.set("my115scan_last_id", mid)
+                ctx.kv.set("my115scan_total", total)
+                ctx.kv.set("my115scan_forwarded", forwarded)
+
+        ctx.kv.set("my115scan_last_id", all_ids[-1] if all_ids else 0)
         ctx.kv.set("my115scan_total", total)
         ctx.kv.set("my115scan_forwarded", forwarded)
         ctx.update_config({"_scan_status": f"完成: 扫描{total}条"})
