@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，按追龙/斩龙/斐波那契等策略自动押大押小。",
     "scope": "user",
@@ -155,8 +155,8 @@ async def _run_strategy(ctx, client, message, matrix_str):
         btn_text = f"押{target} {current_bet:,}"
         success = False
         try:
-            # 方式1: 直接点击按钮 (Pyrogram 原生支持)
-            await message.click(text=btn_text)
+            # 方式1: 直接点击按钮 (Pyrogram: click(text) 传位置参数)
+            await message.click(btn_text)
             ctx.log.info("[下注] ✅ 点击按钮: %s", btn_text)
             success = True
         except AttributeError:
