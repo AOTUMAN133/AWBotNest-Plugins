@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.7",
+    "version": "0.3.8",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -29,25 +29,29 @@ __plugin__ = {
             "type": "number", "default": 500, "label": "平常注码",
             "section": "下注", "min": 100, "max": 10000000, "order": 3
         },
+        "max_bet": {
+            "type": "number", "default": 50000000, "label": "单局封顶",
+            "section": "下注", "min": 100, "max": 50000000, "help": "下注封顶，平台上限5000万", "order": 4
+        },
         "big_bet": {
             "type": "number", "default": 5000, "label": "大注起始",
-            "section": "下注", "min": 100, "max": 100000000, "help": "连错达到阈值后第一次下这个数", "order": 4
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错达到阈值后第一次下这个数", "order": 5
         },
         "big_bet_mult": {
             "type": "number", "default": 2, "label": "大注倍率",
-            "section": "下注", "min": 1, "max": 10, "help": "大注还输就乘这个倍数继续下，直到赢为止", "order": 5
+            "section": "下注", "min": 1, "max": 10, "help": "大注还输就乘这个倍数继续下，直到赢为止", "order": 6
         },
         "loss_streak": {
             "type": "number", "default": 5, "label": "连错几次下大注",
-            "section": "下注", "min": 1, "max": 50, "help": "连续输N局后下一把开始下大注", "order": 6
+            "section": "下注", "min": 1, "max": 50, "help": "连续输N局后下一把开始下大注", "order": 7
         },
         "take_profit": {
             "type": "number", "default": 100000, "label": "止盈线",
-            "section": "风控", "min": 0, "max": 100000000, "help": "累计盈利达此值自动停", "order": 6
+            "section": "风控", "min": 0, "max": 100000000, "help": "累计盈利达此值自动停", "order": 8
         },
         "stop_loss": {
             "type": "number", "default": 50000, "label": "止损线",
-            "section": "风控", "min": 0, "max": 100000000, "help": "累计亏损达此值自动停", "order": 7
+            "section": "风控", "min": 0, "max": 100000000, "help": "累计亏损达此值自动停", "order": 9
         },
         "_stats": {
             "type": "info", "label": "战绩",
