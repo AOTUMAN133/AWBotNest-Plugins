@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -106,7 +106,15 @@ async def setup(ctx):
         streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
         total = wins + losses
         rate = f"{wins / total * 100:.1f}%" if total > 0 else "-"
-        ctx.update_config({"_stats": f"赢{wins} 输{losses} 胜率{rate} 连错{streak} 总盈亏{_fmt(profit)}"})
+        records = ctx.kv.get("mybet_records", []) or []
+        rec_text = ""
+        if records:
+            recent = records[-10:]
+            lines = []
+            for r in recent:
+                lines.append(f"{r['t']} {r['r']} {r['a']} (累计{r['p']})")
+            rec_text = "\n" + "\n".join(lines)
+        ctx.update_config({"_stats": f"赢{wins} 输{losses} 胜率{rate} 连错{streak} 总盈亏{_fmt(profit)}{rec_text}"})
 
     ctx.schedule(stats_pusher, "interval", seconds=30, id="mybet_stats")
 
@@ -159,6 +167,19 @@ async def _settle(ctx, matrix_str):
     ctx.kv.set("mybet_profit", profit)
     ctx.kv.set("mybet_lose_streak", lose_streak)
     ctx.kv.set("mybet_betted", False)
+
+    # 存储最近记录（保留最近20条）
+    records = ctx.kv.get("mybet_records", []) or []
+    from datetime import datetime as _dt
+    records.append({
+        "t": _dt.now().strftime("%H:%M"),
+        "r": "✅" if is_win else "❌",
+        "a": _fmt(amount),
+        "p": _fmt(abs(profit)),
+    })
+    if len(records) > 20:
+        records = records[-20:]
+    ctx.kv.set("mybet_records", records)
 
     symbol = "✅" if is_win else "❌"
     ctx.log.info("[下注] %s 结算: 押%s %s → %s, 连错%s, 累计%s",
