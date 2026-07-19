@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -279,8 +279,15 @@ async def _process(client, cfg, message, ctx):
                 api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
                 detail = await api.get_details(tmdb_id, media_type)
                 genres = [g.get("name", "").lower() for g in (detail.get("genres") or [])]
-                if any(ex in genres for ex in exclude_list):
-                    ctx.log.info("[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
+                # TMDB genre id → 英文名映射（兼容语言设置）
+                _GENRE_IDS = {12:"adventure",14:"fantasy",16:"animation",18:"drama",27:"horror",28:"action",35:"comedy",36:"history",37:"western",53:"thriller",80:"crime",99:"documentary",878:"science fiction",964:"mystery",10402:"music",10749:"romance",10751:"family",10752:"war",10759:"action & adventure",10762:"kids",10763:"news",10764:"reality",10765:"sci-fi & fantasy",10766:"soap",10767:"talk",10768:"war & politics",10770:"tv movie"}
+                for g in (detail.get("genres") or []):
+                    en = _GENRE_IDS.get(g.get("id"))
+                    if en:
+                        genres.append(en)
+                matched = [ex for ex in exclude_list if ex in genres]
+                if matched:
+                    ctx.log.info("[115监控] 排除类型 %s: %d", ",".join(matched), tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
                     return
             except Exception:  # noqa: BLE001

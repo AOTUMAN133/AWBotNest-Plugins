@@ -43,7 +43,13 @@
       </section>
       <section class="card">
         <h3>排除类型</h3>
-        <label class="row top"><span>排除类型</span><textarea v-model="cfg.exclude_genres" class="inp" rows="2" placeholder="填 TMDB 类型名，逗号分隔&#10;例如：动画, 动画片, Documentary&#10;匹配到任一类型则跳过不转发"></textarea></label>
+        <p class="tip">勾选后匹配到该类型的资源自动跳过不转发</p>
+        <div class="genre-grid">
+          <label v-for="g in genreList" :key="g.en" class="chip" :class="{ on: excludeSet.has(g.en) || excludeSet.has(g.cn) }">
+            <input type="checkbox" :checked="excludeSet.has(g.en) || excludeSet.has(g.cn)" @change="toggleGenre(g)" />
+            <span>{{ g.cn }}<br><small>{{ g.en }}</small></span>
+          </label>
+        </div>
       </section>
       <div class="savebar"><button class="btn primary lg" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
     </div>
@@ -114,6 +120,44 @@ onMounted(async () => {
     props.host.toast.error('读取配置失败：' + (e.message || e))
   }
 })
+
+const genreList = [
+  { en: 'Animation', cn: '动画' },
+  { en: 'Comedy', cn: '喜剧' },
+  { en: 'Documentary', cn: '纪录片' },
+  { en: 'Drama', cn: '剧情' },
+  { en: 'Action', cn: '动作' },
+  { en: 'Adventure', cn: '冒险' },
+  { en: 'Fantasy', cn: '奇幻' },
+  { en: 'Science Fiction', cn: '科幻' },
+  { en: 'Horror', cn: '恐怖' },
+  { en: 'Thriller', cn: '惊悚' },
+  { en: 'Romance', cn: '爱情' },
+  { en: 'Mystery', cn: '悬疑' },
+  { en: 'Crime', cn: '犯罪' },
+  { en: 'War', cn: '战争' },
+  { en: 'Western', cn: '西部' },
+  { en: 'History', cn: '历史' },
+  { en: 'Music', cn: '音乐' },
+  { en: 'Family', cn: '家庭' },
+  { en: 'Kids', cn: '儿童' },
+  { en: 'Reality', cn: '真人秀' },
+  { en: 'Soap', cn: '肥皂剧' },
+  { en: 'Talk', cn: '脱口秀' },
+  { en: 'News', cn: '新闻' },
+]
+const excludeSet = computed(() => {
+  const raw = (cfg.exclude_genres || '').toLowerCase()
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean))
+})
+function toggleGenre(g) {
+  const raw = (cfg.exclude_genres || '').trim()
+  const arr = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : []
+  const key = g.en.toLowerCase()
+  const i = arr.indexOf(key)
+  if (i >= 0) arr.splice(i, 1); else arr.push(key)
+  cfg.exclude_genres = arr.join(',')
+}
 
 async function save() {
   saving.value = true
@@ -199,4 +243,11 @@ code { color: var(--accent, #6ea8fe); font-family: monospace; }
 .tag-Emby查询失败 { color: #ff6b6b; }
 .tag-Emby未配置跳过查重 { color: #7a8291; }
 .tag-已跳过查重 { color: #ffa500; }
+.genre-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.genre-grid .chip { display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; padding: 6px 10px; border-radius: 8px; background: var(--bg-card, #12141c); border: 1px solid var(--border-light, #2a2e3a); color: var(--text-secondary, #b9c0cc); transition: all .15s; }
+.genre-grid .chip.on { background: var(--accent-dim, #1e3a5f); border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe); }
+.genre-grid .chip input { display: none; }
+.genre-grid .chip span { line-height: 1.3; }
+.genre-grid .chip small { opacity: 0.6; font-weight: normal; }
+.tip { margin: 0; font-size: 12px; color: var(--text-muted, #7a8291); line-height: 1.6; }
 </style>
