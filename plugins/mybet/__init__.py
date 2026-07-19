@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -93,13 +93,21 @@ async def setup(ctx):
     # 重置下注状态动作
     @ctx.action("reset_bet")
     async def _reset_bet(req=None):
-        keys = ["mybet_last_matrix", "mybet_last_target", "mybet_last_amount", "mybet_betted",
-                "mybet_wins", "mybet_losses", "mybet_profit", "mybet_lose_streak",
-                "mybet_fibo_step", "mybet_paroli_step", "mybet_total_bet", "mybet_locked",
-                "mybet_records"]
-        for k in keys:
-            ctx.kv.delete(k)
+        ctx.kv.set("mybet_locked", False)
+        ctx.kv.set("mybet_betted", False)
+        ctx.kv.set("mybet_lose_streak", 0)
+        ctx.kv.set("mybet_wins", 0)
+        ctx.kv.set("mybet_losses", 0)
+        ctx.kv.set("mybet_profit", 0)
+        ctx.kv.set("mybet_last_matrix", "")
+        ctx.kv.set("mybet_last_target", "")
+        ctx.kv.set("mybet_last_amount", 0)
+        ctx.kv.set("mybet_fibo_step", 0)
+        ctx.kv.set("mybet_paroli_step", 0)
+        ctx.kv.set("mybet_total_bet", 0)
+        ctx.kv.set("mybet_records", [])
         ctx.update_config({"_stats": "已重置"})
+        ctx.log.info("[下注] 🔄 状态已重置")
         return {"ok": True, "message": "下注状态已重置"}
 
     @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing, group=5)
