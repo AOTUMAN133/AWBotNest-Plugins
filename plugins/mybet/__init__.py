@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：自动下注引擎 (mybet) v0.3.0
-# 简化版：平常500，连错N次后下大注
+# AWBotNest 插件：自动下注引擎 (mybet) v0.6.0
 
 import asyncio
 import re
@@ -11,7 +10,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.5.4",
+    "version": "0.6.0",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -55,15 +54,15 @@ __plugin__ = {
         },
         "take_profit": {
             "type": "number", "default": 100000, "label": "止盈线",
-            "section": "风控", "min": 0, "max": 100000000, "help": "累计盈利达此值自动停", "order": 8
+            "section": "风控", "min": 0, "max": 100000000, "help": "累计盈利达此值自动停", "order": 10
         },
         "stop_loss": {
             "type": "number", "default": 50000, "label": "止损线",
-            "section": "风控", "min": 0, "max": 100000000, "help": "累计亏损达此值自动停", "order": 9
+            "section": "风控", "min": 0, "max": 100000000, "help": "累计亏损达此值自动停", "order": 11
         },
         "max_loss_streak": {
             "type": "number", "default": 10, "label": "最大连错数",
-            "section": "风控", "min": 1, "max": 100, "help": "连错达到此数强制锁仓停赌，手动重置才能恢复", "order": 10
+            "section": "风控", "min": 1, "max": 100, "help": "连错达到此数强制锁仓", "order": 12
         },
         "_stats": {
             "type": "info", "label": "战绩",
@@ -77,6 +76,7 @@ __plugin__ = {
 }
 
 TZ_SH = timezone(timedelta(hours=8))
+FIBO_SEQ = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]
 
 
 def _fmt(n):
@@ -87,10 +87,9 @@ def _fmt(n):
 
 
 async def setup(ctx):
-    # 初始化战绩面板
     ctx.update_config({"_stats": "启动中…"})
 
-    # 重置下注状态动作
+    # ── 重置动作 ──
     @ctx.action("reset_bet")
     async def _reset_bet(req=None):
         ctx.kv.set("mybet_locked", False)
@@ -107,238 +106,177 @@ async def setup(ctx):
         ctx.kv.set("mybet_total_bet", 0)
         ctx.kv.set("mybet_records", [])
         ctx.update_config({"_stats": "已重置"})
-        ctx.log.info("[下注] 🔄 状态已重置")
         return {"ok": True, "message": "下注状态已重置"}
 
-    @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing, group=5)
+    # ── 内部函数 ──
+    async def _settle(matrix_str):
+        cfg = ctx.config
+        latest = matrix_str[0]
+        target = ctx.kv.get("mybet_last_target", "")
+        amount = int(ctx.kv.get("mybet_last_amount", 0) or 0)
+        if not target or not amount:
+            return
+        is_win = (target == "大" and latest == "1") or (target == "小" and latest == "0")
+        fee = int(amount * 0.01)
+        net = amount - fee if is_win else -amount
+        wins = int(ctx.kv.get("mybet_wins", 0) or 0)
+        losses = int(ctx.kv.get("mybet_losses", 0) or 0)
+        profit = int(ctx.kv.get("mybet_profit", 0) or 0)
+        lose_streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+        if is_win:
+            wins += 1; profit += net; lose_streak = 0
+        else:
+            losses += 1; profit += net; lose_streak += 1
+        ctx.kv.set("mybet_wins", wins)
+        ctx.kv.set("mybet_losses", losses)
+        ctx.kv.set("mybet_profit", profit)
+        ctx.kv.set("mybet_lose_streak", lose_streak)
+        ctx.kv.set("mybet_betted", False)
+        # 最大连错保护
+        max_streak = int(cfg.get("max_loss_streak", 10) or 10)
+        if not is_win and max_streak > 0 and lose_streak >= max_streak:
+            ctx.kv.set("mybet_locked", True)
+        # 记录
+        records = list(ctx.kv.get("mybet_records", []) or [])
+        records.append({"t": datetime.now().strftime("%H:%M"), "r": "✅" if is_win else "❌", "a": _fmt(amount), "p": _fmt(abs(profit))})
+        if len(records) > 20:
+            records = records[-20:]
+        ctx.kv.set("mybet_records", records)
+        ctx.log.info("[下注] %s 结算: 押%s %s → %s, 连错%s, 累计%s",
+                      "✅" if is_win else "❌", target, _fmt(amount),
+                      "赢" if is_win else "输", lose_streak, _fmt(profit))
+        # 止盈止损
+        tp = int(cfg.get("take_profit", 100000) or 0)
+        sl = int(cfg.get("stop_loss", 50000) or 0)
+        if tp > 0 and profit >= tp:
+            ctx.kv.set("mybet_locked", True)
+        elif sl > 0 and profit <= -sl:
+            ctx.kv.set("mybet_locked", True)
+
+    async def _run_strategy(client, message, matrix_str):
+        cfg = ctx.config
+        bb = int(cfg.get("base_bet", 500) or 500)
+        s1 = int(cfg.get("step1_bet", 20000) or 20000)
+        s2 = int(cfg.get("step2_bet", 50000) or 50000)
+        lt = int(cfg.get("loss_streak", 3) or 3)
+        bg = int(cfg.get("big_bet", 5000) or 5000)
+        bm = float(cfg.get("big_bet_mult", 2) or 2)
+        mx = int(cfg.get("max_bet", 50000000) or 50000000)
+
+        target, mode_name, streak, _ = analyze_trend(
+            matrix_str,
+            dragon_start=int(cfg.get("dragon_start", 5) or 5),
+            dragon_kill=int(cfg.get("dragon_kill", 8) or 8),
+            enable_anti_alt=cfg.get("enable_anti_alt", False),
+            enable_anti_double=cfg.get("enable_anti_double", False),
+        )
+        if target == "挂起":
+            return
+
+        ls = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+        if ls == 0:
+            cb, ml = bb, "平常"
+        elif ls == 1:
+            cb, ml = s1, "第1次错"
+        elif ls < lt:
+            cb, ml = s2, f"第{ls}次错"
+        else:
+            extra = ls - lt + 1
+            cb = int(bg * (bm ** (extra - 1)))
+            ml = f"反击(×{bm}^{extra-1})"
+        if cb > mx:
+            cb = mx
+
+        ctx.log.info("[下注] 策略: %s → %s, 连错%s, 注码%s(%s)", mode_name, target, ls, _fmt(cb), ml)
+
+        chips = [50000000, 5000000, 1000000, 250000, 50000, 20000, 2000, 500]
+        remaining = cb
+        success = False
+        for chip in chips:
+            while remaining >= chip:
+                btn = f"押{target} {chip:,}"
+                ok = False
+                try:
+                    await message.click(btn)
+                    ok = True
+                except ValueError:
+                    break
+                except Exception as e:
+                    ctx.log.warning("[下注] 点击异常: %r", e)
+                    break
+                if ok:
+                    remaining -= chip
+                    success = True
+                    await asyncio.sleep(0.3)
+        if remaining > 0:
+            ctx.log.warning("[下注] ⚠️ 剩余%s无法下注", _fmt(remaining))
+        if success:
+            ctx.kv.set("mybet_last_target", target)
+            ctx.kv.set("mybet_last_amount", cb)
+            ctx.kv.set("mybet_betted", True)
+        else:
+            ctx.log.warning("[下注] ❌ 下注失败")
+
+    async def _handle_matrix(client, message, matrix_str):
+        last = ctx.kv.get("mybet_last_matrix", "")
+        if matrix_str == last:
+            ctx.log.info("[下注] 矩阵未变化，跳过")
+            return
+        ctx.kv.set("mybet_last_matrix", matrix_str)
+        ctx.log.info("[下注] 处理新矩阵: %s...", matrix_str[:20])
+        had_bet = ctx.kv.get("mybet_betted", False)
+        if had_bet:
+            await _settle(matrix_str)
+        await _run_strategy(client, message, matrix_str)
+
+    # ── 消息监听 ──
+    @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing)
     async def monitor_bet(client, message):
         cfg = ctx.config
         if not cfg.get("enable_bet", False):
             return
-        target_chat = int(cfg.get("target_chat", 0) or 0)
-        if not target_chat or message.chat.id != target_chat:
+        tc = int(cfg.get("target_chat", 0) or 0)
+        if not tc or message.chat.id != tc:
             return
-
-        text = message.text or ""
+        if ctx.kv.get("mybet_locked", False):
+            ctx.log.info("[下注] 已锁仓，跳过")
+            return
+        text = (message.text or message.caption or "").strip()
         if not text:
             return
-
-        if ctx.kv.get("mybet_locked", False):
+        if "[近 40 次结果]" not in text:
             return
+        ctx.log.info("[下注] 收到矩阵消息，开始解析")
+        lines = text.split("\n")
+        ms = ""
+        for line in lines:
+            if "[" in line and "]" in line and "近 40 次结果" not in line and "由近及远" not in line:
+                d = re.sub(r"[^\d]", "", line)
+                if len(d) >= 5:
+                    ms += d
+        if not ms:
+            ctx.log.info("[下注] 矩阵解析为空")
+            return
+        await _handle_matrix(client, message, ms)
 
-        # 解析走势矩阵
-        if "[近 40 次结果]" in text:
-            ctx.log.info("[下注] 收到矩阵消息")
-            lines = text.split("\n")
-            matrix_str = ""
-            for line in lines:
-                if "[" in line and "]" in line and "近 40 次结果" not in line and "由近及远" not in line:
-                    digits = re.sub(r"[^\d]", "", line)
-                    if len(digits) >= 5:
-                        matrix_str += digits
-            if matrix_str:
-                ctx.log.info("[下注] 解析到矩阵: %s...", matrix_str[:20])
-                await _handle_matrix(ctx, client, message, matrix_str)
-            else:
-                ctx.log.info("[下注] 矩阵解析为空")
-        else:
-            ctx.log.info("[下注] 收到消息但非矩阵: %s...", text[:30])
-
-    # 定时更新战绩
+    # ── 战绩推送 ──
     async def stats_pusher():
-        wins = int(ctx.kv.get("mybet_wins", 0) or 0)
-        losses = int(ctx.kv.get("mybet_losses", 0) or 0)
-        profit = int(ctx.kv.get("mybet_profit", 0) or 0)
-        streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
-        total = wins + losses
-        rate = f"{wins / total * 100:.1f}%" if total > 0 else "-"
-        records = ctx.kv.get("mybet_records", []) or []
-        rec_text = ""
-        if records:
-            recent = records[-10:]
+        w = int(ctx.kv.get("mybet_wins", 0) or 0)
+        l = int(ctx.kv.get("mybet_losses", 0) or 0)
+        p = int(ctx.kv.get("mybet_profit", 0) or 0)
+        s = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+        t = w + l
+        r = f"{w / t * 100:.1f}%" if t > 0 else "-"
+        recs = ctx.kv.get("mybet_records", []) or []
+        rt = ""
+        if recs:
             lines = []
-            for r in recent:
-                lines.append(f"{r['t']} {r['r']} {r['a']} (累计{r['p']})")
-            rec_text = "\n" + "\n".join(lines)
-        ctx.update_config({"_stats": f"连错{streak} 总盈亏{_fmt(profit)} 赢{wins} 输{losses} 胜率{rate}\n━━━━━━━━━━━━━━\n{rec_text}"})
+            for r2 in recs[-10:]:
+                lines.append(f"{r2['t']} {r2['r']} {r2['a']} (累计{r2['p']})")
+            rt = "\n" + "\n".join(lines)
+        ctx.update_config({"_stats": f"连错{s} 总盈亏{_fmt(p)} 赢{w} 输{l} 胜率{r}\n━━━━━━━━━━━━━━\n{rt}"})
 
     ctx.schedule(stats_pusher, "interval", seconds=30, id="mybet_stats")
-
-
-async def _handle_matrix(ctx, client, message, matrix_str):
-    last = ctx.kv.get("mybet_last_matrix", "")
-    if matrix_str == last:
-        return
-    ctx.kv.set("mybet_last_matrix", matrix_str)
-
-    # 先结算上一局
-    had_bet = ctx.kv.get("mybet_betted", False)
-    if had_bet:
-        await _settle(ctx, matrix_str)
-
-    # 再决定下一把
-    await _run_strategy(ctx, client, message, matrix_str)
-
-
-async def _settle(ctx, matrix_str):
-    """结算上一局"""
-    cfg = ctx.config
-    latest = matrix_str[0]
-    target = ctx.kv.get("mybet_last_target", "")
-    amount = int(ctx.kv.get("mybet_last_amount", 0) or 0)
-
-    if not target or not amount:
-        return
-
-    is_win = (target == "大" and latest == "1") or (target == "小" and latest == "0")
-    fee = int(amount * 0.01)  # 1%手续费
-    net = amount - fee if is_win else -amount
-
-    # 更新统计
-    wins = int(ctx.kv.get("mybet_wins", 0) or 0)
-    losses = int(ctx.kv.get("mybet_losses", 0) or 0)
-    profit = int(ctx.kv.get("mybet_profit", 0) or 0)
-    lose_streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
-
-    if is_win:
-        wins += 1
-        profit += net
-        lose_streak = 0  # 赢了清零连错
-    else:
-        losses += 1
-        profit += net
-        lose_streak += 1  # 输了连错+1
-
-    ctx.kv.set("mybet_wins", wins)
-    ctx.kv.set("mybet_losses", losses)
-    ctx.kv.set("mybet_profit", profit)
-    ctx.kv.set("mybet_lose_streak", lose_streak)
-    ctx.kv.set("mybet_betted", False)
-
-    # 最大连错保护
-    max_streak = int(cfg.get("max_loss_streak", 10) or 10)
-    if not is_win and max_streak > 0 and lose_streak >= max_streak:
-        ctx.kv.set("mybet_locked", True)
-        ctx.log.info("[下注] 🛑 连错达%s局，强制锁仓停赌！", lose_streak)
-
-    # 存储最近记录（保留最近20条）
-    records = ctx.kv.get("mybet_records", []) or []
-    from datetime import datetime as _dt
-    records.append({
-        "t": _dt.now().strftime("%H:%M"),
-        "r": "✅" if is_win else "❌",
-        "a": _fmt(amount),
-        "p": _fmt(abs(profit)),
-    })
-    if len(records) > 20:
-        records = records[-20:]
-    ctx.kv.set("mybet_records", records)
-
-    symbol = "✅" if is_win else "❌"
-    ctx.log.info("[下注] %s 结算: 押%s %s → %s, 连错%s, 累计%s",
-                  symbol, target, _fmt(amount),
-                  "赢" if is_win else "输",
-                  lose_streak, _fmt(profit))
-
-    # 止盈止损
-    take_profit = int(cfg.get("take_profit", 100000) or 0)
-    stop_loss = int(cfg.get("stop_loss", 50000) or 0)
-    if take_profit > 0 and profit >= take_profit:
-        ctx.kv.set("mybet_locked", True)
-        ctx.log.info("[下注] 🏆 达止盈线 %s，停", _fmt(take_profit))
-    elif stop_loss > 0 and profit <= -stop_loss:
-        ctx.kv.set("mybet_locked", True)
-        ctx.log.info("[下注] 🛑 达止损线 %s，停", _fmt(stop_loss))
-
-
-async def _run_strategy(ctx, client, message, matrix_str):
-    """决定下注金额并执行"""
-    cfg = ctx.config
-    base_bet = int(cfg.get("base_bet", 500) or 500)
-    big_bet = int(cfg.get("big_bet", 5000) or 5000)
-
-    # 顺势策略
-    target, mode_name, streak, _ = analyze_trend(
-        matrix_str,
-        dragon_start=int(cfg.get("dragon_start", 5) or 5),
-        dragon_kill=int(cfg.get("dragon_kill", 8) or 8),
-        enable_anti_alt=cfg.get("enable_anti_alt", False),
-        enable_anti_double=cfg.get("enable_anti_double", False),
-    )
-    if target == "挂起":
-        return
-
-    # 判断注码：阶梯式递增 → 反击模式
-    lose_streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
-    loss_threshold = int(cfg.get("loss_streak", 3) or 3)
-    step1_bet = int(cfg.get("step1_bet", 20000) or 20000)
-    step2_bet = int(cfg.get("step2_bet", 50000) or 50000)
-    big_bet = int(cfg.get("big_bet", 5000) or 5000)
-
-    if lose_streak == 0:
-        current_bet = base_bet
-        mode_label = "平常"
-    elif lose_streak == 1:
-        current_bet = step1_bet
-        mode_label = "第1次错"
-    elif lose_streak < loss_threshold:
-        current_bet = step2_bet
-        mode_label = f"第{lose_streak}次错"
-    else:
-        # 反击模式：大注倍投
-        big_bet_mult = float(cfg.get("big_bet_mult", 2) or 2)
-        extra = lose_streak - loss_threshold + 1
-        current_bet = int(big_bet * (big_bet_mult ** (extra - 1)))
-        mode_label = f"反击(×{big_bet_mult}^{extra-1})"
-
-    ctx.log.info("[下注] 策略: %s → %s, 连错%s, 注码%s(%s)",
-                  mode_name, target, lose_streak,
-                  _fmt(current_bet), mode_label)
-
-    # 用筹码组合下注（按钮面额固定）
-    chips = [50000000, 5000000, 1000000, 250000, 50000, 20000, 2000, 500]
-    remaining = current_bet
-    success = False
-    has_click = hasattr(message, "click")
-    for chip in chips:
-        while remaining >= chip:
-            btn_text = f"押{target} {chip:,}"
-            clicked = False
-            if has_click:
-                try:
-                    await message.click(btn_text)
-                    ctx.log.info("[下注] ✅ 点击: %s", btn_text)
-                    clicked = True
-                except ValueError:
-                    ctx.log.warning("[下注] 按钮不存在 %s", btn_text)
-                    break
-                except Exception as e:
-                    ctx.log.warning("[下注] 点击异常 %s: %r", btn_text, e)
-                    break
-            else:
-                # 没有 click 方法，用用户账号发文本
-                try:
-                    apps = list(ctx.user_apps or [])
-                    if apps:
-                        await apps[0].send_message(message.chat.id, btn_text)
-                        ctx.log.info("[下注] ✅ 发送: %s", btn_text)
-                        clicked = True
-                except Exception as e2:
-                    ctx.log.warning("[下注] 发送失败: %r", e2)
-                    break
-            if clicked:
-                remaining -= chip
-                success = True
-                await asyncio.sleep(0.3)
-    if remaining > 0:
-        ctx.log.warning("[下注] ⚠️ 剩余 %s 无法下注", _fmt(remaining))
-
-    if success:
-        ctx.kv.set("mybet_last_target", target)
-        ctx.kv.set("mybet_last_amount", current_bet)
-        ctx.kv.set("mybet_betted", True)
-    else:
-        ctx.log.warning("[下注] ❌ 下注失败")
 
 
 async def teardown(ctx):
