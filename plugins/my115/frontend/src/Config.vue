@@ -41,6 +41,10 @@
         <h3>115 网盘</h3>
         <label class="row"><span>Cookie</span><input v-model="cfg.pan115_cookie" class="inp" type="password" placeholder="可选" /></label>
       </section>
+      <section class="card">
+        <h3>排除类型</h3>
+        <label class="row top"><span>排除类型</span><textarea v-model="cfg.exclude_genres" class="inp" rows="2" placeholder="填 TMDB 类型名，逗号分隔&#10;例如：动画, 动画片, Documentary&#10;匹配到任一类型则跳过不转发"></textarea></label>
+      </section>
       <div class="savebar"><button class="btn primary lg" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
     </div>
 
@@ -88,6 +92,7 @@ const cfg = reactive({
   emby_url: '', emby_api_key: '', skip_emby_check: false,
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
   pan115_cookie: '',
+  exclude_genres: '',
 })
 
 const mediaTypes = computed({
@@ -160,6 +165,7 @@ async function loadLogs() {
 .row { display: flex; align-items: center; gap: 10px; }
 .row.switch { justify-content: flex-start; }
 .row.switch.big { padding: 12px; margin-bottom: 8px; background: var(--bg-elevated, #1a1d27); border: 1px solid var(--border-light, #2a2e3a); border-radius: 10px; }
+.row.top { align-items: flex-start; }
 .row > span:first-child { min-width: 80px; font-size: 13px; color: var(--text-secondary, #b9c0cc); }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .lbl { font-size: 13px; color: var(--text-secondary, #b9c0cc); }

@@ -34,6 +34,19 @@ class TmdbApi:
     async def multi_search(self, title: str, year: str = None) -> List[dict]:
         return await self.search_all(title, year)
 
+    async def get_details(self, tmdb_id: int, media_type: str) -> dict:
+        """获取 TMDB 条目详情（含 genres）。"""
+        key_param, headers = self._auth()
+        endpoint = f"{self.base_url}/{media_type}/{tmdb_id}"
+        params = {"language": self.language, **key_param}
+        try:
+            async with self._client() as client:
+                resp = await client.get(endpoint, params=params, headers=headers)
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return {}
+
     def _auth(self):
         """兼容 TMDB v3 API Key（URL 参数）与 v4 Read Access Token（Bearer 头）。"""
         key = (self.api_key or "").strip()

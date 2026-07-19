@@ -19,7 +19,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.2.2",
+    "version": "1.3.0",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -43,6 +43,7 @@ DEFAULTS = {
     "forward_label": "115 网盘",
     "forward_to_saved": False,
     "pan115_cookie": "",
+    "exclude_genres": "",
 }
 
 # ── 运行态 ──
@@ -268,6 +269,22 @@ async def _process(client, cfg, message, ctx):
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
     else:
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "已跳过查重"})
+
+    # 排除类型检查
+    exclude_raw = str(cfg.get("exclude_genres", "") or "").strip()
+    if exclude_raw and media_type and tmdb_id:
+        exclude_list = [g.strip().lower() for g in exclude_raw.replace("，", ",").split(",") if g.strip()]
+        if exclude_list:
+            try:
+                api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+                detail = await api.get_details(tmdb_id, media_type)
+                genres = [g.get("name", "").lower() for g in (detail.get("genres") or [])]
+                if any(ex in genres for ex in exclude_list):
+                    ctx.log.info("[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
+                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
+                    return
+            except Exception:  # noqa: BLE001
+                pass
 
     label = cfg.get("forward_label", "115 网盘")
     await _send_links(client, cfg, links, label, ctx)
