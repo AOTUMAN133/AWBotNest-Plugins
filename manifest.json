@@ -15,7 +15,7 @@
   },
   "mybet": {
     "name": "自动下注",
-    "version": "0.3.8",
+    "version": "0.4.0",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，按追龙/斩龙/斐波那契等策略自动押大押小。",
     "path": "plugins/mybet/"

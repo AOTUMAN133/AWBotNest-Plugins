@@ -11,7 +11,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.3.8",
+    "version": "0.4.0",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
@@ -29,21 +29,29 @@ __plugin__ = {
             "type": "number", "default": 500, "label": "平常注码",
             "section": "下注", "min": 100, "max": 10000000, "order": 3
         },
-        "max_bet": {
-            "type": "number", "default": 50000000, "label": "单局封顶",
-            "section": "下注", "min": 100, "max": 50000000, "help": "下注封顶，平台上限5000万", "order": 4
+        "step1_bet": {
+            "type": "number", "default": 20000, "label": "第1次错",
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错第1局下这个数", "order": 4
         },
-        "big_bet": {
-            "type": "number", "default": 5000, "label": "大注起始",
-            "section": "下注", "min": 100, "max": 100000000, "help": "连错达到阈值后第一次下这个数", "order": 5
-        },
-        "big_bet_mult": {
-            "type": "number", "default": 2, "label": "大注倍率",
-            "section": "下注", "min": 1, "max": 10, "help": "大注还输就乘这个倍数继续下，直到赢为止", "order": 6
+        "step2_bet": {
+            "type": "number", "default": 50000, "label": "第2次错",
+            "section": "下注", "min": 100, "max": 100000000, "help": "连错第2局下这个数", "order": 5
         },
         "loss_streak": {
-            "type": "number", "default": 5, "label": "连错几次下大注",
-            "section": "下注", "min": 1, "max": 50, "help": "连续输N局后下一把开始下大注", "order": 7
+            "type": "number", "default": 3, "label": "连错几次进反击",
+            "section": "下注", "min": 1, "max": 50, "help": "连错达到N局后进入反击模式(大注倍投)", "order": 6
+        },
+        "big_bet": {
+            "type": "number", "default": 5000, "label": "反击大注起始",
+            "section": "下注", "min": 100, "max": 100000000, "help": "反击模式第一次下这个数", "order": 7
+        },
+        "big_bet_mult": {
+            "type": "number", "default": 2, "label": "反击大注倍率",
+            "section": "下注", "min": 1, "max": 10, "help": "反击模式还输就乘这个倍数继续", "order": 8
+        },
+        "max_bet": {
+            "type": "number", "default": 50000000, "label": "单局封顶",
+            "section": "下注", "min": 100, "max": 50000000, "help": "下注封顶，平台上限5000万", "order": 9
         },
         "take_profit": {
             "type": "number", "default": 100000, "label": "止盈线",
@@ -208,7 +216,6 @@ async def _run_strategy(ctx, client, message, matrix_str):
     cfg = ctx.config
     base_bet = int(cfg.get("base_bet", 500) or 500)
     big_bet = int(cfg.get("big_bet", 5000) or 5000)
-    loss_threshold = int(cfg.get("loss_streak", 5) or 5)
 
     # 顺势策略
     target, mode_name, streak, _ = analyze_trend(
@@ -221,19 +228,32 @@ async def _run_strategy(ctx, client, message, matrix_str):
     if target == "挂起":
         return
 
-    # 判断是否下大注
+    # 判断注码：阶梯式递增 → 反击模式
     lose_streak = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
-    use_big = lose_streak >= loss_threshold
-    if use_big:
+    loss_threshold = int(cfg.get("loss_streak", 3) or 3)
+    step1_bet = int(cfg.get("step1_bet", 20000) or 20000)
+    step2_bet = int(cfg.get("step2_bet", 50000) or 50000)
+    big_bet = int(cfg.get("big_bet", 5000) or 5000)
+
+    if lose_streak == 0:
+        current_bet = base_bet
+        mode_label = "平常"
+    elif lose_streak == 1:
+        current_bet = step1_bet
+        mode_label = "第1次错"
+    elif lose_streak == 2:
+        current_bet = step2_bet
+        mode_label = "第2次错"
+    else:
+        # 反击模式：大注倍投
         big_bet_mult = float(cfg.get("big_bet_mult", 2) or 2)
         extra = lose_streak - loss_threshold + 1
         current_bet = int(big_bet * (big_bet_mult ** (extra - 1)))
-    else:
-        current_bet = base_bet
+        mode_label = f"反击(×{big_bet_mult}^{extra-1})"
 
     ctx.log.info("[下注] 策略: %s → %s, 连错%s, 注码%s(%s)",
                   mode_name, target, lose_streak,
-                  _fmt(current_bet), "大注" if use_big else "平常")
+                  _fmt(current_bet), mode_label)
 
     # 用筹码组合下注（按钮面额固定）
     chips = [50000000, 5000000, 1000000, 250000, 50000, 20000, 2000, 500]
