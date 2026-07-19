@@ -20,13 +20,43 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.4.3",
+    "version": "0.5.0",
     "author": "凹凸曼",
-    "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。完整流程同115频道监控。",
+    "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
     "default_enabled": False,
     "render_mode": "vue",
     "requirements": [],
+    "config_schema": {
+        "source_chat": {
+            "type": "number", "default": 0, "label": "来源频道ID",
+            "section": "历史扫描", "help": "扫描哪个频道的历史消息", "order": 1
+        },
+        "delay": {
+            "type": "number", "default": 2, "label": "每条间隔(秒)",
+            "section": "历史扫描", "min": 1, "max": 30, "order": 2
+        },
+        "batch_size": {
+            "type": "number", "default": 200, "label": "每批拉取条数",
+            "section": "历史扫描", "min": 50, "max": 1000, "order": 3
+        },
+        "_scan_status": {
+            "type": "info", "label": "状态",
+            "section": "历史扫描"
+        },
+        "start_scan": {
+            "type": "action", "label": "▶ 开始扫描",
+            "section": "历史扫描", "action": "start_scan", "danger": True
+        },
+        "stop_scan": {
+            "type": "action", "label": "⏹ 停止扫描",
+            "section": "历史扫描", "action": "stop_scan", "danger": True
+        },
+        "reset_scan": {
+            "type": "action", "label": "🔄 重置进度",
+            "section": "历史扫描", "action": "reset_scan", "danger": True
+        },
+    },
 }
 
 # ── 配置默认值 ──
@@ -491,6 +521,102 @@ async def setup(ctx):
             await _cmd_getmedia(client, message, ctx)
         elif re.match(r"^[/\.]find(?:\s|$)", text, re.IGNORECASE):
             await _cmd_find(client, message, ctx)
+
+
+    @ctx.action("start_scan")
+    async def _start(req=None):
+        cfg = ctx.config
+        src = int(cfg.get("source_chat", 0) or 0)
+        if not src:
+            return {"ok": False, "message": "未设置来源频道"}
+        if not cfg.get("cms_bot_username", "").strip():
+            return {"ok": False, "message": "未设置CMS机器人"}
+        if not cfg.get("tmdb_api_key", "").strip():
+            return {"ok": False, "message": "未设置TMDB API Key"}
+        ctx.kv.set("my115scan_stop", False)
+        ctx.update_config({"_scan_status": "扫描中\u2026"})
+        asyncio.create_task(_do_scan(ctx, src))
+        return {"ok": True, "message": "开始扫描"}
+
+    @ctx.action("stop_scan")
+    async def _stop(req=None):
+        ctx.kv.set("my115scan_stop", True)
+        ctx.update_config({"_scan_status": "已停止"})
+        return {"ok": True, "message": "已停止"}
+
+    @ctx.action("reset_scan")
+    async def _reset(req=None):
+        ctx.kv.set("my115scan_stop", True)
+        ctx.kv.set("my115scan_last_id", 0)
+        ctx.kv.set("my115scan_total", 0)
+        ctx.kv.set("my115scan_forwarded", 0)
+        ctx.update_config({"_scan_status": "已重置"})
+        return {"ok": True, "message": "已重置"}
+
+    async def _scan_status_pusher():
+        total = int(ctx.kv.get("my115scan_total", 0) or 0)
+        fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
+        last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
+        ctx.update_config({"_scan_status": f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"})
+
+    ctx.schedule(_scan_status_pusher, "interval", seconds=15, id="my115scan_status")
+
+
+async def _do_scan(ctx, src):
+    """扫描历史消息"""
+    try:
+        apps = list(ctx.user_apps or [])
+        if not apps:
+            ctx.log.error("[115扫描] 没有可用用户账号")
+            ctx.update_config({"_scan_status": "失败：无可用账号"})
+            return
+        client = apps[0]
+        cfg = _effective_cfg(ctx)
+        delay = int(cfg.get("delay", 2) or 2)
+        batch = int(cfg.get("batch_size", 200) or 200)
+        last_id = int(ctx.kv.get("my115scan_last_id", 0) or 0)
+        total = int(ctx.kv.get("my115scan_total", 0) or 0)
+        forwarded = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
+        ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
+        offset = 0
+        while True:
+            if ctx.kv.get("my115scan_stop", False):
+                break
+            ids = []
+            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
+                ids.append(m.id)
+            if not ids:
+                break
+            if last_id:
+                ids = [mid for mid in ids if mid > last_id]
+                if not ids:
+                    break
+            offset = ids[-1]
+            for mid in reversed(ids):
+                if ctx.kv.get("my115scan_stop", False):
+                    break
+                try:
+                    msg = await client.get_messages(src, mid)
+                    if not msg:
+                        continue
+                    await _process(client, cfg, msg, ctx)
+                    total += 1
+                except Exception as e:
+                    ctx.log.warning("[115扫描] 消息%s异常: %r", mid, e)
+                await asyncio.sleep(delay)
+            ctx.kv.set("my115scan_last_id", ids[-1])
+            ctx.kv.set("my115scan_total", total)
+            ctx.kv.set("my115scan_forwarded", forwarded)
+            if len(ids) < batch:
+                break
+        ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
+        ctx.kv.set("my115scan_total", total)
+        ctx.kv.set("my115scan_forwarded", forwarded)
+        ctx.update_config({"_scan_status": f"完成: 扫描{total}条"})
+        ctx.log.info("[115扫描] ✅ 完成, 扫描%s条", total)
+    except Exception as e:
+        ctx.log.error("[115扫描] 异常: %r", e)
+        ctx.update_config({"_scan_status": f"异常: {e}"})
 
 
 async def teardown(ctx):
