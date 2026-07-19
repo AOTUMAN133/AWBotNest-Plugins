@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 __plugin__ = {
     "name": "历史消息转发",
     "id": "myforward",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息，从最早到最新，按顺序转发到目标频道，带速度控制。",
     "scope": "user",
@@ -131,45 +131,31 @@ async def _do_forward(ctx, src, dst):
 
         ctx.log.info("[转发] 开始: 来源%s → 目标%s, 每批%s条", src, dst, batch)
 
-        # ── 收集阶段：只存消息ID，不存对象（省内存） ──
-        all_ids = []
+        # 循环：拉一批 → 转一批，不存任何数据
         offset = 0
         while True:
             if ctx.kv.get("myforward_stop", False):
                 ctx.log.info("[转发] 收到停止信号")
                 return
-            chunk = []
+            # 拉一批ID
+            ids = []
             async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
-                chunk.append(m.id)
-            if not chunk:
+                ids.append(m.id)
+            if not ids:
                 break
             if last_id:
-                chunk = [mid for mid in chunk if mid > last_id]
-                if not chunk:
+                ids = [mid for mid in ids if mid > last_id]
+                if not ids:
                     break
-            all_ids = chunk + all_ids
-            offset = chunk[-1]
-            if len(all_ids) % 1000 == 0:
-                ctx.log.info("[转发] 已收集%s条ID…", len(all_ids))
-            if len(chunk) < batch:
-                break
-
-        ctx.log.info("[转发] 收集完毕，共%s条，开始转发", len(all_ids))
-
-        # ── 转发阶段：批量转发 ──
-        FWD_BATCH = 100
-        for i in range(0, len(all_ids), FWD_BATCH):
-            if ctx.kv.get("myforward_stop", False):
-                ctx.log.info("[转发] 收到停止信号")
-                break
-            batch_ids = all_ids[i:i + FWD_BATCH]
+            offset = ids[-1]
+            # 直接转发（从新到旧）
             try:
-                await client.forward_messages(dst, src, batch_ids)
-                total += len(batch_ids)
-                last_id = batch_ids[-1]
+                await client.forward_messages(dst, src, ids)
+                total += len(ids)
+                last_id = ids[-1]
             except Exception as e:
-                ctx.log.warning("[转发] 批量转发失败: %r，尝试逐条", e)
-                for mid in batch_ids:
+                ctx.log.warning("[转发] 批量转发失败: %r，逐条重试", e)
+                for mid in ids:
                     if ctx.kv.get("myforward_stop", False):
                         break
                     try:
@@ -179,12 +165,15 @@ async def _do_forward(ctx, src, dst):
                             total += 1
                             last_id = mid
                     except Exception as e2:
-                        ctx.log.warning("[转发] 单条%s转发失败: %r", mid, e2)
+                        ctx.log.warning("[转发] 单条%s失败: %r", mid, e2)
                         last_id = mid
-            if total % 200 == 0:
+            # 每500条存一次进度
+            if total % 500 == 0:
                 ctx.kv.set("myforward_last_id", last_id)
                 ctx.kv.set("myforward_total", total)
-                ctx.update_config({"_status": f"转发中… {total}/{len(all_ids)}条"})
+                ctx.update_config({"_status": f"转发中… {total}条"})
+            if len(ids) < batch:
+                break
 
         ctx.kv.set("myforward_last_id", last_id)
         ctx.kv.set("myforward_total", total)

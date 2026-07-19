@@ -22,7 +22,7 @@
   },
   "myforward": {
     "name": "历史消息转发",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "author": "凹凸曼",
     "description": "将指定频道的历史消息从最早到最新转发到目标频道，带速度控制。",
     "path": "plugins/myforward/"
