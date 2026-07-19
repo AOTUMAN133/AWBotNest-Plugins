@@ -11,6 +11,7 @@
 
 import asyncio
 import re
+import time
 from collections import deque
 from datetime import datetime
 
@@ -19,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
@@ -41,6 +42,7 @@ DEFAULTS = {
     "skip_emby_check": False,
     "cms_bot_username": "",
     "forward_label": "115 网盘",
+    "dedup_hours": 24,
     "forward_to_saved": False,
     "pan115_cookie": "",
     "exclude_genres": "",
@@ -334,6 +336,17 @@ async def _process(client, cfg, message, ctx):
                 pass
 
     label = cfg.get("forward_label", "115 网盘")
+    # 转发去重：同一TMDB ID在冷却期内不重复转发
+    dedup_hours = int(cfg.get("dedup_hours", 24) or 24)
+    if tmdb_id and dedup_hours > 0:
+        dedup_key = f"my115_dedup_{tmdb_id}"
+        last_ts = ctx.kv.get(dedup_key, 0) or 0
+        now = time.time()
+        if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
+            ctx.log.info("[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
+            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
+            return
+        ctx.kv.set(dedup_key, now)
     await _send_links(client, cfg, links, label, ctx)
     ctx.log.info("[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
