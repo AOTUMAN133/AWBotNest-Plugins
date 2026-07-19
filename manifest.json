@@ -8,7 +8,7 @@
   },
   "my115": {
     "name": "115频道监控",
-    "version": "1.1.9",
+    "version": "1.2.0",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "path": "plugins/my115/"

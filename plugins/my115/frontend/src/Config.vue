@@ -188,4 +188,9 @@ async function loadLogs() {
 code { color: var(--accent, #6ea8fe); font-family: monospace; }
 .tag-转发 { color: #4ade80; }
 .tag-跳过 { color: #ffa500; }
+.tag-Emby已有 { color: #4ade80; }
+.tag-Emby未命中 { color: #6ea8fe; }
+.tag-Emby查询失败 { color: #ff6b6b; }
+.tag-Emby未配置跳过查重 { color: #7a8291; }
+.tag-已跳过查重 { color: #ffa500; }
 </style>
