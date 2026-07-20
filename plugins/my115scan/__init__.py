@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -133,7 +133,15 @@ _GETMEDIA_TTL = 30
 
 
 def _effective_cfg(ctx) -> dict:
-    return {**DEFAULTS, **dict(ctx.config or {})}
+    cfg = {**DEFAULTS, **dict(ctx.config or {})}
+    # 统一 media_types 为列表
+    mt = cfg.get("media_types", ["movie", "tv"])
+    if isinstance(mt, str):
+        mt = [x.strip() for x in mt.split(",") if x.strip()]
+    if not mt:
+        mt = ["movie", "tv"]
+    cfg["media_types"] = mt
+    return cfg
 
 
 def _fmt_getmedia(result, title, year, limit=8) -> str:

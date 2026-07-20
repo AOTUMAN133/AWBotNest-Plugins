@@ -103,7 +103,11 @@ const cfg = reactive({
 })
 
 const mediaTypes = computed({
-  get: () => Array.isArray(cfg.media_types) ? cfg.media_types : [],
+  get: () => {
+    if (Array.isArray(cfg.media_types)) return cfg.media_types
+    if (typeof cfg.media_types === 'string' && cfg.media_types) return cfg.media_types.split(',').filter(Boolean)
+    return ['movie', 'tv']
+  },
   set: (v) => { cfg.media_types = v },
 })
 

@@ -92,7 +92,11 @@ const cfg = reactive({
 });
 
 computed({
-  get: () => Array.isArray(cfg.media_types) ? cfg.media_types : [],
+  get: () => {
+    if (Array.isArray(cfg.media_types)) return cfg.media_types
+    if (typeof cfg.media_types === 'string' && cfg.media_types) return cfg.media_types.split(',').filter(Boolean)
+    return ['movie', 'tv']
+  },
   set: (v) => { cfg.media_types = v; },
 });
 
@@ -493,6 +497,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-5c8c1165"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d7619ec0"]]);
 
 export { Config as default };
