@@ -29,8 +29,8 @@
         <div class="fld">
           <span class="lbl">转存类型</span>
           <div class="chips">
-            <label class="chip"><input type="checkbox" :checked="mediaTypes.includes('movie')" @change="toggleMedia('movie')" /> 电影</label>
-            <label class="chip"><input type="checkbox" :checked="mediaTypes.includes('tv')" @change="toggleMedia('tv')" /> 电视剧</label>
+            <label class="chip"><input type="checkbox" :checked="mediaTypesArr.includes('movie')" @change="toggleMedia('movie')" /> 电影</label>
+            <label class="chip"><input type="checkbox" :checked="mediaTypesArr.includes('tv')" @change="toggleMedia('tv')" /> 电视剧</label>
           </div>
         </div>
         <label class="row switch"><input v-model="cfg.only_complete_series" type="checkbox" /><span>剧集仅转存完结</span></label>
@@ -113,19 +113,22 @@ const cfg = reactive({
   batch_size: 200,
 })
 
-const mediaTypes = computed({
-  get: () => {
-    if (Array.isArray(cfg.media_types)) return cfg.media_types
-    if (typeof cfg.media_types === 'string' && cfg.media_types) return cfg.media_types.split(',').filter(Boolean)
-    return ['movie', 'tv']
-  },
-  set: (v) => { cfg.media_types = v },
-})
+const mediaTypesArr = ref([])
+// 从cfg初始化media_types
+function initMediaTypes() {
+  const v = cfg.media_types
+  if (Array.isArray(v)) mediaTypesArr.value = [...v]
+  else if (typeof v === 'string' && v) mediaTypesArr.value = v.split(',').filter(Boolean)
+  else mediaTypesArr.value = ['movie', 'tv']
+}
+initMediaTypes()
 
 function toggleMedia(type) {
-  const arr = mediaTypes.value
+  const arr = mediaTypesArr.value
   const i = arr.indexOf(type)
   if (i >= 0) arr.splice(i, 1); else arr.push(type)
+  // 即时同步到cfg以便保存
+  cfg.media_types = arr.join(',')
 }
 
 onMounted(async () => {

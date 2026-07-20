@@ -99,19 +99,22 @@ const cfg = reactive({
   batch_size: 200,
 });
 
-const mediaTypes = computed({
-  get: () => {
-    if (Array.isArray(cfg.media_types)) return cfg.media_types
-    if (typeof cfg.media_types === 'string' && cfg.media_types) return cfg.media_types.split(',').filter(Boolean)
-    return ['movie', 'tv']
-  },
-  set: (v) => { cfg.media_types = v; },
-});
+const mediaTypesArr = ref([]);
+// 从cfg初始化media_types
+function initMediaTypes() {
+  const v = cfg.media_types;
+  if (Array.isArray(v)) mediaTypesArr.value = [...v];
+  else if (typeof v === 'string' && v) mediaTypesArr.value = v.split(',').filter(Boolean);
+  else mediaTypesArr.value = ['movie', 'tv'];
+}
+initMediaTypes();
 
 function toggleMedia(type) {
-  const arr = mediaTypes.value;
+  const arr = mediaTypesArr.value;
   const i = arr.indexOf(type);
   if (i >= 0) arr.splice(i, 1); else arr.push(type);
+  // 即时同步到cfg以便保存
+  cfg.media_types = arr.join(',');
 }
 
 onMounted(async () => {
@@ -347,7 +350,7 @@ return (_ctx, _cache) => {
             _createElementVNode("label", _hoisted_18, [
               _createElementVNode("input", {
                 type: "checkbox",
-                checked: mediaTypes.value.includes('movie'),
+                checked: mediaTypesArr.value.includes('movie'),
                 onChange: _cache[11] || (_cache[11] = $event => (toggleMedia('movie')))
               }, null, 40, _hoisted_19),
               _cache[29] || (_cache[29] = _createTextVNode(" 电影", -1))
@@ -355,7 +358,7 @@ return (_ctx, _cache) => {
             _createElementVNode("label", _hoisted_20, [
               _createElementVNode("input", {
                 type: "checkbox",
-                checked: mediaTypes.value.includes('tv'),
+                checked: mediaTypesArr.value.includes('tv'),
                 onChange: _cache[12] || (_cache[12] = $event => (toggleMedia('tv')))
               }, null, 40, _hoisted_21),
               _cache[30] || (_cache[30] = _createTextVNode(" 电视剧", -1))
@@ -544,6 +547,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-9b897fb2"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-31aacb6c"]]);
 
 export { Config as default };
