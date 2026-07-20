@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.8.5",
+    "version": "0.8.6",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -391,24 +391,24 @@ async def _process(client, cfg, message, ctx):
                 is_animation = 16 in genre_ids
 
                 skip = False
+                matched = []
                 for rule in exclude_list:
                     if rule.startswith("animation:") and is_animation:
                         country = rule.split(":", 1)[1]
                         origin = detail.get("origin_country") or []
                         if country == "cn" and "CN" in origin:
-                            skip = True
+                            skip = True; matched.append(rule)
                         elif country == "jp" and "JP" in origin:
-                            # 日语原声且没有中文配音 → 跳过
                             langs = [l.get("iso_639_1","") for l in (detail.get("spoken_languages") or [])]
                             if "zh" not in langs:
-                                skip = True
+                                skip = True; matched.append(rule)
                         elif country == "us" and "US" in origin:
-                            skip = True
+                            skip = True; matched.append(rule)
                         elif country == "other" and origin:
                             if not any(c in origin for c in ("CN", "JP", "US")):
-                                skip = True
+                                skip = True; matched.append(rule)
                     elif rule in genre_names:
-                        skip = True
+                        skip = True; matched.append(rule)
                     if skip:
                         break
 
