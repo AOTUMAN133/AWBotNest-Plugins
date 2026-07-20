@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.17",
+    "version": "0.10.18",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -327,12 +327,20 @@ async def _process(client, cfg, message, ctx):
             tv_detail = await api.get_details(tmdb_id, "tv")
             if tv_detail and tv_detail.get("id"):
                 media_type = "tv"
+                ctx.log.info("[115扫描] TMDB确认类型: tv, tmdb_id=%d", tmdb_id)
             else:
                 movie_detail = await api.get_details(tmdb_id, "movie")
                 if movie_detail and movie_detail.get("id"):
                     media_type = "movie"
-        except Exception:
-            pass
+                    ctx.log.info("[115扫描] TMDB确认类型: movie, tmdb_id=%d", tmdb_id)
+        except Exception as e:
+            ctx.log.warning("[115扫描] TMDB类型查询失败: %r", e)
+    # 还确定不了就按文件名关键词猜
+    if media_type is None and tmdb_id:
+        lower = text.lower()
+        if re.search(r"\bs\d+\s*e\d+", lower) or re.search(r"第\s*\d+\s*[集話话]", lower):
+            media_type = "tv"
+            ctx.log.info("[115扫描] 文件名猜测类型: tv, tmdb_id=%d", tmdb_id)
 
     if not tmdb_id:
         ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
