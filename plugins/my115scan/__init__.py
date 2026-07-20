@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.7.7",
+    "version": "0.7.8",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -136,6 +136,7 @@ def _effective_cfg(ctx) -> dict:
     cfg = {**DEFAULTS, **dict(ctx.config or {})}
     # 统一 media_types 为列表
     mt = cfg.get("media_types", ["movie", "tv"])
+    ctx.log.info("[115扫描] media_types原始值=%s type=%s", str(mt), type(mt).__name__)
     if isinstance(mt, str):
         mt = [x.strip() for x in mt.split(",") if x.strip()]
     if not mt:
@@ -327,7 +328,7 @@ async def _process(client, cfg, message, ctx):
     if not allowed:
         allowed = ["movie", "tv"]
     if media_type and media_type not in allowed:
-        ctx.log.info("[115扫描] 跳过类型 %s: %d", media_type, tmdb_id)
+        ctx.log.info("[115扫描] 跳过类型 %s: %d, allowed=%s", media_type, tmdb_id, str(allowed))
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"跳过(类型{media_type})"})
         return
 
