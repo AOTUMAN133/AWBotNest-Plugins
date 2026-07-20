@@ -22,7 +22,7 @@
   },
   "my115scan": {
     "name": "115历史扫描",
-    "version": "0.10.18",
+    "version": "0.10.19",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "path": "plugins/my115scan/"

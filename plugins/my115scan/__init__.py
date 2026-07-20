@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.18",
+    "version": "0.10.19",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -877,7 +877,7 @@ async def _do_scan(ctx, src):
         ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
 
         processed = 0
-        offset = 0
+        offset = last_id if last_id > 0 else 0
         from pyrogram.raw.functions.messages import GetHistory
         while True:
             ctx.log.info("[115扫描] DEBUG offset=%s", offset)
@@ -890,12 +890,9 @@ async def _do_scan(ctx, src):
             ))
             msgs = [m for m in raw.messages if hasattr(m, 'id')]
             if not msgs:
+                ctx.log.info("[115扫描] 结束: API返回空消息")
                 break
             ids = [m.id for m in msgs]
-            if last_id:
-                ids = [mid for mid in ids if mid > last_id]
-                if not ids:
-                    break
             ctx.log.info("[115扫描] 拉取: offset_id=%s, %d条, 范围=%s-%s, 新offset=%s",
                          offset, len(ids), ids[0], ids[-1], ids[-1])
             offset = ids[-1]
