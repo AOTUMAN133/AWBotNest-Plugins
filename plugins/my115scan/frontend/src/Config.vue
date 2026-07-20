@@ -214,7 +214,7 @@ async function resetScan() {
 }
 let statusTimer
 onMounted(() => {
-  statusTimer = setInterval(async () => {
+  async function checkScanStatus() {
     try {
       const r = await props.host.callApi('/scan_status')
       if (r) {
@@ -222,7 +222,9 @@ onMounted(() => {
         scanning.value = r.running || false
       }
     } catch {}
-  }, 5000)
+  }
+  checkScanStatus()
+  statusTimer = setInterval(checkScanStatus, 5000)
 })
 
 async function loadLogs() {
