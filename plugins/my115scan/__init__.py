@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.2",
+    "version": "0.9.3",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -658,36 +658,52 @@ async def setup(ctx):
 
 
 async def _fetch_emby_ids(emby_url, emby_key, _log=None) -> set:
-    """一次拉取 Emby 全部资源的 TMDB ID，返回集合"""
+    """分批拉取 Emby 全部资源的 TMDB ID，返回集合"""
     import httpx
-    url = f"{emby_url.rstrip('/')}/emby/Items"
-    params = {"Recursive": "true", "Fields": "ProviderIds", "api_key": emby_key}
+    base = f"{emby_url.rstrip('/')}/emby/Items"
+    ids = set()
+    page = 0
+    page_size = 500
     if _log:
-        _log.info("[115扫描] 正在拉取 Emby 全量清单: %s", url)
+        _log.info("[115扫描] 正在分批拉取 Emby 全量清单...")
     try:
-        async with httpx.AsyncClient(timeout=120, verify=False) as cli:
-            r = await cli.get(url, params=params)
-            r.raise_for_status()
-            data = r.json()
-        ids = set()
-        for item in data.get("Items") or []:
-            pid = (item.get("ProviderIds") or {})
-            tid = pid.get("Tmdb")
-            if tid:
-                ids.add(int(tid))
+        async with httpx.AsyncClient(timeout=30, verify=False) as cli:
+            while True:
+                params = {
+                    "Recursive": "true", "Fields": "ProviderIds",
+                    "api_key": emby_key,
+                    "StartIndex": page * page_size,
+                    "Limit": page_size,
+                }
+                r = await cli.get(base, params=params)
+                r.raise_for_status()
+                data = r.json()
+                items = data.get("Items") or []
+                total = data.get("TotalRecordCount", 0)
+                for item in items:
+                    pid = (item.get("ProviderIds") or {})
+                    tid = pid.get("Tmdb")
+                    if tid:
+                        ids.add(int(tid))
+                page += 1
+                if _log and page % 5 == 0:
+                    _log.info("[115扫描] Emby 拉取进度: %d/%d, 已收集 %d 个 TMDB ID",
+                              min(page * page_size, total), total, len(ids))
+                if page * page_size >= total:
+                    break
         if _log:
-            _log.info("[115扫描] Emby 全量拉取完成，共 %d 个 TMDB ID", len(ids))
+            _log.info("[115扫描] Emby 全量拉取完成，共 %d 个 TMDB ID（%d页）", len(ids), page)
         return ids
     except httpx.HTTPStatusError as e:
         if _log:
-            _log.warning("[115扫描] Emby 全量拉取 HTTP %s: %s", e.response.status_code, e.response.text[:200])
+            _log.warning("[115扫描] Emby 拉取 HTTP %s: %s", e.response.status_code, e.response.text[:200])
     except httpx.TimeoutException:
         if _log:
-            _log.warning("[115扫描] Emby 全量拉取超时(120s)，请检查 Emby 地址和网络")
+            _log.warning("[115扫描] Emby 拉取超时(30s/页)，请检查: ①Emby地址是否正确 ②容器间网络是否互通 ③Emby是否在运行")
     except Exception as e:
         if _log:
-            _log.warning("[115扫描] Emby 全量拉取失败: %r", e)
-    return set()
+            _log.warning("[115扫描] Emby 拉取失败: %r", e)
+    return ids
 
 
 async def _do_scan(ctx, src):
