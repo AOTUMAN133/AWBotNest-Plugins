@@ -11,7 +11,7 @@ from html import escape
 __plugin__ = {
     "name": "Cosplay",
     "id": "mycosplay",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "从 cosplaytele.com 获取随机cosplay图片。用法: .cos [数量]",
     "scope": "user",
@@ -81,10 +81,10 @@ async def _download_image(url: str) -> str | None:
 
 
 async def setup(ctx):
-    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=7)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-18)
     async def _cos_handler(client, message):
         text = (message.text or "").strip()
-        if not text.startswith(".cos") and not text.startswith(".cosplay"):
+        if not text.startswith("/cos") and not text.startswith("/cosplay"):
             return
 
         parts = text.split()
@@ -98,22 +98,22 @@ async def setup(ctx):
             # 获取随机套图
             photo_set = await _get_random_photo_set()
             if not photo_set:
-                await message.edit("❌ 未找到套图")
+                await message.reply_text("❌ 未找到套图")
                 return
 
-            await message.edit(f"📸 套图: {photo_set['title']}，正在获取图片列表...")
+            await message.reply_text(f"📸 套图: {photo_set['title']}，正在获取图片列表...")
 
             # 获取图片列表
             images = await _get_gallery_images(photo_set["url"])
             if not images:
-                await message.edit("❌ 未找到图片")
+                await message.reply_text("❌ 未找到图片")
                 return
 
             # 随机选择
             import random
             selected = random.sample(images, min(count, len(images)))
 
-            await message.edit(f"⏳ 正在下载 {len(selected)} 张图片...")
+            await message.reply_text(f"⏳ 正在下载 {len(selected)} 张图片...")
 
             # 下载图片
             files = []
@@ -125,23 +125,30 @@ async def setup(ctx):
                     break
 
             if not files:
-                await message.edit("❌ 下载失败")
+                await message.reply_text("❌ 下载失败")
                 return
 
-            await message.edit("📤 正在发送...")
+            await message.reply_text("📤 正在发送...")
 
             # 发送图片
             caption = f"套图链接: {photo_set['url']}"
-            if len(files) == 1:
-                await client.send_photo(message.chat.id, files[0], caption=caption)
-            else:
-                media = [{"type": "photo", "file": f, "caption": caption if i == 0 else ""} for i, f in enumerate(files)]
-                try:
-                    await client.send_media_group(message.chat.id, media)
-                except Exception:
-                    for f in files:
-                        await client.send_photo(message.chat.id, f, caption=caption if len(files) == 1 else "")
-                        await asyncio.sleep(0.5)
+            try:
+                ctx.log.info("[cosplay] 发送 %d 张图片", len(files))
+                for i, fp in enumerate(files):
+                    try:
+                        await message.reply_photo(
+                            fp,
+                            quote=False,
+                            caption=caption if len(files) == 1 or i == 0 else "",
+                        )
+                        ctx.log.info("[cosplay] 已发送第 %d 张", i + 1)
+                    except Exception as e:
+                        ctx.log.warning("[cosplay] 第 %d 张发送失败: %r", i + 1, e)
+                    await asyncio.sleep(1)
+            except Exception as e:
+                ctx.log.error("[cosplay] 发送图片失败: %r", e)
+                await message.reply_text(f"❌ 发送失败: {e}")
+                return
 
             # 清理临时文件
             for f in files:
@@ -156,7 +163,7 @@ async def setup(ctx):
                 pass
 
         except Exception as e:
-            await message.edit(f"❌ 错误: {e}")
+            await message.reply_text(f"❌ 错误: {e}")
 
 
 async def teardown(ctx):
