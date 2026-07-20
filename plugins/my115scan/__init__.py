@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.10",
+    "version": "0.9.12",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -111,7 +111,7 @@ DEFAULTS = {
     "tmdb_language": "zh-CN",
     "emby_url": "",
     "emby_api_key": "",
-    "skip_emby_check": False,
+    "skip_emby_check": False, "emby_check_mode": "cache",
     "cms_bot_username": "",
     "forward_label": "115 网盘",
     "dedup_hours": 24,
@@ -747,9 +747,9 @@ async def _do_scan(ctx, src):
             return
         client = apps[0]
         cfg = _effective_cfg(ctx)
-        ctx.log.info("[115扫描] 正在拉取 Emby 全量资源清单...")
-        # 预拉取 Emby 全量 TMDB ID 缓存
-        if not cfg.get("skip_emby_check", False) and cfg.get("emby_url") and cfg.get("emby_api_key"):
+        # 预拉取 Emby 全量 TMDB ID 缓存（仅缓存模式）
+        if (not cfg.get("skip_emby_check", False) and cfg.get("emby_check_mode") == "cache"
+                and cfg.get("emby_url") and cfg.get("emby_api_key")):
             emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log,
                                         lambda s: ctx.update_config({"_scan_status": s}))
             if emby_set:
