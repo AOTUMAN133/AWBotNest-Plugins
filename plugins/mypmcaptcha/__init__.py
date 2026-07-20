@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -422,6 +422,11 @@ async def setup(ctx):
         # 检查是否是命令消息
         text = (message.text or "").strip()
         if text.startswith("/") or text.startswith("."):
+            return
+
+        # 对方也在用同类插件，互发验证消息时跳过，避免死循环
+        if "人机验证" in text or "验证题" in text or "🔒" in text:
+            ctx.log.info("[私聊拦截] 对方也在用验证插件，跳过互发验证消息: %d", user_id)
             return
 
         # 白名单直接放行
