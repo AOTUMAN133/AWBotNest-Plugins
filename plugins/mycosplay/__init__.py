@@ -11,7 +11,7 @@ from html import escape
 __plugin__ = {
     "name": "Cosplay",
     "id": "mycosplay",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "从 cosplaytele.com 获取随机cosplay图片。用法: .cos [数量]",
     "scope": "user",
@@ -35,14 +35,15 @@ async def _fetch_html(url: str) -> str:
 async def _get_random_photo_set() -> dict | None:
     """获取随机套图"""
     html = await _fetch_html(BASE_URL)
-    # 提取套图链接: /cosplay/xxx/
-    links = re.findall(r'href="(/cosplay/[^"]+/)"', html)
+    # 提取套图链接: https://cosplaytele.com/NAME-N/
+    links = re.findall(r'href="(https://cosplaytele\.com/[^"/]+/?)"', html)
+    links = [l for l in links if not any(x in l for x in ("wp-", "feed", "xmlrpc", "page", "category", ".png", ".css", ".js", "explore", "top-search", "24-hours", "best-cosplayer"))]
     if not links:
         return None
     import random
-    url = random.choice(links)
-    title = url.split("/")[-2].replace("-", " ") if url.count("/") >= 2 else "cosplay"
-    return {"url": BASE_URL.rstrip("/") + url, "title": title}
+    url = random.choice(links).rstrip("/") + "/"
+    title = url.rstrip("/").split("/")[-1].replace("-", " ")
+    return {"url": url, "title": title}
 
 
 async def _get_gallery_images(photo_set_url: str) -> list[str]:
