@@ -51,23 +51,30 @@ const _hoisted_35 = {
 };
 const _hoisted_36 = ["disabled"];
 const _hoisted_37 = ["disabled"];
-const _hoisted_38 = { class: "savebar" };
-const _hoisted_39 = ["disabled"];
-const _hoisted_40 = { class: "pane" };
-const _hoisted_41 = { class: "card" };
-const _hoisted_42 = { class: "kv" };
-const _hoisted_43 = { class: "kv" };
-const _hoisted_44 = { class: "kv" };
-const _hoisted_45 = ["disabled"];
-const _hoisted_46 = { class: "pane" };
-const _hoisted_47 = { class: "toolbar" };
-const _hoisted_48 = { class: "muted" };
-const _hoisted_49 = {
+const _hoisted_38 = { class: "card" };
+const _hoisted_39 = { class: "row" };
+const _hoisted_40 = {
+  class: "row",
+  style: {"gap":"8px"}
+};
+const _hoisted_41 = ["disabled"];
+const _hoisted_42 = { class: "savebar" };
+const _hoisted_43 = ["disabled"];
+const _hoisted_44 = { class: "pane" };
+const _hoisted_45 = { class: "card" };
+const _hoisted_46 = { class: "kv" };
+const _hoisted_47 = { class: "kv" };
+const _hoisted_48 = { class: "kv" };
+const _hoisted_49 = ["disabled"];
+const _hoisted_50 = { class: "pane" };
+const _hoisted_51 = { class: "toolbar" };
+const _hoisted_52 = { class: "muted" };
+const _hoisted_53 = {
   key: 0,
   class: "tbl"
 };
-const _hoisted_50 = { class: "muted" };
-const _hoisted_51 = {
+const _hoisted_54 = { class: "muted" };
+const _hoisted_55 = {
   key: 1,
   class: "empty muted"
 };
@@ -200,6 +207,25 @@ async function testServices() {
 
 const scanning = ref(false);
 const scanStatus = ref('就绪');
+const buildingCache = ref(false);
+const cacheStatus = ref('就绪');
+
+async function buildCache() {
+  buildingCache.value = true; cacheStatus.value = '建立中…';
+  try {
+    const r = await props.host.callApi('/build_cache', { method: 'POST' });
+    cacheStatus.value = r.status || '完成';
+  } catch (e) { cacheStatus.value = e.message || '建立失败'; }
+  finally { buildingCache.value = false; }
+}
+
+async function checkCacheStatus() {
+  try {
+    const r = await props.host.callApi('/cache_status');
+    if (r) cacheStatus.value = r.status || '就绪';
+  } catch {}
+}
+checkCacheStatus();
 
 async function startScan() {
   scanning.value = true; scanStatus.value = '扫描中…';
@@ -473,32 +499,46 @@ return (_ctx, _cache) => {
           }, "🔄 重置")
         ])
       ]),
-      _createElementVNode("div", _hoisted_38, [
+      _createElementVNode("section", _hoisted_38, [
+        _cache[47] || (_cache[47] = _createElementVNode("h3", null, "📦 Emby 缓存", -1)),
+        _createElementVNode("div", _hoisted_39, [
+          _cache[46] || (_cache[46] = _createElementVNode("span", null, "缓存状态", -1)),
+          _createElementVNode("b", null, _toDisplayString(cacheStatus.value), 1)
+        ]),
+        _createElementVNode("div", _hoisted_40, [
+          _createElementVNode("button", {
+            class: "btn",
+            disabled: buildingCache.value,
+            onClick: buildCache
+          }, "📥 建立缓存", 8, _hoisted_41)
+        ])
+      ]),
+      _createElementVNode("div", _hoisted_42, [
         _createElementVNode("button", {
           class: "btn primary lg",
           disabled: saving.value,
           onClick: save
-        }, _toDisplayString(saving.value ? '保存中…' : '保存配置'), 9, _hoisted_39)
+        }, _toDisplayString(saving.value ? '保存中…' : '保存配置'), 9, _hoisted_43)
       ])
     ], 512), [
       [_vShow, tab.value === 'settings']
     ]),
-    _withDirectives(_createElementVNode("div", _hoisted_40, [
-      _createElementVNode("div", _hoisted_41, [
-        _createElementVNode("div", _hoisted_42, [
-          _cache[46] || (_cache[46] = _createElementVNode("span", null, "TMDB", -1)),
+    _withDirectives(_createElementVNode("div", _hoisted_44, [
+      _createElementVNode("div", _hoisted_45, [
+        _createElementVNode("div", _hoisted_46, [
+          _cache[48] || (_cache[48] = _createElementVNode("span", null, "TMDB", -1)),
           _createElementVNode("b", {
             class: _normalizeClass(s.tmdb_ok ? 'ok' : 'err')
           }, _toDisplayString(s.tmdb_status || '未检测'), 3)
         ]),
-        _createElementVNode("div", _hoisted_43, [
-          _cache[47] || (_cache[47] = _createElementVNode("span", null, "Emby", -1)),
+        _createElementVNode("div", _hoisted_47, [
+          _cache[49] || (_cache[49] = _createElementVNode("span", null, "Emby", -1)),
           _createElementVNode("b", {
             class: _normalizeClass(s.emby_ok ? 'ok' : 'err')
           }, _toDisplayString(s.emby_status || '未检测'), 3)
         ]),
-        _createElementVNode("div", _hoisted_44, [
-          _cache[48] || (_cache[48] = _createElementVNode("span", null, "Emby 库", -1)),
+        _createElementVNode("div", _hoisted_48, [
+          _cache[50] || (_cache[50] = _createElementVNode("span", null, "Emby 库", -1)),
           _createElementVNode("b", null, _toDisplayString(s.emby_items ?? '-') + " 项", 1)
         ])
       ]),
@@ -506,7 +546,7 @@ return (_ctx, _cache) => {
         class: "btn",
         disabled: testing.value,
         onClick: testServices
-      }, _toDisplayString(testing.value ? '测试中…' : '测试连接'), 9, _hoisted_45),
+      }, _toDisplayString(testing.value ? '测试中…' : '测试连接'), 9, _hoisted_49),
       (testMsg.value)
         ? (_openBlock(), _createElementBlock("p", {
             key: 0,
@@ -516,17 +556,17 @@ return (_ctx, _cache) => {
     ], 512), [
       [_vShow, tab.value === 'status']
     ]),
-    _withDirectives(_createElementVNode("div", _hoisted_46, [
-      _createElementVNode("div", _hoisted_47, [
+    _withDirectives(_createElementVNode("div", _hoisted_50, [
+      _createElementVNode("div", _hoisted_51, [
         _createElementVNode("button", {
           class: "btn",
           onClick: loadLogs
         }, "刷新"),
-        _createElementVNode("span", _hoisted_48, _toDisplayString(logs.value.length) + " 条", 1)
+        _createElementVNode("span", _hoisted_52, _toDisplayString(logs.value.length) + " 条", 1)
       ]),
       (logs.value.length)
-        ? (_openBlock(), _createElementBlock("table", _hoisted_49, [
-            _cache[49] || (_cache[49] = _createElementVNode("thead", null, [
+        ? (_openBlock(), _createElementBlock("table", _hoisted_53, [
+            _cache[51] || (_cache[51] = _createElementVNode("thead", null, [
               _createElementVNode("tr", null, [
                 _createElementVNode("th", null, "时间"),
                 _createElementVNode("th", null, "标题"),
@@ -537,7 +577,7 @@ return (_ctx, _cache) => {
             _createElementVNode("tbody", null, [
               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(logs.value, (l, i) => {
                 return (_openBlock(), _createElementBlock("tr", { key: i }, [
-                  _createElementVNode("td", _hoisted_50, _toDisplayString(l.time), 1),
+                  _createElementVNode("td", _hoisted_54, _toDisplayString(l.time), 1),
                   _createElementVNode("td", null, _toDisplayString(l.title), 1),
                   _createElementVNode("td", null, [
                     _createElementVNode("code", null, _toDisplayString(l.tmdb_id || '-'), 1)
@@ -551,7 +591,7 @@ return (_ctx, _cache) => {
               }), 128))
             ])
           ]))
-        : (_openBlock(), _createElementBlock("div", _hoisted_51, "暂无处理记录"))
+        : (_openBlock(), _createElementBlock("div", _hoisted_55, "暂无处理记录"))
     ], 512), [
       [_vShow, tab.value === 'logs']
     ])
@@ -560,6 +600,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d7df6148"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-c9b7bccf"]]);
 
 export { Config as default };

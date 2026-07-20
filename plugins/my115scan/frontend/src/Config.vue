@@ -66,6 +66,13 @@
           <button class="btn" @click="resetScan">🔄 重置</button>
         </div>
       </section>
+      <section class="card">
+        <h3>📦 Emby 缓存</h3>
+        <div class="row"><span>缓存状态</span><b>{{ cacheStatus }}</b></div>
+        <div class="row" style="gap: 8px;">
+          <button class="btn" :disabled="buildingCache" @click="buildCache">📥 建立缓存</button>
+        </div>
+      </section>
       <div class="savebar"><button class="btn primary lg" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
     </div>
 
@@ -218,6 +225,25 @@ async function testServices() {
 
 const scanning = ref(false)
 const scanStatus = ref('就绪')
+const buildingCache = ref(false)
+const cacheStatus = ref('就绪')
+
+async function buildCache() {
+  buildingCache.value = true; cacheStatus.value = '建立中…'
+  try {
+    const r = await props.host.callApi('/build_cache', { method: 'POST' })
+    cacheStatus.value = r.status || '完成'
+  } catch (e) { cacheStatus.value = e.message || '建立失败' }
+  finally { buildingCache.value = false }
+}
+
+async function checkCacheStatus() {
+  try {
+    const r = await props.host.callApi('/cache_status')
+    if (r) cacheStatus.value = r.status || '就绪'
+  } catch {}
+}
+checkCacheStatus()
 
 async function startScan() {
   scanning.value = true; scanStatus.value = '扫描中…'

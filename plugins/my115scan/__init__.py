@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.12",
+    "version": "0.10.0",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -672,6 +672,37 @@ async def setup(ctx):
         else:
             status = "就绪"
         return {"status": status, "running": running}
+
+
+    @ctx.on_api("/build_cache", methods=["POST"])
+    async def _api_build_cache(req):
+        cfg = ctx.config
+        if not cfg.get("emby_url") or not cfg.get("emby_api_key"):
+            return {"ok": False, "status": "请先配置 Emby 地址和 API Key"}
+        ctx.kv.set("my115scan_building_cache", True)
+        try:
+            def upd(s):
+                ctx.update_config({"_cache_status": s})
+            upd("正在拉取 Emby 全量清单...")
+            emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log, upd)
+            if emby_set:
+                ctx.kv.set("my115scan_emby_set", ",".join(str(x) for x in emby_set))
+                ctx.kv.set("my115scan_cache_size", len(emby_set))
+                upd(f"缓存就绪: {len(emby_set)}个ID")
+                return {"ok": True, "status": f"缓存就绪: {len(emby_set)}个ID"}
+            else:
+                upd("缓存建立失败")
+                return {"ok": False, "status": "缓存建立失败"}
+        finally:
+            ctx.kv.set("my115scan_building_cache", False)
+
+    @ctx.on_api("/cache_status", methods=["GET"])
+    async def _api_cache_status(req):
+        status = ctx.config.get("_cache_status", "")
+        if not status:
+            size = int(ctx.kv.get("my115scan_cache_size", 0) or 0)
+            status = f"缓存就绪: {size}个ID" if size else "未建立"
+        return {"status": status}
 
 
 async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) -> set:
