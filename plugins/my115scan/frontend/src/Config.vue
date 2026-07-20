@@ -17,6 +17,12 @@
         <label class="row"><span>地址</span><input v-model="cfg.emby_url" class="inp" placeholder="http://emby.local:8096" /></label>
         <label class="row"><span>API Key</span><input v-model="cfg.emby_api_key" class="inp" type="password" /></label>
         <label class="row switch"><input v-model="cfg.skip_emby_check" type="checkbox" /><span>跳过 Emby 查重</span></label>
+        <label class="row"><span>查重方式</span>
+          <select v-model="cfg.emby_check_mode" class="inp" :disabled="cfg.skip_emby_check">
+            <option value="realtime">实时查询(逐条)</option>
+            <option value="cache">缓存(全量拉取)</option>
+          </select>
+        </label>
       </section>
       <section class="card">
         <h3>转发</h3>
