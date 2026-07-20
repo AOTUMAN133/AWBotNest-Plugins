@@ -25,6 +25,17 @@
         <label class="row switch"><input v-model="cfg.forward_to_saved" type="checkbox" /><span>转发到收藏夹</span></label>
       </section>
       <section class="card">
+        <h3>过滤</h3>
+        <div class="fld">
+          <span class="lbl">转存类型</span>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" :checked="mediaTypes.includes('movie')" @change="toggleMedia('movie')" /> 电影</label>
+            <label class="chip"><input type="checkbox" :checked="mediaTypes.includes('tv')" @change="toggleMedia('tv')" /> 电视剧</label>
+          </div>
+        </div>
+        <label class="row switch"><input v-model="cfg.only_complete_series" type="checkbox" /><span>剧集仅转存完结</span></label>
+      </section>
+            <section class="card">
         <h3>115 网盘</h3>
         <label class="row"><span>Cookie</span><input v-model="cfg.pan115_cookie" class="inp" type="password" placeholder="可选" /></label>
       </section>
