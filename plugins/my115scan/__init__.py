@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.6",
+    "version": "0.9.9",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -369,7 +369,6 @@ async def _process(client, cfg, message, ctx):
                 if emby_set:
                     has = tmdb_id in emby_set
                 else:
-                    # 逐条查，但先检查停止信号
                     if ctx.kv.get("my115scan_stop", False):
                         return
                     has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
@@ -380,8 +379,9 @@ async def _process(client, cfg, message, ctx):
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
             except Exception as e:  # noqa: BLE001
                 err = str(e) or e.__class__.__name__
-                ctx.log.warning("[115扫描] Emby 查询失败: %r", e)
-                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
+                ctx.log.warning("[115扫描] Emby 查询失败(%s)，跳过 %d 避免重复", err[:30], tmdb_id)
+                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败-跳过({err[:30]})"})
+                return
         else:
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
     else:
@@ -664,10 +664,17 @@ async def setup(ctx):
         total = int(ctx.kv.get("my115scan_total", 0) or 0)
         fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
         last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
-        return {"status": f"扫描{total}条, 转发{fwd}条, 最后ID={last}", "running": running}
+        cfg_status = ctx.config.get("_scan_status", "")
+        if cfg_status:
+            status = cfg_status
+        elif running:
+            status = f"扫描{total}条, 转发{fwd}条"
+        else:
+            status = "就绪"
+        return {"status": status, "running": running}
 
 
-async def _fetch_emby_ids(emby_url, emby_key, _log=None) -> set:
+async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) -> set:
     """分批拉取 Emby 全部资源的 TMDB ID，返回集合"""
     import httpx
     base = f"{emby_url.rstrip('/')}/emby/Items"
@@ -696,24 +703,38 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None) -> set:
                     if tid:
                         ids.add(int(tid))
                 page += 1
+                if _update_status:
+                    _update_status(f"拉取Emby缓存: {min(page * page_size, total)}/{total}")
                 if _log and page % 5 == 0:
                     _log.info("[115扫描] Emby 拉取进度: %d/%d, 已收集 %d 个 TMDB ID",
                               min(page * page_size, total), total, len(ids))
                 if page * page_size >= total:
                     break
         if _log:
-            _log.info("[115扫描] Emby 全量拉取完成，共 %d 个 TMDB ID（%d页）", len(ids), page)
+            _log.info("[115扫描] ✅ Emby 全量拉取完成，共 %d 个 TMDB ID（%d页）", len(ids), page)
+        if _update_status:
+            _update_status(f"Emby缓存就绪: {len(ids)}个ID")
         return ids
     except httpx.HTTPStatusError as e:
         if _log:
             _log.warning("[115扫描] Emby 拉取 HTTP %s: %s", e.response.status_code, e.response.text[:200])
+            _log.info("[115扫描] ⚠️ Emby 缓存拉取未完成，将使用逐条查询")
+        if _update_status:
+            _update_status("Emby缓存失败(HTTP错误)")
     except httpx.TimeoutException:
         if _log:
-            _log.warning("[115扫描] Emby 拉取超时(30s/页)，请检查: ①Emby地址是否正确 ②容器间网络是否互通 ③Emby是否在运行")
+            _log.warning("[115扫描] Emby 拉取超时(30s/页)，进度 %d/%d，将使用逐条查询",
+                         page * page_size, total if 'total' in dir() else '?')
+        if _update_status:
+            _update_status("Emby缓存失败(超时)")
     except Exception as e:
         if _log:
             _log.warning("[115扫描] Emby 拉取失败: %r", e)
-    return ids
+            _log.info("[115扫描] ⚠️ 将使用逐条查询 Emby")
+        if _update_status:
+            _update_status("Emby缓存失败")
+    # 超时/失败时不返回部分数据，避免漏查
+    return set()
 
 
 async def _do_scan(ctx, src):
@@ -729,7 +750,8 @@ async def _do_scan(ctx, src):
         ctx.log.info("[115扫描] 正在拉取 Emby 全量资源清单...")
         # 预拉取 Emby 全量 TMDB ID 缓存
         if not cfg.get("skip_emby_check", False) and cfg.get("emby_url") and cfg.get("emby_api_key"):
-            emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log)
+            emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log,
+                                        lambda s: ctx.update_config({"_scan_status": s}))
             if emby_set:
                 cfg["_emby_set"] = emby_set
                 ctx.log.info("[115扫描] ✅ Emby 缓存就绪，共 %d 个 TMDB ID，开始扫描", len(emby_set))
