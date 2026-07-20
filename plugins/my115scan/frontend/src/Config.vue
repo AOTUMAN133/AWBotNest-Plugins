@@ -16,6 +16,7 @@
         <h3>Emby</h3>
         <label class="row"><span>地址</span><input v-model="cfg.emby_url" class="inp" placeholder="http://emby.local:8096" /></label>
         <label class="row"><span>API Key</span><input v-model="cfg.emby_api_key" class="inp" type="password" /></label>
+        <label class="row"><span>数据库路径</span><input v-model="cfg.emby_db_path" class="inp" placeholder="/emby/data/library.db" /></label>
         <label class="row switch"><input v-model="cfg.skip_emby_check" type="checkbox" /><span>跳过 Emby 查重</span></label>
         <label class="row"><span>查重方式</span>
           <select v-model="cfg.emby_check_mode" class="inp" :disabled="cfg.skip_emby_check">
@@ -117,7 +118,7 @@ const logs = ref([])
 const cfg = reactive({
   media_types: ['movie', 'tv'], only_complete_series: false,
   tmdb_api_key: '', tmdb_language: 'zh-CN',
-  emby_url: '', emby_api_key: '', skip_emby_check: false,
+  emby_url: '', emby_api_key: '', emby_db_path: '', skip_emby_check: false, emby_check_mode: 'cache',
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
   pan115_cookie: '',
   exclude_genres: '',

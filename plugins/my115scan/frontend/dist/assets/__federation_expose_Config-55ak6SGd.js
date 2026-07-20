@@ -20,61 +20,62 @@ const _hoisted_6 = { class: "row" };
 const _hoisted_7 = { class: "card" };
 const _hoisted_8 = { class: "row" };
 const _hoisted_9 = { class: "row" };
-const _hoisted_10 = { class: "row switch" };
-const _hoisted_11 = { class: "row" };
-const _hoisted_12 = ["disabled"];
-const _hoisted_13 = { class: "card" };
-const _hoisted_14 = { class: "row" };
+const _hoisted_10 = { class: "row" };
+const _hoisted_11 = { class: "row switch" };
+const _hoisted_12 = { class: "row" };
+const _hoisted_13 = ["disabled"];
+const _hoisted_14 = { class: "card" };
 const _hoisted_15 = { class: "row" };
-const _hoisted_16 = { class: "row switch" };
-const _hoisted_17 = { class: "card" };
-const _hoisted_18 = { class: "fld" };
-const _hoisted_19 = { class: "chips" };
-const _hoisted_20 = { class: "chip" };
-const _hoisted_21 = ["checked"];
-const _hoisted_22 = { class: "chip" };
-const _hoisted_23 = ["checked"];
-const _hoisted_24 = { class: "row switch" };
-const _hoisted_25 = { class: "card" };
-const _hoisted_26 = { class: "row" };
-const _hoisted_27 = { class: "card" };
-const _hoisted_28 = { class: "genre-grid" };
-const _hoisted_29 = ["onClick"];
-const _hoisted_30 = { class: "card" };
-const _hoisted_31 = { class: "row" };
+const _hoisted_16 = { class: "row" };
+const _hoisted_17 = { class: "row switch" };
+const _hoisted_18 = { class: "card" };
+const _hoisted_19 = { class: "fld" };
+const _hoisted_20 = { class: "chips" };
+const _hoisted_21 = { class: "chip" };
+const _hoisted_22 = ["checked"];
+const _hoisted_23 = { class: "chip" };
+const _hoisted_24 = ["checked"];
+const _hoisted_25 = { class: "row switch" };
+const _hoisted_26 = { class: "card" };
+const _hoisted_27 = { class: "row" };
+const _hoisted_28 = { class: "card" };
+const _hoisted_29 = { class: "genre-grid" };
+const _hoisted_30 = ["onClick"];
+const _hoisted_31 = { class: "card" };
 const _hoisted_32 = { class: "row" };
 const _hoisted_33 = { class: "row" };
 const _hoisted_34 = { class: "row" };
-const _hoisted_35 = {
+const _hoisted_35 = { class: "row" };
+const _hoisted_36 = {
   class: "row",
   style: {"gap":"8px"}
 };
-const _hoisted_36 = ["disabled"];
 const _hoisted_37 = ["disabled"];
-const _hoisted_38 = { class: "card" };
-const _hoisted_39 = { class: "row" };
-const _hoisted_40 = {
+const _hoisted_38 = ["disabled"];
+const _hoisted_39 = { class: "card" };
+const _hoisted_40 = { class: "row" };
+const _hoisted_41 = {
   class: "row",
   style: {"gap":"8px"}
 };
-const _hoisted_41 = ["disabled"];
-const _hoisted_42 = { class: "savebar" };
-const _hoisted_43 = ["disabled"];
-const _hoisted_44 = { class: "pane" };
-const _hoisted_45 = { class: "card" };
-const _hoisted_46 = { class: "kv" };
+const _hoisted_42 = ["disabled"];
+const _hoisted_43 = { class: "savebar" };
+const _hoisted_44 = ["disabled"];
+const _hoisted_45 = { class: "pane" };
+const _hoisted_46 = { class: "card" };
 const _hoisted_47 = { class: "kv" };
 const _hoisted_48 = { class: "kv" };
-const _hoisted_49 = ["disabled"];
-const _hoisted_50 = { class: "pane" };
-const _hoisted_51 = { class: "toolbar" };
-const _hoisted_52 = { class: "muted" };
-const _hoisted_53 = {
+const _hoisted_49 = { class: "kv" };
+const _hoisted_50 = ["disabled"];
+const _hoisted_51 = { class: "pane" };
+const _hoisted_52 = { class: "toolbar" };
+const _hoisted_53 = { class: "muted" };
+const _hoisted_54 = {
   key: 0,
   class: "tbl"
 };
-const _hoisted_54 = { class: "muted" };
-const _hoisted_55 = {
+const _hoisted_55 = { class: "muted" };
+const _hoisted_56 = {
   key: 1,
   class: "empty muted"
 };
@@ -99,7 +100,7 @@ const logs = ref([]);
 const cfg = reactive({
   media_types: ['movie', 'tv'], only_complete_series: false,
   tmdb_api_key: '', tmdb_language: 'zh-CN',
-  emby_url: '', emby_api_key: '', skip_emby_check: false,
+  emby_url: '', emby_api_key: '', emby_db_path: '', skip_emby_check: false, emby_check_mode: 'cache',
   cms_bot_username: '', forward_label: '115 网盘', forward_to_saved: false,
   pan115_cookie: '',
   exclude_genres: '',
@@ -281,9 +282,9 @@ return (_ctx, _cache) => {
     ]),
     _withDirectives(_createElementVNode("div", _hoisted_3, [
       _createElementVNode("section", _hoisted_4, [
-        _cache[21] || (_cache[21] = _createElementVNode("h3", null, "TMDB", -1)),
+        _cache[22] || (_cache[22] = _createElementVNode("h3", null, "TMDB", -1)),
         _createElementVNode("label", _hoisted_5, [
-          _cache[19] || (_cache[19] = _createElementVNode("span", null, "API Key", -1)),
+          _cache[20] || (_cache[20] = _createElementVNode("span", null, "API Key", -1)),
           _withDirectives(_createElementVNode("input", {
             "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((cfg.tmdb_api_key) = $event)),
             class: "inp",
@@ -294,7 +295,7 @@ return (_ctx, _cache) => {
           ])
         ]),
         _createElementVNode("label", _hoisted_6, [
-          _cache[20] || (_cache[20] = _createElementVNode("span", null, "语言", -1)),
+          _cache[21] || (_cache[21] = _createElementVNode("span", null, "语言", -1)),
           _withDirectives(_createElementVNode("input", {
             "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((cfg.tmdb_language) = $event)),
             class: "inp",
@@ -305,9 +306,9 @@ return (_ctx, _cache) => {
         ])
       ]),
       _createElementVNode("section", _hoisted_7, [
-        _cache[27] || (_cache[27] = _createElementVNode("h3", null, "Emby", -1)),
+        _cache[29] || (_cache[29] = _createElementVNode("h3", null, "Emby", -1)),
         _createElementVNode("label", _hoisted_8, [
-          _cache[22] || (_cache[22] = _createElementVNode("span", null, "地址", -1)),
+          _cache[23] || (_cache[23] = _createElementVNode("span", null, "地址", -1)),
           _withDirectives(_createElementVNode("input", {
             "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((cfg.emby_url) = $event)),
             class: "inp",
@@ -317,7 +318,7 @@ return (_ctx, _cache) => {
           ])
         ]),
         _createElementVNode("label", _hoisted_9, [
-          _cache[23] || (_cache[23] = _createElementVNode("span", null, "API Key", -1)),
+          _cache[24] || (_cache[24] = _createElementVNode("span", null, "API Key", -1)),
           _withDirectives(_createElementVNode("input", {
             "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((cfg.emby_api_key) = $event)),
             class: "inp",
@@ -327,99 +328,109 @@ return (_ctx, _cache) => {
           ])
         ]),
         _createElementVNode("label", _hoisted_10, [
+          _cache[25] || (_cache[25] = _createElementVNode("span", null, "数据库路径", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((cfg.skip_emby_check) = $event)),
+            "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((cfg.emby_db_path) = $event)),
+            class: "inp",
+            placeholder: "/emby/data/library.db"
+          }, null, 512), [
+            [_vModelText, cfg.emby_db_path]
+          ])
+        ]),
+        _createElementVNode("label", _hoisted_11, [
+          _withDirectives(_createElementVNode("input", {
+            "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((cfg.skip_emby_check) = $event)),
             type: "checkbox"
           }, null, 512), [
             [_vModelCheckbox, cfg.skip_emby_check]
           ]),
-          _cache[24] || (_cache[24] = _createElementVNode("span", null, "跳过 Emby 查重", -1))
+          _cache[26] || (_cache[26] = _createElementVNode("span", null, "跳过 Emby 查重", -1))
         ]),
-        _createElementVNode("label", _hoisted_11, [
-          _cache[26] || (_cache[26] = _createElementVNode("span", null, "查重方式", -1)),
+        _createElementVNode("label", _hoisted_12, [
+          _cache[28] || (_cache[28] = _createElementVNode("span", null, "查重方式", -1)),
           _withDirectives(_createElementVNode("select", {
-            "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((cfg.emby_check_mode) = $event)),
+            "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((cfg.emby_check_mode) = $event)),
             class: "inp",
             disabled: cfg.skip_emby_check
-          }, [...(_cache[25] || (_cache[25] = [
+          }, [...(_cache[27] || (_cache[27] = [
             _createElementVNode("option", { value: "realtime" }, "实时查询(逐条)", -1),
             _createElementVNode("option", { value: "cache" }, "缓存(全量拉取)", -1)
-          ]))], 8, _hoisted_12), [
+          ]))], 8, _hoisted_13), [
             [_vModelSelect, cfg.emby_check_mode]
           ])
         ])
       ]),
-      _createElementVNode("section", _hoisted_13, [
-        _cache[31] || (_cache[31] = _createElementVNode("h3", null, "转发", -1)),
-        _createElementVNode("label", _hoisted_14, [
-          _cache[28] || (_cache[28] = _createElementVNode("span", null, "目标", -1)),
+      _createElementVNode("section", _hoisted_14, [
+        _cache[33] || (_cache[33] = _createElementVNode("h3", null, "转发", -1)),
+        _createElementVNode("label", _hoisted_15, [
+          _cache[30] || (_cache[30] = _createElementVNode("span", null, "目标", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((cfg.cms_bot_username) = $event)),
+            "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((cfg.cms_bot_username) = $event)),
             class: "inp",
             placeholder: "如 @cmsbot 或 me"
           }, null, 512), [
             [_vModelText, cfg.cms_bot_username]
           ])
         ]),
-        _createElementVNode("label", _hoisted_15, [
-          _cache[29] || (_cache[29] = _createElementVNode("span", null, "标签", -1)),
+        _createElementVNode("label", _hoisted_16, [
+          _cache[31] || (_cache[31] = _createElementVNode("span", null, "标签", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((cfg.forward_label) = $event)),
+            "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((cfg.forward_label) = $event)),
             class: "inp",
             placeholder: "115 网盘"
           }, null, 512), [
             [_vModelText, cfg.forward_label]
           ])
         ]),
-        _createElementVNode("label", _hoisted_16, [
+        _createElementVNode("label", _hoisted_17, [
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((cfg.forward_to_saved) = $event)),
+            "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((cfg.forward_to_saved) = $event)),
             type: "checkbox"
           }, null, 512), [
             [_vModelCheckbox, cfg.forward_to_saved]
           ]),
-          _cache[30] || (_cache[30] = _createElementVNode("span", null, "转发到收藏夹", -1))
+          _cache[32] || (_cache[32] = _createElementVNode("span", null, "转发到收藏夹", -1))
         ])
       ]),
-      _createElementVNode("section", _hoisted_17, [
-        _cache[36] || (_cache[36] = _createElementVNode("h3", null, "过滤", -1)),
-        _createElementVNode("div", _hoisted_18, [
-          _cache[34] || (_cache[34] = _createElementVNode("span", { class: "lbl" }, "转存类型", -1)),
-          _createElementVNode("div", _hoisted_19, [
-            _createElementVNode("label", _hoisted_20, [
+      _createElementVNode("section", _hoisted_18, [
+        _cache[38] || (_cache[38] = _createElementVNode("h3", null, "过滤", -1)),
+        _createElementVNode("div", _hoisted_19, [
+          _cache[36] || (_cache[36] = _createElementVNode("span", { class: "lbl" }, "转存类型", -1)),
+          _createElementVNode("div", _hoisted_20, [
+            _createElementVNode("label", _hoisted_21, [
               _createElementVNode("input", {
                 type: "checkbox",
                 checked: mediaTypesArr.value.includes('movie'),
-                onChange: _cache[12] || (_cache[12] = $event => (toggleMedia('movie')))
-              }, null, 40, _hoisted_21),
-              _cache[32] || (_cache[32] = _createTextVNode(" 电影", -1))
+                onChange: _cache[13] || (_cache[13] = $event => (toggleMedia('movie')))
+              }, null, 40, _hoisted_22),
+              _cache[34] || (_cache[34] = _createTextVNode(" 电影", -1))
             ]),
-            _createElementVNode("label", _hoisted_22, [
+            _createElementVNode("label", _hoisted_23, [
               _createElementVNode("input", {
                 type: "checkbox",
                 checked: mediaTypesArr.value.includes('tv'),
-                onChange: _cache[13] || (_cache[13] = $event => (toggleMedia('tv')))
-              }, null, 40, _hoisted_23),
-              _cache[33] || (_cache[33] = _createTextVNode(" 电视剧", -1))
+                onChange: _cache[14] || (_cache[14] = $event => (toggleMedia('tv')))
+              }, null, 40, _hoisted_24),
+              _cache[35] || (_cache[35] = _createTextVNode(" 电视剧", -1))
             ])
           ])
         ]),
-        _createElementVNode("label", _hoisted_24, [
+        _createElementVNode("label", _hoisted_25, [
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((cfg.only_complete_series) = $event)),
+            "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((cfg.only_complete_series) = $event)),
             type: "checkbox"
           }, null, 512), [
             [_vModelCheckbox, cfg.only_complete_series]
           ]),
-          _cache[35] || (_cache[35] = _createElementVNode("span", null, "剧集仅转存完结", -1))
+          _cache[37] || (_cache[37] = _createElementVNode("span", null, "剧集仅转存完结", -1))
         ])
       ]),
-      _createElementVNode("section", _hoisted_25, [
-        _cache[38] || (_cache[38] = _createElementVNode("h3", null, "115 网盘", -1)),
-        _createElementVNode("label", _hoisted_26, [
-          _cache[37] || (_cache[37] = _createElementVNode("span", null, "Cookie", -1)),
+      _createElementVNode("section", _hoisted_26, [
+        _cache[40] || (_cache[40] = _createElementVNode("h3", null, "115 网盘", -1)),
+        _createElementVNode("label", _hoisted_27, [
+          _cache[39] || (_cache[39] = _createElementVNode("span", null, "Cookie", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[15] || (_cache[15] = $event => ((cfg.pan115_cookie) = $event)),
+            "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((cfg.pan115_cookie) = $event)),
             class: "inp",
             type: "password",
             placeholder: "可选"
@@ -428,10 +439,10 @@ return (_ctx, _cache) => {
           ])
         ])
       ]),
-      _createElementVNode("section", _hoisted_27, [
-        _cache[39] || (_cache[39] = _createElementVNode("h3", null, "排除类型", -1)),
-        _cache[40] || (_cache[40] = _createElementVNode("p", { class: "tip" }, "勾选后匹配到该类型的资源自动跳过不转发。动画按产地细分：国漫/日漫/美漫/其他，国语配音的国外动画不会误杀。", -1)),
-        _createElementVNode("div", _hoisted_28, [
+      _createElementVNode("section", _hoisted_28, [
+        _cache[41] || (_cache[41] = _createElementVNode("h3", null, "排除类型", -1)),
+        _cache[42] || (_cache[42] = _createElementVNode("p", { class: "tip" }, "勾选后匹配到该类型的资源自动跳过不转发。动画按产地细分：国漫/日漫/美漫/其他，国语配音的国外动画不会误杀。", -1)),
+        _createElementVNode("div", _hoisted_29, [
           (_openBlock(), _createElementBlock(_Fragment, null, _renderList(genreList, (g) => {
             return _createElementVNode("div", {
               key: g.en,
@@ -439,16 +450,16 @@ return (_ctx, _cache) => {
               onClick: $event => (toggleGenre(g))
             }, [
               _createElementVNode("span", null, _toDisplayString(g.cn), 1)
-            ], 10, _hoisted_29)
+            ], 10, _hoisted_30)
           }), 64))
         ])
       ]),
-      _createElementVNode("section", _hoisted_30, [
-        _cache[45] || (_cache[45] = _createElementVNode("h3", null, "📡 历史扫描", -1)),
-        _createElementVNode("label", _hoisted_31, [
-          _cache[41] || (_cache[41] = _createElementVNode("span", null, "来源频道", -1)),
+      _createElementVNode("section", _hoisted_31, [
+        _cache[47] || (_cache[47] = _createElementVNode("h3", null, "📡 历史扫描", -1)),
+        _createElementVNode("label", _hoisted_32, [
+          _cache[43] || (_cache[43] = _createElementVNode("span", null, "来源频道", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((cfg.source_chat) = $event)),
+            "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((cfg.source_chat) = $event)),
             class: "inp",
             type: "number",
             placeholder: "频道ID"
@@ -456,10 +467,10 @@ return (_ctx, _cache) => {
             [_vModelText, cfg.source_chat]
           ])
         ]),
-        _createElementVNode("label", _hoisted_32, [
-          _cache[42] || (_cache[42] = _createElementVNode("span", null, "间隔(秒)", -1)),
+        _createElementVNode("label", _hoisted_33, [
+          _cache[44] || (_cache[44] = _createElementVNode("span", null, "间隔(秒)", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((cfg.delay) = $event)),
+            "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((cfg.delay) = $event)),
             class: "inp",
             type: "number",
             placeholder: "2"
@@ -467,10 +478,10 @@ return (_ctx, _cache) => {
             [_vModelText, cfg.delay]
           ])
         ]),
-        _createElementVNode("label", _hoisted_33, [
-          _cache[43] || (_cache[43] = _createElementVNode("span", null, "每批条数", -1)),
+        _createElementVNode("label", _hoisted_34, [
+          _cache[45] || (_cache[45] = _createElementVNode("span", null, "每批条数", -1)),
           _withDirectives(_createElementVNode("input", {
-            "onUpdate:modelValue": _cache[18] || (_cache[18] = $event => ((cfg.batch_size) = $event)),
+            "onUpdate:modelValue": _cache[19] || (_cache[19] = $event => ((cfg.batch_size) = $event)),
             class: "inp",
             type: "number",
             placeholder: "200"
@@ -478,67 +489,67 @@ return (_ctx, _cache) => {
             [_vModelText, cfg.batch_size]
           ])
         ]),
-        _createElementVNode("div", _hoisted_34, [
-          _cache[44] || (_cache[44] = _createElementVNode("span", null, "状态", -1)),
+        _createElementVNode("div", _hoisted_35, [
+          _cache[46] || (_cache[46] = _createElementVNode("span", null, "状态", -1)),
           _createElementVNode("b", null, _toDisplayString(scanStatus.value), 1)
         ]),
-        _createElementVNode("div", _hoisted_35, [
+        _createElementVNode("div", _hoisted_36, [
           _createElementVNode("button", {
             class: "btn primary",
             disabled: scanning.value,
             onClick: startScan
-          }, "▶ 开始扫描", 8, _hoisted_36),
+          }, "▶ 开始扫描", 8, _hoisted_37),
           _createElementVNode("button", {
             class: "btn",
             disabled: !scanning.value,
             onClick: stopScan
-          }, "⏹ 停止", 8, _hoisted_37),
+          }, "⏹ 停止", 8, _hoisted_38),
           _createElementVNode("button", {
             class: "btn",
             onClick: resetScan
           }, "🔄 重置")
         ])
       ]),
-      _createElementVNode("section", _hoisted_38, [
-        _cache[47] || (_cache[47] = _createElementVNode("h3", null, "📦 Emby 缓存", -1)),
-        _createElementVNode("div", _hoisted_39, [
-          _cache[46] || (_cache[46] = _createElementVNode("span", null, "缓存状态", -1)),
+      _createElementVNode("section", _hoisted_39, [
+        _cache[49] || (_cache[49] = _createElementVNode("h3", null, "📦 Emby 缓存", -1)),
+        _createElementVNode("div", _hoisted_40, [
+          _cache[48] || (_cache[48] = _createElementVNode("span", null, "缓存状态", -1)),
           _createElementVNode("b", null, _toDisplayString(cacheStatus.value), 1)
         ]),
-        _createElementVNode("div", _hoisted_40, [
+        _createElementVNode("div", _hoisted_41, [
           _createElementVNode("button", {
             class: "btn",
             disabled: buildingCache.value,
             onClick: buildCache
-          }, "📥 建立缓存", 8, _hoisted_41)
+          }, "📥 建立缓存", 8, _hoisted_42)
         ])
       ]),
-      _createElementVNode("div", _hoisted_42, [
+      _createElementVNode("div", _hoisted_43, [
         _createElementVNode("button", {
           class: "btn primary lg",
           disabled: saving.value,
           onClick: save
-        }, _toDisplayString(saving.value ? '保存中…' : '保存配置'), 9, _hoisted_43)
+        }, _toDisplayString(saving.value ? '保存中…' : '保存配置'), 9, _hoisted_44)
       ])
     ], 512), [
       [_vShow, tab.value === 'settings']
     ]),
-    _withDirectives(_createElementVNode("div", _hoisted_44, [
-      _createElementVNode("div", _hoisted_45, [
-        _createElementVNode("div", _hoisted_46, [
-          _cache[48] || (_cache[48] = _createElementVNode("span", null, "TMDB", -1)),
+    _withDirectives(_createElementVNode("div", _hoisted_45, [
+      _createElementVNode("div", _hoisted_46, [
+        _createElementVNode("div", _hoisted_47, [
+          _cache[50] || (_cache[50] = _createElementVNode("span", null, "TMDB", -1)),
           _createElementVNode("b", {
             class: _normalizeClass(s.tmdb_ok ? 'ok' : 'err')
           }, _toDisplayString(s.tmdb_status || '未检测'), 3)
         ]),
-        _createElementVNode("div", _hoisted_47, [
-          _cache[49] || (_cache[49] = _createElementVNode("span", null, "Emby", -1)),
+        _createElementVNode("div", _hoisted_48, [
+          _cache[51] || (_cache[51] = _createElementVNode("span", null, "Emby", -1)),
           _createElementVNode("b", {
             class: _normalizeClass(s.emby_ok ? 'ok' : 'err')
           }, _toDisplayString(s.emby_status || '未检测'), 3)
         ]),
-        _createElementVNode("div", _hoisted_48, [
-          _cache[50] || (_cache[50] = _createElementVNode("span", null, "Emby 库", -1)),
+        _createElementVNode("div", _hoisted_49, [
+          _cache[52] || (_cache[52] = _createElementVNode("span", null, "Emby 库", -1)),
           _createElementVNode("b", null, _toDisplayString(s.emby_items ?? '-') + " 项", 1)
         ])
       ]),
@@ -546,7 +557,7 @@ return (_ctx, _cache) => {
         class: "btn",
         disabled: testing.value,
         onClick: testServices
-      }, _toDisplayString(testing.value ? '测试中…' : '测试连接'), 9, _hoisted_49),
+      }, _toDisplayString(testing.value ? '测试中…' : '测试连接'), 9, _hoisted_50),
       (testMsg.value)
         ? (_openBlock(), _createElementBlock("p", {
             key: 0,
@@ -556,17 +567,17 @@ return (_ctx, _cache) => {
     ], 512), [
       [_vShow, tab.value === 'status']
     ]),
-    _withDirectives(_createElementVNode("div", _hoisted_50, [
-      _createElementVNode("div", _hoisted_51, [
+    _withDirectives(_createElementVNode("div", _hoisted_51, [
+      _createElementVNode("div", _hoisted_52, [
         _createElementVNode("button", {
           class: "btn",
           onClick: loadLogs
         }, "刷新"),
-        _createElementVNode("span", _hoisted_52, _toDisplayString(logs.value.length) + " 条", 1)
+        _createElementVNode("span", _hoisted_53, _toDisplayString(logs.value.length) + " 条", 1)
       ]),
       (logs.value.length)
-        ? (_openBlock(), _createElementBlock("table", _hoisted_53, [
-            _cache[51] || (_cache[51] = _createElementVNode("thead", null, [
+        ? (_openBlock(), _createElementBlock("table", _hoisted_54, [
+            _cache[53] || (_cache[53] = _createElementVNode("thead", null, [
               _createElementVNode("tr", null, [
                 _createElementVNode("th", null, "时间"),
                 _createElementVNode("th", null, "标题"),
@@ -577,7 +588,7 @@ return (_ctx, _cache) => {
             _createElementVNode("tbody", null, [
               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(logs.value, (l, i) => {
                 return (_openBlock(), _createElementBlock("tr", { key: i }, [
-                  _createElementVNode("td", _hoisted_54, _toDisplayString(l.time), 1),
+                  _createElementVNode("td", _hoisted_55, _toDisplayString(l.time), 1),
                   _createElementVNode("td", null, _toDisplayString(l.title), 1),
                   _createElementVNode("td", null, [
                     _createElementVNode("code", null, _toDisplayString(l.tmdb_id || '-'), 1)
@@ -591,7 +602,7 @@ return (_ctx, _cache) => {
               }), 128))
             ])
           ]))
-        : (_openBlock(), _createElementBlock("div", _hoisted_55, "暂无处理记录"))
+        : (_openBlock(), _createElementBlock("div", _hoisted_56, "暂无处理记录"))
     ], 512), [
       [_vShow, tab.value === 'logs']
     ])
@@ -600,6 +611,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-c9b7bccf"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-62df0ee9"]]);
 
 export { Config as default };

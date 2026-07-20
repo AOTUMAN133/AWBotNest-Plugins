@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.0",
+    "version": "0.10.12",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -111,7 +111,7 @@ DEFAULTS = {
     "tmdb_language": "zh-CN",
     "emby_url": "",
     "emby_api_key": "",
-    "skip_emby_check": False, "emby_check_mode": "cache",
+    "emby_db_path": "", "skip_emby_check": False, "emby_check_mode": "cache",
     "cms_bot_username": "",
     "forward_label": "115 网盘",
     "dedup_hours": 24,
@@ -337,6 +337,7 @@ async def _process(client, cfg, message, ctx):
     if media_type == "tv" and cfg.get("only_complete_series", False):
         # 先看消息文本有没有完结关键词（快速判断）
         if _COMPLETE_PATTERN.search(text):
+            ctx.log.info("[115扫描] 文本匹配完结关键词")
             pass  # 文本明确写了完结
         else:
             # 文本没写，查 TMDB 确认是否完结
@@ -677,24 +678,29 @@ async def setup(ctx):
     @ctx.on_api("/build_cache", methods=["POST"])
     async def _api_build_cache(req):
         cfg = ctx.config
-        if not cfg.get("emby_url") or not cfg.get("emby_api_key"):
-            return {"ok": False, "status": "请先配置 Emby 地址和 API Key"}
-        ctx.kv.set("my115scan_building_cache", True)
-        try:
-            def upd(s):
-                ctx.update_config({"_cache_status": s})
-            upd("正在拉取 Emby 全量清单...")
-            emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log, upd)
-            if emby_set:
-                ctx.kv.set("my115scan_emby_set", ",".join(str(x) for x in emby_set))
-                ctx.kv.set("my115scan_cache_size", len(emby_set))
-                upd(f"缓存就绪: {len(emby_set)}个ID")
-                return {"ok": True, "status": f"缓存就绪: {len(emby_set)}个ID"}
-            else:
-                upd("缓存建立失败")
-                return {"ok": False, "status": "缓存建立失败"}
-        finally:
-            ctx.kv.set("my115scan_building_cache", False)
+        def upd(s):
+            ctx.update_config({"_cache_status": s})
+        emby_set = set()
+        # 优先从数据库读
+        db_path = str(cfg.get("emby_db_path", "") or "").strip()
+        if db_path:
+            upd("正在读取 Emby 数据库...")
+            emby_set = await _fetch_emby_from_db(db_path, ctx.log)
+        if not emby_set and cfg.get("emby_url") and cfg.get("emby_api_key"):
+            ctx.kv.set("my115scan_building_cache", True)
+            try:
+                upd("正在拉取 Emby 全量清单...")
+                emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log, upd)
+            finally:
+                ctx.kv.set("my115scan_building_cache", False)
+        if emby_set:
+            ctx.kv.set("my115scan_emby_set", ",".join(str(x) for x in emby_set))
+            ctx.kv.set("my115scan_cache_size", len(emby_set))
+            upd(f"缓存就绪: {len(emby_set)}个ID")
+            return {"ok": True, "status": f"缓存就绪: {len(emby_set)}个ID"}
+        else:
+            upd("缓存建立失败")
+            return {"ok": False, "status": "缓存建立失败"}
 
     @ctx.on_api("/cache_status", methods=["GET"])
     async def _api_cache_status(req):
@@ -705,13 +711,53 @@ async def setup(ctx):
         return {"status": status}
 
 
+async def _fetch_emby_from_db(db_path, _log=None) -> set:
+    """直接从 Emby library.db 读取所有 TMDB ID"""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # 探测表名和列名
+        c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [r[0].lower() for r in c.fetchall()]
+        if _log:
+            _log.info("[115扫描] 数据库表: %s", tables[:30])
+        ids = set()
+        # MediaItems 表（区分大小写）
+        c.execute("PRAGMA table_info(MediaItems)")
+        mcols = [r[1] for r in c.fetchall()]
+        if "ProviderIds" in mcols:
+            try:
+                # ProviderIds 格式: Tmdb=10092|Imdb=tt0384286|...
+                sql = "SELECT DISTINCT CAST(SUBSTR(ProviderIds, INSTR(ProviderIds, 'Tmdb=') + 5) AS INTEGER) "
+                sql += "FROM MediaItems WHERE ProviderIds LIKE '%Tmdb=%'"
+                c.execute(sql)
+                for r in c.fetchall():
+                    if r[0] and r[0] > 0:
+                        ids.add(int(r[0]))
+                if _log:
+                    _log.info("[115扫描] MediaItems.ProviderIds 找到 %d 个 TMDB ID", len(ids))
+            except Exception as e:
+                if _log:
+                    _log.info("[115扫描] ProviderIds 查询失败: %r", e)
+        conn.close()
+        if _log:
+            _log.info("[115扫描] ✅ 数据库共读取 %d 个 TMDB ID", len(ids))
+        return ids
+    except Exception as e:
+        if _log:
+            _log.warning("[115扫描] 数据库读取失败: %r", e)
+        return set()
+
+
 async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) -> set:
-    """分批拉取 Emby 全部资源的 TMDB ID，返回集合"""
+    """分批拉取 Emby 全部资源的 TMDB ID，返回集合（超时重试3次）"""
     import httpx
     base = f"{emby_url.rstrip('/')}/emby/Items"
     ids = set()
     page = 0
     page_size = 500
+    max_retries = 3
     if _log:
         _log.info("[115扫描] 正在分批拉取 Emby 全量清单...")
     try:
@@ -723,8 +769,23 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) ->
                     "StartIndex": page * page_size,
                     "Limit": page_size,
                 }
-                r = await cli.get(base, params=params)
-                r.raise_for_status()
+                retries = 0
+                while retries <= max_retries:
+                    try:
+                        r = await cli.get(base, params=params)
+                        r.raise_for_status()
+                        break  # 成功，跳出重试循环
+                    except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                        retries += 1
+                        if retries > max_retries:
+                            raise  # 重试用完，向上抛
+                        wait = retries * 5
+                        if _log:
+                            _log.warning("[115扫描] 第%d页超时(第%d次重试)，%ds后重试...",
+                                        page + 1, retries, wait)
+                        if _update_status:
+                            _update_status(f"拉取缓存第{page+1}页超时，重试{retries}/{max_retries}")
+                        await asyncio.sleep(wait)
                 data = r.json()
                 items = data.get("Items") or []
                 total = data.get("TotalRecordCount", 0)
@@ -754,8 +815,8 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) ->
             _update_status("Emby缓存失败(HTTP错误)")
     except httpx.TimeoutException:
         if _log:
-            _log.warning("[115扫描] Emby 拉取超时(30s/页)，进度 %d/%d，将使用逐条查询",
-                         page * page_size, total if 'total' in dir() else '?')
+            _log.warning("[115扫描] Emby 拉取超时(重试%d次后放弃)，进度 %d/%d",
+                         max_retries, page * page_size, total if 'total' in dir() else '?')
         if _update_status:
             _update_status("Emby缓存失败(超时)")
     except Exception as e:
@@ -778,16 +839,13 @@ async def _do_scan(ctx, src):
             return
         client = apps[0]
         cfg = _effective_cfg(ctx)
-        # 预拉取 Emby 全量 TMDB ID 缓存（仅缓存模式）
-        if (not cfg.get("skip_emby_check", False) and cfg.get("emby_check_mode") == "cache"
-                and cfg.get("emby_url") and cfg.get("emby_api_key")):
-            emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log,
-                                        lambda s: ctx.update_config({"_scan_status": s}))
+        # 读取 Emby 缓存（从 KV 或数据库直读）
+        cache_raw = ctx.kv.get("my115scan_emby_set", "")
+        if cache_raw:
+            emby_set = set(int(x) for x in cache_raw.split(",") if x.strip().isdigit())
             if emby_set:
                 cfg["_emby_set"] = emby_set
-                ctx.log.info("[115扫描] ✅ Emby 缓存就绪，共 %d 个 TMDB ID，开始扫描", len(emby_set))
-            else:
-                ctx.log.info("[115扫描] ⚠️ Emby 缓存不可用，将逐条查询 Emby")
+                ctx.log.info("[115扫描] 使用 Emby 缓存查重，共 %d 个 ID", len(emby_set))
         delay = int(cfg.get("delay", 2) or 2)
         batch = int(cfg.get("batch_size", 200) or 200)
         last_id = int(ctx.kv.get("my115scan_last_id", 0) or 0)
@@ -795,21 +853,19 @@ async def _do_scan(ctx, src):
         forwarded = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
         ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
 
+        processed = 0
+        # 改用 iter_history 手动控制翻页
         offset = 0
         while True:
             if ctx.kv.get("my115scan_stop", False):
                 break
-            # 用原始API拉消息ID（避免get_chat_history内部自动分页的干扰）
-            from pyrogram.raw.functions.messages import GetHistory
-            peer = await client.resolve_peer(src)
-            raw = await client.invoke(GetHistory(
-                peer=peer, offset_id=offset, offset_date=0,
-                add_offset=0, limit=100, max_id=0, min_id=0, hash=0,
-            ))
-            msgs = [m for m in raw.messages if hasattr(m, 'id')]
-            if not msgs:
+            ids = []
+            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
+                ids.append(m.id)
+            ctx.log.info("[115扫描] 拉取: offset=%s, 获取%d条, 最新ID=%s, 最旧ID=%s",
+                         offset, len(ids), ids[0] if ids else '?', ids[-1] if ids else '?')
+            if not ids:
                 break
-            ids = [m.id for m in msgs]
             if last_id:
                 ids = [mid for mid in ids if mid > last_id]
                 if not ids:
@@ -831,11 +887,13 @@ async def _do_scan(ctx, src):
                 except Exception as e:
                     ctx.log.warning("[115扫描] 消息%s异常: %r", mid, e)
                 await asyncio.sleep(delay)
-            ctx.log.info("[115扫描] 已处理%s条, 最后ID=%s", total, ids[-1])
+                processed += 1
+                if processed % 50 == 0:
+                    ctx.log.info("[115扫描] 进度: %d条, 最后ID=%s", total, mid)
             ctx.kv.set("my115scan_last_id", ids[-1])
             ctx.kv.set("my115scan_total", total)
             ctx.kv.set("my115scan_forwarded", forwarded)
-            if len(ids) < 100:
+            if len(ids) < batch:
                 break
 
         ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
