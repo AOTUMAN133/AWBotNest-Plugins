@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -274,14 +274,15 @@ async def _pass(client, user_id, ctx):
         if act == "unmute":
             try:
                 await client.invoke(pyrogram.raw.functions.account.UpdateNotifySettings(
-                        pyrogram.raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                        pyrogram.raw.types.InputPeerNotifySettings(mute_until=0, show_previews=True, silent=False)))
+                        peer=pyrogram.raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                        settings=pyrogram.raw.types.InputPeerNotifySettings(mute_until=0, show_previews=True, silent=False)))
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消静音失败 %d: %r", user_id, e)
         elif act == "unarchive":
             try:
                 await client.invoke(pyrogram.raw.functions.folders.EditPeerFolders(
-                        [pyrogram.raw.types.InputFolderPeer(peer=await client.resolve_peer(user_id), folder_id=0)]))
+                        folder_peers=[pyrogram.raw.types.InputFolderPeer(
+                            peer=await client.resolve_peer(user_id), folder_id=0)]))
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消归档失败 %d: %r", user_id, e)
         elif act == "wl":
@@ -355,9 +356,9 @@ async def _fail(client, user_id, ctx, reason: str):
         elif act == "report":
             try:
                 await client.invoke(pyrogram.raw.functions.account.ReportPeer(
-                        await client.resolve_peer(user_id),
-                        pyrogram.raw.types.InputReportReasonSpam(),
-                        "spam"))
+                        peer=await client.resolve_peer(user_id),
+                        reason=pyrogram.raw.types.InputReportReasonSpam(),
+                        message="spam"))
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
 
