@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.8.6",
+    "version": "0.8.7",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -128,7 +128,7 @@ _LINK_PATTERN = re.compile(
     r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]】]+", re.IGNORECASE
 )
 _TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)", re.IGNORECASE)
-_COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集")
+_COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集|\(完|（完")
 _GETMEDIA_TTL = 30
 
 
