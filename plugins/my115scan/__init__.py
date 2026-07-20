@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.16",
+    "version": "0.10.17",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -320,8 +320,19 @@ async def _process(client, cfg, message, ctx):
         tmdb_id, guessed_type = await _resolve_by_search(cfg, title, year, ctx)
         if not media_type:
             media_type = guessed_type
-    if media_type is None and re.search(r"\bs\d+\s*e?\d+", text.lower()):
-        media_type = "tv"
+    # 如果media_type仍未确定但TMDB ID已知，查TMDB确认类型
+    if tmdb_id and media_type is None:
+        try:
+            api = TmdbApi(cfg.get("tmdb_api_key", ""), cfg.get("tmdb_language", "zh-CN"))
+            tv_detail = await api.get_details(tmdb_id, "tv")
+            if tv_detail and tv_detail.get("id"):
+                media_type = "tv"
+            else:
+                movie_detail = await api.get_details(tmdb_id, "movie")
+                if movie_detail and movie_detail.get("id"):
+                    media_type = "movie"
+        except Exception:
+            pass
 
     if not tmdb_id:
         ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
