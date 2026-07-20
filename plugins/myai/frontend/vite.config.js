@@ -7,7 +7,7 @@ import federation from '@originjs/vite-plugin-federation'
 // 复用平台那份 Vue，不重复打包。base 用绝对挂载路径，避免子 chunk 相对 remoteEntry
 // 解析多出一层 assets/ 导致 404（详见 auto_subscribe/vite.config.js 注释）。
 export default defineConfig({
-  base: '/api/plugins/ai/fe/',
+  base: '/api/plugins/myai/fe/',
   plugins: [
     vue(),
     federation({
