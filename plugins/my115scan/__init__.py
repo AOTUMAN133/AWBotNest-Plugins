@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.3",
+    "version": "0.9.4",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -722,7 +722,9 @@ async def _do_scan(ctx, src):
             emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log)
             if emby_set:
                 cfg["_emby_set"] = emby_set
-                ctx.log.info("[115扫描] 使用 Emby 缓存查重，共 %d 个 ID", len(emby_set))
+                ctx.log.info("[115扫描] ✅ Emby 缓存就绪，共 %d 个 TMDB ID，开始扫描", len(emby_set))
+            else:
+                ctx.log.info("[115扫描] ⚠️ Emby 缓存不可用，将逐条查询 Emby")
         delay = int(cfg.get("delay", 2) or 2)
         batch = int(cfg.get("batch_size", 200) or 200)
         last_id = int(ctx.kv.get("my115scan_last_id", 0) or 0)
