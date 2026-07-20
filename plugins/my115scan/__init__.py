@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.12",
+    "version": "0.10.15",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -224,7 +224,9 @@ def _guess_type(text: str):
     lower = text.lower()
     if any(k in lower for k in ["电影", "movie", "film"]):
         return "movie"
-    if any(k in lower for k in ["剧集", "电视剧", "tv", "series"]):
+    if any(k in lower for k in ["剧集", "电视剧", "tv", "series", "s0", "e0"]):
+        return "tv"
+    if re.search(r"\bs\d+\s*e\d+", lower):
         return "tv"
     return None
 
@@ -318,6 +320,8 @@ async def _process(client, cfg, message, ctx):
         tmdb_id, guessed_type = await _resolve_by_search(cfg, title, year, ctx)
         if not media_type:
             media_type = guessed_type
+    if media_type is None and re.search(r"\bs\d+\s*e?\d+", text.lower()):
+        media_type = "tv"
 
     if not tmdb_id:
         ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
@@ -854,22 +858,27 @@ async def _do_scan(ctx, src):
         ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
 
         processed = 0
-        # 改用 iter_history 手动控制翻页
         offset = 0
+        from pyrogram.raw.functions.messages import GetHistory
         while True:
+            ctx.log.info("[115扫描] DEBUG offset=%s", offset)
             if ctx.kv.get("my115scan_stop", False):
                 break
-            ids = []
-            async for m in client.get_chat_history(src, limit=batch, offset_id=offset):
-                ids.append(m.id)
-            ctx.log.info("[115扫描] 拉取: offset=%s, 获取%d条, 最新ID=%s, 最旧ID=%s",
-                         offset, len(ids), ids[0] if ids else '?', ids[-1] if ids else '?')
-            if not ids:
+            peer = await client.resolve_peer(src)
+            raw = await client.invoke(GetHistory(
+                peer=peer, offset_id=offset, offset_date=0,
+                add_offset=0, limit=100, max_id=0, min_id=0, hash=0,
+            ))
+            msgs = [m for m in raw.messages if hasattr(m, 'id')]
+            if not msgs:
                 break
+            ids = [m.id for m in msgs]
             if last_id:
                 ids = [mid for mid in ids if mid > last_id]
                 if not ids:
                     break
+            ctx.log.info("[115扫描] 拉取: offset_id=%s, %d条, 范围=%s-%s, 新offset=%s",
+                         offset, len(ids), ids[0], ids[-1], ids[-1])
             offset = ids[-1]
             for mid in reversed(ids):
                 if ctx.kv.get("my115scan_stop", False):
@@ -893,18 +902,24 @@ async def _do_scan(ctx, src):
             ctx.kv.set("my115scan_last_id", ids[-1])
             ctx.kv.set("my115scan_total", total)
             ctx.kv.set("my115scan_forwarded", forwarded)
-            if len(ids) < batch:
+            ctx.log.info("[115扫描] 一批完成, offset=%s, %d条, 总计%d条", offset, len(ids), total)
+            if len(ids) == 0:
                 break
 
         ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
         ctx.kv.set("my115scan_total", total)
         ctx.kv.set("my115scan_forwarded", forwarded)
-        ctx.update_config({"_scan_status": f"完成: 扫描{total}条"})
-        ctx.log.info("[115扫描] ✅ 完成, 扫描%s条", total)
+        ctx.log.info("[115扫描] ✅ 完成, 扫描%d条, 最后offset=%s", total, offset)
+        ctx.update_config({"_scan_status": f"完成: {total}条"})
+    except asyncio.CancelledError:
+        ctx.log.warning("[115扫描] 扫描任务被取消")
+        ctx.update_config({"_scan_status": "已取消"})
+        raise
     except Exception as e:
         ctx.log.error("[115扫描] 异常: %r", e)
+        import traceback
+        ctx.log.error("[115扫描] 堆栈: %s", traceback.format_exc())
         ctx.update_config({"_scan_status": f"异常: {e}"})
+    finally:
+        ctx.log.info("[115扫描] cleanup done")
 
-
-async def teardown(ctx):
-    pass

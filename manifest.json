@@ -1,7 +1,7 @@
 {
   "myai": {
     "name": "AI 助手",
-    "version": "1.2.4",
+    "version": "1.2.5",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持跟随模式、群组黑名单、定时自动发言（自定义词条+随机歌词）。自带 Vue 配置界面 + 对话记忆管理。",
     "path": "plugins/myai/"
@@ -22,7 +22,7 @@
   },
   "my115scan": {
     "name": "115历史扫描",
-    "version": "0.10.12",
+    "version": "0.10.15",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "path": "plugins/my115scan/"

@@ -43,6 +43,7 @@ const GROUPS = [
   { key: 'human', label: '人形回复', en: 'enable_private_chat' },
   { key: 'proactive', label: '主动搭话', en: 'enable_proactive' },
   { key: 'autosay', label: '自动发言', en: 'enable_auto_say' },
+  { key: 'sum', label: 'AI总结' },
   { key: 'explain', label: '解释命令', en: 'enable_explain_command' },
   { key: 'scope', label: '范围' },
 ]
@@ -256,6 +257,33 @@ function switchTab(t) {
                   <textarea v-model="cfg.auto_say_phrases" class="inp" rows="8" placeholder="每行一条，随机选 2 条发送&#10;例如：&#10;有人吗😂&#10;今天好安静啊&#10;摸鱼中…&#10;吃饭了没&#10;好无聊谁来聊两句"></textarea></label>
                 <div class="row"><button class="btn" :disabled="autoSaying" @click="testAutoSay">{{ autoSaying ? '发言中…' : '🔘 测试发言' }}</button></div>
               </template>
+            </section>
+          </template>
+
+          <!-- AI总结 -->
+          <template v-else-if="group === 'sum'">
+            <h3 class="det-title">群消息总结（.sum 命令）</h3>
+            <section class="card">
+              <p class="tip">在群聊中发送 <code>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p>
+              <div class="row-usage">
+                <code>.sum 100</code> — 总结最近100条
+              </div>
+              <div class="row-usage">
+                <code>.sum add 群组ID 2h 100</code> — 添加定时总结任务
+              </div>
+              <div class="row-usage">
+                <code>.sum list</code> — 查看所有任务
+              </div>
+              <div class="row-usage">
+                <code>.sum run 1</code> — 立即执行任务
+              </div>
+              <div class="row-usage">
+                <code>.sum del 1</code> — 删除任务
+              </div>
+              <div class="row-usage">
+                <code>.sum disable 1</code> — 禁用任务
+              </div>
+              <p class="tip" style="margin-top:8px">间隔格式: <code>2h</code>(2小时), <code>30m</code>(30分钟), 或 cron 表达式</p>
             </section>
           </template>
 

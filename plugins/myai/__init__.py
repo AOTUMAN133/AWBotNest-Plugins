@@ -24,9 +24,9 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.2.4",
+    "version": "1.2.5",
     "author": "凹凸曼",
-    "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。自带 Vue 配置界面 + 对话记忆管理。",
+    "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
     "default_enabled": False,
     "render_mode": "vue",
@@ -894,6 +894,67 @@ async def setup(ctx):
 
     ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
 
+    # ── .sum 群消息总结 ──────────────────────────────────────────────
+    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=7)
+    async def _sum_handler(client, message):
+        text = (message.text or "").strip()
+        if not text.startswith(".sum"):
+            return
+        parts = text.split()
+        sub = parts[1] if len(parts) > 1 else ""
+        args = parts[2:] if len(parts) > 2 else []
+        cfg = ctx.config
+        chat_id = str(message.chat.id)
+
+        try:
+            # .sum [数量] - 快速总结
+            if not sub:
+                # 无参数显示帮助
+                help_text = (
+                    "📊 <b>群消息总结</b>\n\n"
+                    "<b>快速总结</b>\n"
+                    "<code>.sum 100</code> — 总结最近100条消息\n"
+                    "<code>.sum 50</code> — 总结最近50条\n\n"
+                    "<b>定时任务</b>\n"
+                    "<code>.sum add 群组 2h 100</code> — 添加定时总结\n"
+                    "<code>.sum list</code> — 查看所有任务\n"
+                    "<code>.sum run 1</code> — 立即执行任务\n"
+                    "<code>.sum del 1</code> — 删除任务\n\n"
+                    "<b>间隔格式</b>\n"
+                    "简化: <code>2h</code> (2小时), <code>30m</code> (30分钟)\n"
+                    "Cron: <code>0 0 9,15,21 * * *</code>\n\n"
+                    "💡 使用 AI 助手的 API Key 配置，无需额外设置"
+                )
+                await message.edit(help_text)
+                return
+            if re.match(r"^\d+$", sub):
+                count = int(sub)
+                await message.edit("⏳ 正在获取消息并总结...")
+                result = await _sum_do(client, cfg, chat_id, count)
+                if result["success"]:
+                    header = f"📊 群组总结\n{result['title']} · {_sum_now()}\n\n"
+                    await client.send_message(message.chat.id, header + result["result"])
+                else:
+                    await message.edit(f"❌ {result['error']}")
+                return
+
+            help_text = (
+                "📊 <b>群消息总结</b>\n\n"
+                "<b>快速总结</b>\n"
+                "<code>.sum 100</code> — 总结最近100条\n\n"
+                "<b>定时任务</b>\n"
+                "<code>.sum add 群组 2h 100</code> — 添加定时总结\n"
+                "<code>.sum list</code> — 查看任务\n"
+                "<code>.sum run 1</code> — 立即执行\n"
+                "<code>.sum del 1</code> — 删除任务\n\n"
+                "<b>间隔格式</b>\n"
+                "简化: 2h, 30m\n"
+                "Cron: 0 0 9,15,21 * * *"
+            )
+            await message.edit(help_text)
+        except Exception as e:
+            await message.edit(f"❌ {e}")
+
     @ctx.on_api("/auto_say_test", methods=["POST"])
     async def _api_auto_say_test(req):
         try:
@@ -1036,6 +1097,158 @@ async def _edit_autodel(message, text: str, delay: int = 30):
     except Exception:
         m = message
     asyncio.create_task(_auto_del(m, delay))
+
+
+# ─── 群消息总结 ────────────────────────────────────────────────────────────────
+
+import re as _re
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+_SUM_TZ = _tz(_td(hours=8))
+
+_SUM_PROMPT = (
+    "你是 Telegram 群聊摘要助手。根据以下聊天记录，输出中文总结。\n"
+    "每条消息末尾都有来源链接。每条摘要都必须附带来源链接。\n"
+    "合并重复消息，忽略纯寒暄、表情、广告、机器人状态。\n"
+    "总长度控制在 900-1600 字。\n\n"
+    "固定输出：\n"
+    "<b>📌 本次摘要</b>\n"
+    "用 2-3 句话概括，末尾附来源链接。\n"
+    "随后按实际内容选择栏目：\n"
+    "<b>💬 主要话题</b>：日常交流、综合讨论\n"
+    "<b>🧩 技术与项目</b>：技术方案、开发、排障\n"
+    "<b>📰 资源分享</b>：外部链接、工具、新闻\n"
+    "每个栏目使用 <blockquote expandable> 包裹。\n"
+    "禁止使用 Markdown 语法。"
+)
+
+
+def _sum_now() -> str:
+    return _dt.now(_SUM_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _sum_fmt_ts(ts: float) -> str:
+    return _dt.fromtimestamp(ts, _SUM_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _sum_parse_interval(s: str) -> str | None:
+    s = s.strip().lower()
+    parts = s.split()
+    if len(parts) == 6:
+        return s
+    if len(parts) == 5:
+        return f"0 {s}"
+    m = _re.match(r"^(\d+)(h|m)$", s)
+    if m:
+        val = int(m.group(1))
+        if val <= 0:
+            return None
+        return f"0 0 */{val} * * *" if m.group(2) == "h" else f"0 */{val} * * * *"
+    return None
+
+
+def _sum_parse_chat(input_str: str) -> str:
+    s = input_str.strip()
+    if _re.match(r"^-?\d+$", s):
+        return s
+    m = _re.search(r"t\.me/c/(\d+)", s)
+    if m:
+        return f"-100{m.group(1)}"
+    m = _re.search(r"t\.me/([a-zA-Z0-9_]+)", s)
+    if m:
+        return f"@{m.group(1)}"
+    if s.startswith("@"):
+        return s
+    return s
+
+
+def _sum_build_link(chat_id: str, msg_id: int, username: str = "") -> str:
+    if username:
+        return f"https://t.me/{username}/{msg_id}"
+    cid = chat_id.replace("-100", "").replace("-", "")
+    return f"https://t.me/c/{cid}/{msg_id}"
+
+
+async def _sum_get_msgs(client, chat_id: str, count: int, time_range: int = 0) -> list:
+    from pyrogram.raw.functions.messages import GetHistory
+    peer = await client.resolve_peer(int(chat_id) if chat_id.lstrip("-").isdigit() else chat_id)
+    all_msgs = []
+    offset = 0
+    while len(all_msgs) < count:
+        raw = await client.invoke(GetHistory(
+            peer=peer, offset_id=offset, offset_date=0,
+            add_offset=0, limit=min(count - len(all_msgs), 100),
+            max_id=0, min_id=0, hash=0,
+        ))
+        msgs = [m for m in raw.messages if hasattr(m, "id") and hasattr(m, "message")]
+        if not msgs:
+            break
+        for m in msgs:
+            ts = getattr(m, "date", 0)
+            if time_range and ts:
+                from datetime import datetime as _dt2
+                msg_time = _dt2.fromtimestamp(ts)
+                if (_dt.now(_SUM_TZ) - msg_time).total_seconds() > time_range * 3600:
+                    continue
+            all_msgs.append({"id": m.id, "text": m.message or "", "date": ts})
+            if len(all_msgs) >= count:
+                break
+        offset = msgs[-1].id
+        if len(msgs) < 100:
+            break
+    return all_msgs
+
+
+async def _sum_format_ai(chat_id: str, msgs: list, username: str = "") -> str:
+    lines = []
+    for m in msgs:
+        link = _sum_build_link(chat_id, m["id"], username)
+        ds = _sum_fmt_ts(m["date"]) if m.get("date") else ""
+        lines.append(f"[{ds}] {m['text']}\n来源: {link}")
+    return "\n---\n".join(lines)
+
+
+async def _sum_do(client, cfg, chat_id: str, count: int, time_range: int = 0, prompt: str = "") -> dict:
+    api_key = cfg.get("api_key", "")
+    base_url = cfg.get("base_url", "")
+    model = cfg.get("model", "gpt-4o-mini")
+    if not api_key:
+        return {"success": False, "error": "未配置AI API Key"}
+
+    # 获取群组信息
+    try:
+        peer = int(chat_id) if chat_id.lstrip("-").isdigit() else chat_id
+        entity = await client.get_chat(peer)
+        username = getattr(entity, "username", "") or ""
+        title = getattr(entity, "title", "") or chat_id
+    except Exception:
+        username = ""
+        title = chat_id
+
+    # 获取消息
+    msgs = await _sum_get_msgs(client, chat_id, count, time_range)
+    if not msgs:
+        return {"success": False, "error": "未找到消息"}
+
+    formatted = await _sum_format_ai(chat_id, msgs, username)
+    final_prompt = prompt or _SUM_PROMPT
+
+    # 调用AI
+    try:
+        from ._engine import generate
+        result = await generate(
+            api_key=api_key,
+            base_url=base_url or None,
+            model=model,
+            messages=[{"role": "user", "content": f"{final_prompt}\n\n{formatted}"}],
+        )
+        # 清理思考标签
+        result = _re.sub(r"<thinking>.*?</thinking>", "", result, flags=_re.DOTALL | _re.IGNORECASE)
+        result = _re.sub(r" thinking.*? response", "", result, flags=_re.DOTALL | _re.IGNORECASE)
+        result = result.strip()
+        return {"success": True, "result": result, "title": title}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def teardown(ctx):
