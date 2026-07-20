@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -388,19 +388,15 @@ async def setup(ctx):
         await _update_stats(ctx)
     ctx.schedule(_stats_pusher, "interval", seconds=30, id="mypm_stats")
 
-    @ctx.on_message(ctx.filters.text, group=7)
+    @ctx.on_message(ctx.filters.private & ~ctx.filters.outgoing, group=6)
     async def _pm_handler(client, message):
         if not ctx.config.get("enabled", True):
-            return
-        # 仅处理私聊
-        if not message.chat or message.chat.type != "private":
             return
         user_id = message.from_user.id if message.from_user else 0
         if not user_id:
             return
-        # 跳过机器人自己的消息
-        me = await client.get_me()
-        if user_id == me.id:
+        # 跳过机器人自己
+        if message.from_user and (message.from_user.is_self or message.from_user.is_bot):
             return
 
         # 检查是否是命令消息

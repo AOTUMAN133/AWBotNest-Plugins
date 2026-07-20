@@ -28,10 +28,10 @@
     "path": "plugins/my115scan/"
   },
   "mypmcaptcha": {
-    "name": "私聊拦截 [测试版]",
-    "version": "0.1.0",
+    "name": "私聊拦截",
+    "version": "0.1.1",
     "author": "凹凸曼",
-    "description": "[测试版] 陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
+    "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "path": "plugins/mypmcaptcha/"
   }
 }
