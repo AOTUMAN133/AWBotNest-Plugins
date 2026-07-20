@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.19",
+    "version": "0.10.20",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -224,9 +224,7 @@ def _guess_type(text: str):
     lower = text.lower()
     if any(k in lower for k in ["电影", "movie", "film"]):
         return "movie"
-    if any(k in lower for k in ["剧集", "电视剧", "tv", "series", "s0", "e0"]):
-        return "tv"
-    if re.search(r"\bs\d+\s*e\d+", lower):
+    if any(k in lower for k in ["剧集", "电视剧", "tv", "series"]):
         return "tv"
     return None
 
@@ -335,12 +333,6 @@ async def _process(client, cfg, message, ctx):
                     ctx.log.info("[115扫描] TMDB确认类型: movie, tmdb_id=%d", tmdb_id)
         except Exception as e:
             ctx.log.warning("[115扫描] TMDB类型查询失败: %r", e)
-    # 还确定不了就按文件名关键词猜
-    if media_type is None and tmdb_id:
-        lower = text.lower()
-        if re.search(r"\bs\d+\s*e\d+", lower) or re.search(r"第\s*\d+\s*[集話话]", lower):
-            media_type = "tv"
-            ctx.log.info("[115扫描] 文件名猜测类型: tv, tmdb_id=%d", tmdb_id)
 
     if not tmdb_id:
         ctx.log.info("[115扫描] 未识别 TMDB: %s", text[:50])
@@ -357,31 +349,37 @@ async def _process(client, cfg, message, ctx):
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"跳过(类型{media_type})"})
         return
 
-    if media_type == "tv" and cfg.get("only_complete_series", False):
-        # 先看消息文本有没有完结关键词（快速判断）
-        if _COMPLETE_PATTERN.search(text):
-            ctx.log.info("[115扫描] 文本匹配完结关键词")
-            pass  # 文本明确写了完结
-        else:
-            # 文本没写，查 TMDB 确认是否完结
-            detail = None
-            try:
-                api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
-                detail = await api.get_details(tmdb_id, media_type)
-                if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
-                    pass  # TMDB 确认已完结
-                elif detail.get("in_production") is False:
-                    pass  # 不再制作中=完结
-                else:
-                    ctx.log.info("[115扫描] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
-                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
-                    return
-            except Exception:  # noqa: BLE001
-                # TMDB 查不到，按文本判断结果为准
-                if not _COMPLETE_PATTERN.search(text):
-                    ctx.log.info("[115扫描] 剧集未完结(文本), 跳过: %d", tmdb_id)
-                    _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
-                    return
+    if cfg.get("only_complete_series", False):
+        # 尝试确定media_type（如果还没确定的话）
+        check_type = media_type
+        if check_type is None:
+            if re.search(r"\bs\d+\s*e\d+", text.lower()) or re.search(r"第\s*\d+\s*[集話话]", text):
+                check_type = "tv"
+        if check_type == "tv":
+            # 先看消息文本有没有完结关键词（快速判断）
+            if _COMPLETE_PATTERN.search(text):
+                ctx.log.info("[115扫描] 文本匹配完结关键词")
+                pass  # 文本明确写了完结
+            else:
+                # 文本没写，查 TMDB 确认是否完结
+                detail = None
+                try:
+                    api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
+                    detail = await api.get_details(tmdb_id, check_type)
+                    if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
+                        pass  # TMDB 确认已完结
+                    elif detail.get("in_production") is False:
+                        pass  # 不再制作中=完结
+                    else:
+                        ctx.log.info("[115扫描] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
+                        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                        return
+                except Exception:  # noqa: BLE001
+                    # TMDB 查不到，按文本判断结果为准
+                    if not _COMPLETE_PATTERN.search(text):
+                        ctx.log.info("[115扫描] 剧集未完结(文本), 跳过: %d", tmdb_id)
+                        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
+                        return
 
     if not cfg.get("skip_emby_check", False):
         emby_url = cfg.get("emby_url")
