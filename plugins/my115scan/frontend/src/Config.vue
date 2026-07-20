@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 
 const props = defineProps({ pluginId: String, host: Object })
 const tab = ref('settings')
@@ -114,20 +114,18 @@ const cfg = reactive({
 })
 
 const mediaTypesArr = ref([])
-// 从cfg初始化media_types
-function initMediaTypes() {
-  const v = cfg.media_types
+// 同步 cfg.media_types → mediaTypesArr
+watch(() => cfg.media_types, (v) => {
   if (Array.isArray(v)) mediaTypesArr.value = [...v]
   else if (typeof v === 'string' && v) mediaTypesArr.value = v.split(',').filter(Boolean)
   else mediaTypesArr.value = ['movie', 'tv']
-}
-initMediaTypes()
+}, { immediate: true })
 
 function toggleMedia(type) {
-  const arr = mediaTypesArr.value
+  const arr = [...mediaTypesArr.value]
   const i = arr.indexOf(type)
   if (i >= 0) arr.splice(i, 1); else arr.push(type)
-  // 即时同步到cfg以便保存
+  mediaTypesArr.value = arr
   cfg.media_types = arr.join(',')
 }
 
