@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -152,39 +152,32 @@ def _del_whitelist(ctx, user_id: int):
 
 
 def _gen_math_question() -> tuple:
-    """生成随机数学题，返回 (题目, 答案)"""
-    types = [
-        lambda: (random.randint(10, 999), random.randint(10, 999), "+"),
-        lambda: (random.randint(50, 999), random.randint(10, 49), "-"),
-        lambda: (random.randint(10, 99), random.randint(2, 9), "×"),
-        lambda: (random.randint(10, 999) * random.randint(2, 9), random.randint(2, 9), "÷"),
-    ]
-    a, b, op = random.choice(types)()
+    """生成简单数学题"""
+    a = random.randint(1, 20)
+    b = random.randint(1, 20)
+    op = random.choice(["+", "-"])
     if op == "+":
         ans = a + b
-    elif op == "-":
-        ans = a - b
-    elif op == "×":
-        ans = a * b
     else:
-        ans = a // b
-    text = f"{a} {op} {b} = ?"
-    return text, str(ans)
+        if a < b:
+            a, b = b, a
+        ans = a - b
+    return f"{a} {op} {b} = ?", str(ans)
 
 
 # ─── 关键词题库 ────────────────────────────────────────────────────────────────
 
 _QUESTIONS = [
+    ("1+1等于几？", "2"),
     ("一年有几个月？", "12"),
     ("一周有几天？", "7"),
     ("太阳从哪边升起？", "东"),
     ("中国的首都是哪里？", "北京"),
     ("水的化学式是什么？", "H2O"),
-    ("2+2等于几？", "4"),
     ("地球有几大洲？", "7"),
     ("一天有几个小时？", "24"),
-    ("一年有几个季节？", "4"),
     ("1米等于多少厘米？", "100"),
+    ("2+3等于几？", "5"),
 ]
 
 
