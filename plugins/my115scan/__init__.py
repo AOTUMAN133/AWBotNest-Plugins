@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.8.3",
+    "version": "0.8.4",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -678,7 +678,7 @@ async def _do_scan(ctx, src):
             peer = await client.resolve_peer(src)
             raw = await client.invoke(GetHistory(
                 peer=peer, offset_id=offset, offset_date=0,
-                add_offset=0, limit=batch, max_id=0, min_id=0, hash=0,
+                add_offset=0, limit=100, max_id=0, min_id=0, hash=0,
             ))
             msgs = [m for m in raw.messages if hasattr(m, 'id')]
             if not msgs:
@@ -705,10 +705,11 @@ async def _do_scan(ctx, src):
                 except Exception as e:
                     ctx.log.warning("[115扫描] 消息%s异常: %r", mid, e)
                 await asyncio.sleep(delay)
+            ctx.log.info("[115扫描] 已处理%s条, 最后ID=%s", total, ids[-1])
             ctx.kv.set("my115scan_last_id", ids[-1])
             ctx.kv.set("my115scan_total", total)
             ctx.kv.set("my115scan_forwarded", forwarded)
-            if len(ids) < batch:
+            if len(ids) < 100:
                 break
 
         ctx.kv.set("my115scan_last_id", ids[-1] if ids else 0)
