@@ -41,12 +41,5 @@
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "path": "plugins/myzhijiao/"
-  },
-  "mycosplay": {
-    "name": "Cosplay",
-    "version": "1.0.3",
-    "author": "凹凸曼",
-    "description": "从 cosplaytele.com 获取随机cosplay图片。用法: .cos [数量]",
-    "path": "plugins/mycosplay/"
   }
 }
