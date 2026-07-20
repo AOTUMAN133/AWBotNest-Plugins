@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -272,14 +272,15 @@ async def _pass(client, user_id, ctx):
     for act in pass_acts:
         if act == "unmute":
             try:
-                peer = await client.resolve_peer(user_id)
-                await client.invoke(UpdateNotifySettings(InputNotifyPeer(peer=peer), InputPeerNotifySettings(mute_until=0, show_previews=True, silent=False)))
+                await client.invoke(pyrogram.raw.functions.account.UpdateNotifySettings(
+                        pyrogram.raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                        pyrogram.raw.types.InputPeerNotifySettings(mute_until=0, show_previews=True, silent=False)))
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消静音失败 %d: %r", user_id, e)
         elif act == "unarchive":
             try:
-                peer = await client.resolve_peer(user_id)
-                await client.invoke(EditPeerFolders([InputFolderPeer(peer=peer, folder_id=0)]))
+                await client.invoke(pyrogram.raw.functions.folders.EditPeerFolders(
+                        [pyrogram.raw.types.InputFolderPeer(peer=await client.resolve_peer(user_id), folder_id=0)]))
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消归档失败 %d: %r", user_id, e)
         elif act == "wl":
@@ -339,21 +340,23 @@ async def _fail(client, user_id, ctx, reason: str):
     for act in fail_acts:
         if act == "block":
             try:
-                peer = await client.resolve_peer(user_id)
-                await client.invoke(Block(peer))
+                await client.block_user(user_id)
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
         elif act == "delete":
             try:
-                peer = await client.resolve_peer(user_id)
-                await client.invoke(DeleteHistory(peer, revoke=True, max_id=0))
+                await client.invoke(pyrogram.raw.functions.messages.DeleteHistory(
+                        peer=await client.resolve_peer(user_id),
+                        revoke=True, max_id=0))
             except Exception as e:
                 ctx.log.warning("[人机验证] 删除对话失败 %d: %r", user_id, e)
         elif act == "report":
             try:
-                peer = await client.resolve_peer(user_id)
-                await client.invoke(ReportPeer(peer, InputReportReasonSpam(), "spam"))
+                await client.invoke(pyrogram.raw.functions.account.ReportPeer(
+                        await client.resolve_peer(user_id),
+                        pyrogram.raw.types.InputReportReasonSpam(),
+                        "spam"))
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
 
