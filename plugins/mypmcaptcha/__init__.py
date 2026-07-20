@@ -5,6 +5,7 @@ import asyncio
 import random
 import time
 from datetime import datetime, timezone, timedelta
+import pyrogram
 from pyrogram.raw.functions.account import UpdateNotifySettings, ReportPeer
 from pyrogram.raw.functions.contacts import Block
 from pyrogram.raw.functions.folders import EditPeerFolders
@@ -16,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -340,7 +341,7 @@ async def _fail(client, user_id, ctx, reason: str):
     for act in fail_acts:
         if act == "block":
             try:
-                await client.block_user(user_id)
+                await client.invoke(Block(id=await client.resolve_peer(user_id)))
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
