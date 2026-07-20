@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.20",
+    "version": "0.10.21",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -355,27 +355,34 @@ async def _process(client, cfg, message, ctx):
         if check_type is None:
             if re.search(r"\bs\d+\s*e\d+", text.lower()) or re.search(r"第\s*\d+\s*[集話话]", text):
                 check_type = "tv"
+        ctx.log.info("[115扫描] 完结检查: media_type=%s check_type=%s text=%s", media_type, check_type, text[:50])
         if check_type == "tv":
             # 先看消息文本有没有完结关键词（快速判断）
             if _COMPLETE_PATTERN.search(text):
-                ctx.log.info("[115扫描] 文本匹配完结关键词")
+                ctx.log.info("[115扫描] 文本匹配完结关键词: %s", text[:50])
                 pass  # 文本明确写了完结
             else:
+                ctx.log.info("[115扫描] 文本未匹配完结, 查询TMDB: tmdb_id=%d", tmdb_id)
                 # 文本没写，查 TMDB 确认是否完结
                 detail = None
                 try:
                     api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
                     detail = await api.get_details(tmdb_id, check_type)
+                    status = detail.get("status", "N/A")
+                    in_prod = detail.get("in_production")
+                    ctx.log.info("[115扫描] TMDB详情: status=%s in_production=%s", status, in_prod)
                     if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
-                        pass  # TMDB 确认已完结
+                        ctx.log.info("[115扫描] TMDB确认已完结: %d", tmdb_id)
+                        pass
                     elif detail.get("in_production") is False:
-                        pass  # 不再制作中=完结
+                        ctx.log.info("[115扫描] TMDB确认不再制作: %d", tmdb_id)
+                        pass
                     else:
                         ctx.log.info("[115扫描] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
                         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                         return
-                except Exception:  # noqa: BLE001
-                    # TMDB 查不到，按文本判断结果为准
+                except Exception as e:
+                    ctx.log.warning("[115扫描] TMDB完结查询异常: %r", e)
                     if not _COMPLETE_PATTERN.search(text):
                         ctx.log.info("[115扫描] 剧集未完结(文本), 跳过: %d", tmdb_id)
                         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
@@ -872,7 +879,7 @@ async def _do_scan(ctx, src):
         last_id = int(ctx.kv.get("my115scan_last_id", 0) or 0)
         total = int(ctx.kv.get("my115scan_total", 0) or 0)
         forwarded = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
-        ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒", src, batch, delay)
+        ctx.log.info("[115扫描] 开始: 来源%s, 每批%s条, 间隔%s秒, only_complete_series=%s", src, batch, delay, cfg.get("only_complete_series", "N/A"))
 
         processed = 0
         offset = last_id if last_id > 0 else 0
