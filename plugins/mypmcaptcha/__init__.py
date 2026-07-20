@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "scope": "user",
@@ -43,12 +43,12 @@ __plugin__ = {
             "section": "验证", "help": "text模式要求对方回复的关键词"
         },
         "fail_actions": {
-            "type": "string", "default": "block,report", "label": "失败操作",
-            "section": "操作", "help": "block/delete/report/mute/archive, 逗号分隔"
+            "type": "string", "default": "屏蔽,举报", "label": "失败操作",
+            "section": "操作", "help": "屏蔽=block, 删除对话=delete, 举报=report, 静音=mute, 归档=archive, 逗号分隔"
         },
         "pass_actions": {
-            "type": "string", "default": "unmute,unarchive", "label": "通过操作",
-            "section": "操作", "help": "unmute/unarchive/wl, 逗号分隔"
+            "type": "string", "default": "取消静音,取消归档", "label": "通过操作",
+            "section": "操作", "help": "取消静音=unmute, 取消归档=unarchive, 白名单=wl, 逗号分隔"
         },
         "whitelist": {
             "type": "string", "default": "", "label": "白名单(用户ID逗号分隔)",
@@ -68,8 +68,8 @@ DEFAULTS = {
     "captcha_timeout": 30,
     "captcha_tries": 3,
     "captcha_keyword": "我同意",
-    "fail_actions": "block,report",
-    "pass_actions": "unmute,unarchive",
+    "fail_actions": "屏蔽,举报",
+    "pass_actions": "取消静音,取消归档",
     "whitelist": "",
 }
 
@@ -91,8 +91,32 @@ def _parse_ids(s: str) -> set:
     return set(int(x.strip()) for x in s.split(",") if x.strip().isdigit())
 
 
+_ACTION_CN_TO_EN = {
+    "屏蔽": "block", "删除": "delete", "删除对话": "delete",
+    "举报": "report", "静音": "mute", "归档": "archive",
+    "取消静音": "unmute", "取消归档": "unarchive", "白名单": "wl",
+}
+
+_ACTION_EN_TO_CN = {
+    "block": "屏蔽", "delete": "删除对话", "report": "举报",
+    "mute": "静音", "archive": "归档",
+    "unmute": "取消静音", "unarchive": "取消归档", "wl": "白名单",
+}
+
+
 def _parse_actions(s: str) -> list:
-    return [x.strip().lower() for x in s.split(",") if x.strip()]
+    """解析操作配置，支持中文和英文，返回英文code列表"""
+    items = [x.strip() for x in s.split(",") if x.strip()]
+    result = []
+    for item in items:
+        lower = item.lower()
+        if lower in _ACTION_CN_TO_EN:
+            result.append(_ACTION_CN_TO_EN[lower])
+        elif lower in _ACTION_EN_TO_CN:
+            result.append(lower)
+        else:
+            result.append(item)
+    return result
 
 
 def _is_whitelisted(ctx, user_id: int) -> bool:
