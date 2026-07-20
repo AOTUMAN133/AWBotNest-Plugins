@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.4",
+    "version": "0.9.6",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -302,6 +302,9 @@ async def _resolve_by_search(cfg, title, year, ctx):
 
 
 async def _process(client, cfg, message, ctx):
+    # 检查停止信号
+    if ctx.kv.get("my115scan_stop", False):
+        return
     links = _extract_links(message)
     if not links:
         return
@@ -366,6 +369,9 @@ async def _process(client, cfg, message, ctx):
                 if emby_set:
                     has = tmdb_id in emby_set
                 else:
+                    # 逐条查，但先检查停止信号
+                    if ctx.kv.get("my115scan_stop", False):
+                        return
                     has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
                 if has:
                     ctx.log.info("[115扫描] Emby 已有 %d，跳过", tmdb_id)
@@ -439,6 +445,10 @@ async def _process(client, cfg, message, ctx):
     await _send_links(client, cfg, links, label, ctx)
     ctx.log.info("[115扫描] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
+    # 转存后加入缓存，防止同批重复转存
+    emby_set = cfg.get("_emby_set")
+    if emby_set is not None:
+        emby_set.add(tmdb_id)
 
 
 async def _cmd_getmedia(client, message, ctx):
