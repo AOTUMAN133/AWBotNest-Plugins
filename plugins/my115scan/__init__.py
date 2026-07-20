@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.9.0",
+    "version": "0.9.2",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
@@ -662,8 +662,10 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None) -> set:
     import httpx
     url = f"{emby_url.rstrip('/')}/emby/Items"
     params = {"Recursive": "true", "Fields": "ProviderIds", "api_key": emby_key}
+    if _log:
+        _log.info("[115扫描] 正在拉取 Emby 全量清单: %s", url)
     try:
-        async with httpx.AsyncClient(timeout=60, verify=False) as cli:
+        async with httpx.AsyncClient(timeout=120, verify=False) as cli:
             r = await cli.get(url, params=params)
             r.raise_for_status()
             data = r.json()
@@ -676,10 +678,16 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None) -> set:
         if _log:
             _log.info("[115扫描] Emby 全量拉取完成，共 %d 个 TMDB ID", len(ids))
         return ids
+    except httpx.HTTPStatusError as e:
+        if _log:
+            _log.warning("[115扫描] Emby 全量拉取 HTTP %s: %s", e.response.status_code, e.response.text[:200])
+    except httpx.TimeoutException:
+        if _log:
+            _log.warning("[115扫描] Emby 全量拉取超时(120s)，请检查 Emby 地址和网络")
     except Exception as e:
         if _log:
             _log.warning("[115扫描] Emby 全量拉取失败: %r", e)
-        return set()
+    return set()
 
 
 async def _do_scan(ctx, src):
@@ -692,6 +700,7 @@ async def _do_scan(ctx, src):
             return
         client = apps[0]
         cfg = _effective_cfg(ctx)
+        ctx.log.info("[115扫描] 正在拉取 Emby 全量资源清单...")
         # 预拉取 Emby 全量 TMDB ID 缓存
         if not cfg.get("skip_emby_check", False) and cfg.get("emby_url") and cfg.get("emby_api_key"):
             emby_set = await _fetch_emby_ids(cfg["emby_url"], cfg["emby_api_key"], ctx.log)
