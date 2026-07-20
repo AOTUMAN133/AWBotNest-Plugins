@@ -37,7 +37,7 @@
 ,
   "myzhijiao": {
     "name": "掷筊",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "path": "plugins/myzhijiao/"
