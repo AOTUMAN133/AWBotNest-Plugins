@@ -521,6 +521,7 @@ def _hist_key(chat_id: int) -> str:
 
 
 async def setup(ctx):
+    _log_debug(ctx, "AI插件加载完成")
     # ── 功能 1：人形回复（监听收到的私聊/群消息）──
     @ctx.on_message((ctx.filters.private | ctx.filters.group) & ~ctx.filters.outgoing, group=6)
     async def human_reply(client, message):
@@ -811,6 +812,7 @@ async def setup(ctx):
         cids = _parse_ids(cfg.get("auto_say_chat_ids", ""))
         if not cids:
             return
+        _log_debug(ctx, f"自动发言检查: 群组={cids}")
         phrases_raw = str(cfg.get("auto_say_phrases", "") or "").strip()
         user_phrases = [p.strip() for p in phrases_raw.replace("\r\n", "\n").split("\n") if p.strip()]
         use_lyrics = cfg.get("auto_say_use_lyrics", True)
@@ -892,6 +894,7 @@ async def setup(ctx):
                     msgs.append(item.next_text)
             for i, msg in enumerate(msgs):
                 try:
+                    _log_debug(ctx, f"自动发言: group={chat_id} msg={msg[:30]}")
                     sent = await client.send_message(chat_id, msg)
                     ctx.log.info("[AI] 自动发言 group=%s: %s", chat_id, msg[:30])
                     # 保存发言消息ID，用于检测答题奖励回复
