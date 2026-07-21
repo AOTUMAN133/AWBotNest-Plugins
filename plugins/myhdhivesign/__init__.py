@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+# AWBotNest 插件：影巢签到 (myhdhivesign)
+
+import asyncio
+import json
+import re
+import time
+import httpx
+from datetime import datetime, timezone, timedelta
+
+TZ = timezone(timedelta(hours=8))
+
+__plugin__ = {
+    "name": "影巢签到",
+    "id": "myhdhivesign",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
+    "scope": "user",
+    "requirements": ["httpx"],
+}
+
+# KV key
+_KV_ACCOUNTS = "hdhive_accounts"
+_KV_LOGS = "hdhive_logs"
+_KV_HASH = "hdhive_action_hash"
+
+_SIGN_API_CANDIDATES = [
+    "/api/customer/user/login",
+    "/api/customer/auth/login",
+]
+
+
+def _now() -> str:
+    return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def _fetch_action_hash(base_url: str) -> str | None:
+    """从 Next.js chunk 文件中提取签到 action hash"""
+    try:
+        async with httpx.AsyncClient(timeout=15, verify=False) as cli:
+            r = await cli.get(f"{base_url}/")
+            html = r.text
+            # 找到主要的 chunk 文件
+            chunks = re.findall(r'_next/static/chunks/[^"\']+\.js', html)
+            for chunk_url in chunks[:10]:
+                full_url = f"{base_url}/{chunk_url}" if chunk_url.startswith("_next") else f"{base_url}/{chunk_url}"
+                try:
+                    cr = await cli.get(full_url)
+                    m = re.search(
+                        r'createServerReference\s*\(\s*["\']([0-9a-f]{40,})["\']',
+                        cr.text,
+                    )
+                    if m:
+                        return m.group(1)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
+async def _do_sign(account: dict, action_hash: str) -> dict:
+    """执行单账号签到"""
+    base_url = account.get("base_url", "https://hdhive.in").rstrip("/")
+    cookie_str = account.get("cookie", "")
+    gamble = account.get("gamble", False)
+    token = ""
+    cookies = {}
+
+    for item in cookie_str.split(";"):
+        if "=" in item:
+            k, v = item.strip().split("=", 1)
+            cookies[k] = v
+            if k == "token":
+                token = v
+
+    if not token:
+        return {"success": False, "message": "Cookie 缺少 token"}
+
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/x-component",
+        "Content-Type": "text/plain;charset=UTF-8",
+        "Origin": base_url,
+        "Referer": f"{base_url}/",
+        "next-action": action_hash,
+        "Authorization": f"Bearer {token}",
+    }
+    body = json.dumps([gamble])
+
+    try:
+        async with httpx.AsyncClient(timeout=30, verify=False) as cli:
+            resp = await cli.post(
+                base_url,
+                headers=headers,
+                cookies=cookies,
+                content=body,
+            )
+        text = resp.text
+        # 解析响应
+        result = _parse_rsc_result(text)
+        if result is None:
+            if resp.status_code == 200:
+                return {"success": True, "message": "签到请求已发送"}
+            return {"success": False, "message": f"HTTP {resp.status_code}"}
+
+        payload = result.get("response") or result
+        message = str(payload.get("message") or "")
+        description = str(payload.get("description") or "")
+        display = description or message or "未知结果"
+
+        already = any(k in message + description for k in ("已经签到", "签到过", "明天再来"))
+        success = bool(payload.get("success")) or already
+        if already:
+            display = "今日已签到"
+        return {"success": success, "message": display}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+def _parse_rsc_result(text: str) -> dict | None:
+    """解析 Next.js RSC 响应"""
+    for line in text.splitlines():
+        m = re.match(r"^\d+:(\{.*\})\s*$", line)
+        if not m:
+            continue
+        try:
+            obj = json.loads(m.group(1))
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if "login" in str(obj):
+            continue
+        if "f" in obj and any(k in obj for k in ("error", "response", "success", "message")):
+            return obj
+    return None
+
+
+async def setup(ctx):
+    # 初始化定时签到
+    async def _sign_tick():
+        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        if not accounts:
+            return
+        base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
+        # 获取 action hash
+        action_hash = ctx.kv.get(_KV_HASH, "")
+        if not action_hash:
+            action_hash = await _fetch_action_hash(base_url)
+            if action_hash:
+                ctx.kv.set(_KV_HASH, action_hash)
+            else:
+                ctx.log.warning("[影巢签到] 无法获取 action hash")
+                return
+
+        logs = []
+        for i, acc in enumerate(accounts):
+            name = acc.get("name", f"账号{i+1}")
+            ctx.log.info("[影巢签到] 签到 %s", name)
+            result = await _do_sign(acc, action_hash)
+            status = "✅" if result["success"] else "❌"
+            logs.append({"time": _now(), "name": name, "status": status, "message": result["message"]})
+            ctx.log.info("[影巢签到] %s: %s", name, result["message"])
+            await asyncio.sleep(2)
+
+        ctx.kv.set(_KV_LOGS, logs)
+
+    ctx.schedule(_sign_tick, "cron", cron="0 0 9 * * *", id="hdhive_sign")
+
+    @ctx.on_api("/sign_now", methods=["POST"])
+    async def _api_sign_now(req):
+        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        if not accounts:
+            return {"ok": False, "message": "未配置账号"}
+        base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
+        action_hash = ctx.kv.get(_KV_HASH, "")
+        if not action_hash:
+            action_hash = await _fetch_action_hash(base_url)
+            if action_hash:
+                ctx.kv.set(_KV_HASH, action_hash)
+            else:
+                return {"ok": False, "message": "无法获取 action hash"}
+
+        logs = []
+        for i, acc in enumerate(accounts):
+            name = acc.get("name", f"账号{i+1}")
+            result = await _do_sign(acc, action_hash)
+            status = "✅" if result["success"] else "❌"
+            logs.append({"time": _now(), "name": name, "status": status, "message": result["message"]})
+            await asyncio.sleep(2)
+
+        ctx.kv.set(_KV_LOGS, logs)
+        return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}: {l['message']}" for l in logs)}
+
+    @ctx.on_api("/refresh_hash", methods=["POST"])
+    async def _api_refresh_hash(req):
+        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        base_url = accounts[0].get("base_url", "https://hdhive.in") if accounts else "https://hdhive.in"
+        h = await _fetch_action_hash(base_url)
+        if h:
+            ctx.kv.set(_KV_HASH, h)
+            return {"ok": True, "message": f"Hash 已更新: {h[:16]}..."}
+        return {"ok": False, "message": "获取失败"}
+
+    @ctx.on_api("/get_accounts", methods=["GET"])
+    async def _api_get_accounts(req):
+        return {"accounts": ctx.kv.get(_KV_ACCOUNTS, [])}
+
+    @ctx.on_api("/save_accounts", methods=["POST"])
+    async def _api_save_accounts(req):
+        import json
+        data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
+        accounts = data.get("accounts", [])
+        ctx.kv.set(_KV_ACCOUNTS, accounts)
+        return {"ok": True, "message": f"已保存 {len(accounts)} 个账号"}
+
+    @ctx.on_api("/get_logs", methods=["GET"])
+    async def _api_get_logs(req):
+        return {"logs": ctx.kv.get(_KV_LOGS, [])}
+
+    # 配置面板
+    ctx.update_config({
+        "config_schema": {
+            "accounts": {
+                "type": "text", "default": "[]", "label": "账号配置(JSON)",
+                "section": "账号", "help": "格式: [{\"name\":\"别名\",\"base_url\":\"https://hdhive.in\",\"cookie\":\"token=xxx;...\",\"gamble\":false}]"
+            },
+            "cron": {
+                "type": "string", "default": "0 0 9 * * *", "label": "定时签到(cron)",
+                "section": "定时"
+            },
+        }
+    })
+
+
+async def teardown(ctx):
+    pass
