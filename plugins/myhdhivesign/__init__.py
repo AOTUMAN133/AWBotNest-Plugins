@@ -78,13 +78,10 @@ async def _fetch_action_hash(base_url: str) -> str | None:
             chunk_urls = set()
             for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
-            for m in re.finditer(r'(/chunks/[^"\'\\s]+\.js)', html):
+            for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
 
-            # 优先找 main/app/pages chunk
-            priority = sorted(chunk_urls, key=lambda u: 0 if any(k in u for k in ["main", "app", "pages", "framework"]) else 1)
-
-            for chunk_rel in priority[:30]:
+            for chunk_rel in chunk_urls:
                 chunk_url = f"{base_url}{chunk_rel}" if chunk_rel.startswith("/") else f"{base_url}/{chunk_rel}"
                 try:
                     cr = await cli.get(chunk_url, timeout=15)
