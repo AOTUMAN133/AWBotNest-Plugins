@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.6",
+    "version": "1.1.7",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -24,6 +24,10 @@ __plugin__ = {
         "accounts": {
             "type": "text", "default": "[]", "label": "账号配置(JSON)",
             "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
+        },
+        "action_hash": {
+            "type": "string", "default": "", "label": "Action Hash(留空自动获取)",
+            "section": "哈希", "help": "如果自动获取失败，可打开浏览器F12→网络→点签到→找next-action请求头，复制值填这里"
         },
         "sign_now": {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
@@ -283,7 +287,7 @@ async def setup(ctx):
             return {"ok": False, "message": "未配置账号"}
         _log_debug(ctx, f"账号数: {len(accounts)}")
         base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
-        action_hash = ctx.kv.get(_KV_HASH, "")
+        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if not action_hash:
             _log_debug(ctx, f"获取action hash: {base_url}")
             action_hash = await _fetch_action_hash(base_url)
@@ -291,10 +295,10 @@ async def setup(ctx):
                 ctx.kv.set(_KV_HASH, action_hash)
                 _log_debug(ctx, f"hash获取成功: {action_hash[:16]}...")
             else:
-                _log_debug(ctx, "无法获取action hash")
-                return {"ok": False, "message": "无法获取 action hash"}
+                _log_debug(ctx, "无法获取action hash，请在配置中手动填写")
+                return {"ok": False, "message": "无法获取 action hash，请在配置中手动填写"}
         else:
-            _log_debug(ctx, f"使用缓存的hash: {action_hash[:16]}...")
+            _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
             mode = "赌狗" if acc.get("gamble") else "普通"
