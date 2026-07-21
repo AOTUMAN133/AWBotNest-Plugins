@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -236,16 +236,7 @@ async def setup(ctx):
     async def _do_sign_all():
         """执行所有账号签到"""
         _log_debug(ctx, "开始签到")
-        api_key = ctx.config.get("api_key", "")
-        user_token = ctx.config.get("user_token", "")
         base_url = ctx.config.get("base_url", "https://hdhive.com")
-        if not api_key:
-            _log_debug(ctx, "未配置 API Key")
-            return {"ok": False, "message": "请先配置 API Key"}
-        if not user_token:
-            _log_debug(ctx, "未配置 User Token")
-            return {"ok": False, "message": "请先配置 User Token"}
-
         acc_json = ctx.config.get("accounts", "[]")
         try:
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
@@ -259,6 +250,12 @@ async def setup(ctx):
         logs = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
+            api_key = acc.get("api_key", "")
+            user_token = acc.get("user_token", "")
+            if not api_key or not user_token:
+                _log_debug(ctx, f"{name}: 缺少API Key或Token")
+                logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少API Key或Token"})
+                continue
             gamble = acc.get("gamble", False)
             mode = "赌狗" if gamble else "普通"
             _log_debug(ctx, f"签到: {name}({mode})")
