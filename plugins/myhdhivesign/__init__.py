@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.2",
+    "version": "2.1.3",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -106,17 +106,18 @@ async def _fetch_action_hash(base_url: str) -> str | None:
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
     """用用户名密码登录，返回完整 cookie 字符串"""
     apis = ["/api/customer/user/login", "/api/customer/auth/login"]
-    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
     for api in apis:
         try:
-            async with httpx.AsyncClient(timeout=15, verify=False) as cli:
-                r = await cli.post(f"{base_url}{api}", json={"username": username, "password": password}, headers=headers)
+            async with httpx.AsyncClient(timeout=15, verify=False, headers=headers) as cli:
+                url = f"{base_url}{api}"
+                r = await cli.post(url, json={"username": username, "password": password})
                 if r.status_code == 200:
                     data = r.json()
                     token = data.get("data", {}).get("token") or data.get("token", "")
                     if token:
                         return f"token={token}"
-        except Exception:
+        except Exception as e:
             continue
     return None
 
@@ -248,13 +249,13 @@ async def setup(ctx):
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                _log_debug(ctx, f"{name}: 尝试自动登录")
+                _log_debug(ctx, f"{name}: 尝试自动登录到 {base_url}")
                 cookie = await _login_get_token(base_url, username, password)
                 if cookie:
                     acc["cookie"] = cookie
                     _log_debug(ctx, f"{name}: 登录成功")
                 else:
-                    _log_debug(ctx, f"{name}: 登录失败")
+                    _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码或直接填Cookie")
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
