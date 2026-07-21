@@ -532,29 +532,29 @@ return (_ctx, _cache) => {
                               ]),
                               _cache[50] || (_cache[50] = _createElementVNode("span", null, "开启定时自动发言", -1))
                             ]),
+                            _createElementVNode("label", _hoisted_30, [
+                              _withDirectives(_createElementVNode("input", {
+                                "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((cfg.enable_reward_answer) = $event)),
+                                type: "checkbox"
+                              }, null, 512), [
+                                [_vModelCheckbox, cfg.enable_reward_answer]
+                              ]),
+                              _cache[51] || (_cache[51] = _createElementVNode("span", null, "答题奖励（自动回复机器人数学题）", -1))
+                            ]),
+                            (cfg.enable_reward_answer)
+                              ? (_openBlock(), _createElementBlock("label", _hoisted_31, [
+                                  _cache[52] || (_cache[52] = _createElementVNode("span", null, "指定机器人", -1)),
+                                  _withDirectives(_createElementVNode("input", {
+                                    "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((cfg.reward_bot_ids) = $event)),
+                                    class: "inp",
+                                    placeholder: "机器人ID或用户名，逗号分隔，留空则回复所有"
+                                  }, null, 512), [
+                                    [_vModelText, cfg.reward_bot_ids]
+                                  ])
+                                ]))
+                              : _createCommentVNode("", true),
                             (cfg.enable_auto_say)
-                              ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-                                  _createElementVNode("label", _hoisted_30, [
-                                    _withDirectives(_createElementVNode("input", {
-                                      "onUpdate:modelValue": _cache[16] || (_cache[16] = $event => ((cfg.enable_reward_answer) = $event)),
-                                      type: "checkbox"
-                                    }, null, 512), [
-                                      [_vModelCheckbox, cfg.enable_reward_answer]
-                                    ]),
-                                    _cache[51] || (_cache[51] = _createElementVNode("span", null, "答题奖励（自动回复机器人数学题）", -1))
-                                  ]),
-                                  (cfg.enable_reward_answer)
-                                    ? (_openBlock(), _createElementBlock("label", _hoisted_31, [
-                                        _cache[52] || (_cache[52] = _createElementVNode("span", null, "指定机器人", -1)),
-                                        _withDirectives(_createElementVNode("input", {
-                                          "onUpdate:modelValue": _cache[17] || (_cache[17] = $event => ((cfg.reward_bot_ids) = $event)),
-                                          class: "inp",
-                                          placeholder: "机器人ID或用户名，逗号分隔，留空则回复所有"
-                                        }, null, 512), [
-                                          [_vModelText, cfg.reward_bot_ids]
-                                        ])
-                                      ]))
-                                    : _createCommentVNode("", true),
+                              ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
                                   _createElementVNode("label", _hoisted_32, [
                                     _cache[53] || (_cache[53] = _createElementVNode("span", null, "发言群组", -1)),
                                     _withDirectives(_createElementVNode("textarea", {
@@ -637,7 +637,7 @@ return (_ctx, _cache) => {
                         ], 64))
                       : (group.value === 'sum')
                         ? (_openBlock(), _createElementBlock(_Fragment, { key: 4 }, [
-                            _cache[61] || (_cache[61] = _createStaticVNode("<h3 class=\"det-title\" data-v-0c23636a>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-0c23636a><p class=\"tip\" data-v-0c23636a>在群聊中发送 <code data-v-0c23636a>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-0c23636a><code data-v-0c23636a>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-0c23636a>间隔格式: <code data-v-0c23636a>2h</code>(2小时), <code data-v-0c23636a>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
+                            _cache[61] || (_cache[61] = _createStaticVNode("<h3 class=\"det-title\" data-v-15b6695f>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-15b6695f><p class=\"tip\" data-v-15b6695f>在群聊中发送 <code data-v-15b6695f>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-15b6695f><code data-v-15b6695f>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-15b6695f>间隔格式: <code data-v-15b6695f>2h</code>(2小时), <code data-v-15b6695f>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
                           ], 64))
                         : (group.value === 'explain')
                           ? (_openBlock(), _createElementBlock(_Fragment, { key: 5 }, [
@@ -793,6 +793,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-0c23636a"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-15b6695f"]]);
 
 export { Config as default };
