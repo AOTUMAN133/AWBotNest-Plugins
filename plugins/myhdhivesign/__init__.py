@@ -13,11 +13,21 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "requirements": ["httpx"],
+    "config_schema": {
+        "accounts": {
+            "type": "text", "default": "[]", "label": "账号配置(JSON)",
+            "section": "账号", "help": "格式: [{\"name\":\"别名\",\"base_url\":\"https://hdhive.in\",\"cookie\":\"token=xxx;...\",\"gamble\":false}]"
+        },
+        "cron": {
+            "type": "string", "default": "0 0 9 * * *", "label": "定时签到(cron)",
+            "section": "定时"
+        },
+    },
 }
 
 # KV key
@@ -220,20 +230,6 @@ async def setup(ctx):
     @ctx.on_api("/get_logs", methods=["GET"])
     async def _api_get_logs(req):
         return {"logs": ctx.kv.get(_KV_LOGS, [])}
-
-    # 配置面板
-    ctx.update_config({
-        "config_schema": {
-            "accounts": {
-                "type": "text", "default": "[]", "label": "账号配置(JSON)",
-                "section": "账号", "help": "格式: [{\"name\":\"别名\",\"base_url\":\"https://hdhive.in\",\"cookie\":\"token=xxx;...\",\"gamble\":false}]"
-            },
-            "cron": {
-                "type": "string", "default": "0 0 9 * * *", "label": "定时签到(cron)",
-                "section": "定时"
-            },
-        }
-    })
 
 
 async def teardown(ctx):
