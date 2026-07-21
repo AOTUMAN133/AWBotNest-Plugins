@@ -24,7 +24,7 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
@@ -907,19 +907,25 @@ async def setup(ctx):
             return
         if not message.reply_to_message_id:
             return
+        ctx.log.info("[AI] 答题: 收到回复 msg_id=%d, reply_to=%d, from=%s", 
+                     message.id, message.reply_to_message_id, message.from_user.id if message.from_user else "?")
         # 检查是不是来自指定机器人
         reward_bots = str(ctx.config.get("reward_bot_ids", "") or "").strip()
         if reward_bots:
             bot_ids = [b.strip() for b in reward_bots.replace("，", ",").split(",") if b.strip()]
             sender_id = str(message.from_user.id) if message.from_user else ""
             sender_name = (message.from_user.username or "") if message.from_user else ""
+            ctx.log.info("[AI] 答题: 检查机器人 %s in %s or %s in %s", sender_id, bot_ids, sender_name, bot_ids)
             if bot_ids and sender_id not in bot_ids and sender_name not in bot_ids:
+                ctx.log.info("[AI] 答题: 非指定机器人，跳过")
                 return
         # 检查是不是回复了我们的自动发言
         pending = ctx.kv.get("auto_say_pending_rewards", [])
         chat_id = message.chat.id
+        ctx.log.info("[AI] 答题: pending=%s, chat=%s, reply_to=%s", pending, chat_id, message.reply_to_message_id)
         matched = [p for p in pending if p["chat_id"] == chat_id and p["msg_id"] == message.reply_to_message_id]
         if not matched:
+            ctx.log.info("[AI] 答题: 非回复我们的消息，跳过")
             return
         # 清理过期记录（>5分钟）
         now = time.time()
