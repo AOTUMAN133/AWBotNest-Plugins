@@ -929,7 +929,7 @@ async def setup(ctx):
         # 检查是不是来自指定机器人
         reward_bots = str(ctx.config.get("reward_bot_ids", "") or "").strip()
         if reward_bots:
-            bot_ids = [b.strip() for b in reward_bots.replace("，", ",").split(",") if b.strip()]
+            bot_ids = [b.strip().lstrip("@") for b in reward_bots.replace("，", ",").split(",") if b.strip()]
             sender_id = str(message.from_user.id) if message.from_user else ""
             sender_name = (message.from_user.username or "") if message.from_user else ""
             if bot_ids and sender_id not in bot_ids and sender_name not in bot_ids:
