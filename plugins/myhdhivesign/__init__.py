@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -83,12 +83,21 @@ async def _fetch_action_hash(base_url: str) -> str | None:
                     if cr.status_code != 200:
                         continue
                     text = cr.text
-                    # 原插件格式: createServerReference)("hash"... "checkIn"
-                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
+                    # 提取 createServerReference)("hash"
+                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\']', text)
                     if m:
                         return m.group(1)
                 except Exception:
                     continue
+            # 兜底：直接请求 layout chunk
+            try:
+                cr = await cli.get(f"{base_url}/_next/static/chunks/app/layout-217e777681ace273.js", timeout=15)
+                if cr.status_code == 200:
+                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\']', cr.text)
+                    if m:
+                        return m.group(1)
+            except Exception:
+                pass
             return None
     except Exception:
         return None
