@@ -950,7 +950,10 @@ async def setup(ctx):
         text = (message.text or "").strip()
         _log_debug(ctx, f"检查数学题: text={text[:50]}")
         # 匹配数学题: 数字 + 运算符 + 数字 = ?
-        m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*\?", text)
+        m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*(?:\?|？|多少\s*[?？]|)\s*$", text)
+        if not m:
+            # 也匹配 "14 + 2 = 多少？" 格式
+            m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*多少\s*[?？]", text)
         if not m:
             _log_debug(ctx, "未匹配数学题格式")
             return
