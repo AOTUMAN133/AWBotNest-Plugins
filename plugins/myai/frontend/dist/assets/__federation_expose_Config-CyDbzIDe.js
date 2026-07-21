@@ -279,12 +279,12 @@ async function resetMonitor(ri) {
   const users = (rule.user_ids || '').split(',').map(s => s.trim()).filter(Boolean);
   const chats = (rule.chat_ids || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!users.length || !chats.length) {
-    props.host.toast.warn('请先填用户ID和群组ID');
+    props.host.toast.error('请先填用户ID和群组ID');
     return
   }
   for (const uid of users) {
     for (const cid of chats) {
-      await props.host.callApi('/reset_monitor', { method: 'POST', body: { user_id: uid, chat_id: cid } });
+      await props.host.callApi('/reset_monitor', 'POST', { user_id: uid, chat_id: cid });
     }
   }
   props.host.toast.success('已重置');
@@ -760,7 +760,7 @@ return (_ctx, _cache) => {
                         ], 64))
                       : (group.value === 'sum')
                         ? (_openBlock(), _createElementBlock(_Fragment, { key: 4 }, [
-                            _cache[68] || (_cache[68] = _createStaticVNode("<h3 class=\"det-title\" data-v-1e20bfa4>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-1e20bfa4><p class=\"tip\" data-v-1e20bfa4>在群聊中发送 <code data-v-1e20bfa4>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-1e20bfa4><code data-v-1e20bfa4>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-1e20bfa4>间隔格式: <code data-v-1e20bfa4>2h</code>(2小时), <code data-v-1e20bfa4>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
+                            _cache[68] || (_cache[68] = _createStaticVNode("<h3 class=\"det-title\" data-v-4a18e79c>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-4a18e79c><p class=\"tip\" data-v-4a18e79c>在群聊中发送 <code data-v-4a18e79c>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-4a18e79c><code data-v-4a18e79c>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-4a18e79c>间隔格式: <code data-v-4a18e79c>2h</code>(2小时), <code data-v-4a18e79c>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
                           ], 64))
                         : (group.value === 'explain')
                           ? (_openBlock(), _createElementBlock(_Fragment, { key: 5 }, [
@@ -1056,6 +1056,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1e20bfa4"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-4a18e79c"]]);
 
 export { Config as default };
