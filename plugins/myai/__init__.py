@@ -969,7 +969,8 @@ async def setup(ctx):
         else:
             return
         ctx.log.info("[AI] 答题奖励: %d %s %d = %d", a, op, b, ans)
-        await client.send_message(chat_id, str(ans), reply_to_message_id=message.id)
+        await asyncio.sleep(random.uniform(5, 10))
+        await client.send_message(chat_id, str(ans))
         # 暂停自动发言，等答题完成后再继续
         ctx.kv.set("auto_say_next_ts", time.time() + 60)
         ctx.log.info("[AI] 答题完成，60秒后继续自动发言")
