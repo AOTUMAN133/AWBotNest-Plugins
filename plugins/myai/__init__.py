@@ -24,7 +24,7 @@ from ._engine import generate, classify_error
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
@@ -884,8 +884,12 @@ async def setup(ctx):
                     msgs.append(item.next_text)
             for i, msg in enumerate(msgs):
                 try:
-                    await client.send_message(chat_id, msg)
+                    sent = await client.send_message(chat_id, msg)
                     ctx.log.info("[AI] 自动发言 group=%s: %s", chat_id, msg[:30])
+                    # 保存发言消息ID，用于检测答题奖励回复
+                    pending = ctx.kv.get("auto_say_pending_rewards", [])
+                    pending.append({"chat_id": chat_id, "msg_id": sent.id, "time": time.time()})
+                    ctx.kv.set("auto_say_pending_rewards", pending[-20:])
                 except Exception as e:  # noqa: BLE001
                     ctx.log.warning("[AI] 自动发言发送失败 group=%s: %r", chat_id, e)
                 if i < len(msgs) - 1:
@@ -893,6 +897,45 @@ async def setup(ctx):
             await asyncio.sleep(1)
 
     ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
+
+    # ── 答题奖励（自动发言触发后，回复机器人的数学题） ──
+    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=6)
+    async def _reward_handler(client, message):
+        if not ctx.config.get("enable_auto_say", False):
+            return
+        if not message.reply_to_message_id:
+            return
+        # 检查是不是回复了我们的自动发言
+        pending = ctx.kv.get("auto_say_pending_rewards", [])
+        chat_id = message.chat.id
+        matched = [p for p in pending if p["chat_id"] == chat_id and p["msg_id"] == message.reply_to_message_id]
+        if not matched:
+            return
+        # 清理过期记录（>5分钟）
+        now = time.time()
+        ctx.kv.set("auto_say_pending_rewards", [p for p in pending if now - p.get("time", 0) < 300])
+
+        text = (message.text or "").strip()
+        # 匹配数学题: 数字 + 运算符 + 数字 = ?
+        m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*\?", text)
+        if not m:
+            return
+        a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
+        if op in ("+",):
+            ans = a + b
+        elif op in ("-",):
+            ans = a - b
+        elif op in ("×", "x", "X", "*"):
+            ans = a * b
+        elif op in ("/",):
+            ans = a // b if b != 0 else 0
+        else:
+            return
+        ctx.log.info("[AI] 答题奖励: %d %s %d = %d", a, op, b, ans)
+        await client.send_message(chat_id, str(ans), reply_to_message_id=message.id)
+        # 暂停自动发言，等答题完成后再继续
+        ctx.kv.set("auto_say_next_ts", time.time() + 60)
+        ctx.log.info("[AI] 答题完成，60秒后继续自动发言")
 
     # ── .sum 群消息总结 ──────────────────────────────────────────────
     @ctx.on_message(ctx.filters.group & ctx.filters.text, group=7)

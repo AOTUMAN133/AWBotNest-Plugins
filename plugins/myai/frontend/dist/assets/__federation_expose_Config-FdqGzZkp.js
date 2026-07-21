@@ -515,7 +515,7 @@ return (_ctx, _cache) => {
                       ], 64))
                     : (group.value === 'autosay')
                       ? (_openBlock(), _createElementBlock(_Fragment, { key: 3 }, [
-                          _cache[57] || (_cache[57] = _createElementVNode("h3", { class: "det-title" }, "自动发言", -1)),
+                          _cache[58] || (_cache[58] = _createElementVNode("h3", { class: "det-title" }, "自动发言", -1)),
                           _createElementVNode("section", _hoisted_28, [
                             _createElementVNode("label", _hoisted_29, [
                               _withDirectives(_createElementVNode("input", {
@@ -526,7 +526,11 @@ return (_ctx, _cache) => {
                               ]),
                               _cache[48] || (_cache[48] = _createElementVNode("span", null, "开启定时自动发言", -1))
                             ]),
-                            _cache[56] || (_cache[56] = _createElementVNode("p", { class: "tip" }, "在下方群组里每隔随机时间随机选 2 条发言，间隔 3-8 秒。至少需要 2 条可选。", -1)),
+                            _cache[56] || (_cache[56] = _createElementVNode("div", {
+                              class: "hint",
+                              style: {"margin-top":"4px","line-height":"1.6"}
+                            }, "自动发言触发群机器人答题奖励时，会自动算出答案并回复，60秒后恢复自动发言", -1)),
+                            _cache[57] || (_cache[57] = _createElementVNode("p", { class: "tip" }, "在下方群组里每隔随机时间随机选 2 条发言，间隔 3-8 秒。至少需要 2 条可选。", -1)),
                             (cfg.enable_auto_say)
                               ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
                                   _createElementVNode("label", _hoisted_30, [
@@ -611,11 +615,11 @@ return (_ctx, _cache) => {
                         ], 64))
                       : (group.value === 'sum')
                         ? (_openBlock(), _createElementBlock(_Fragment, { key: 4 }, [
-                            _cache[58] || (_cache[58] = _createStaticVNode("<h3 class=\"det-title\" data-v-7fe4caad>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-7fe4caad><p class=\"tip\" data-v-7fe4caad>在群聊中发送 <code data-v-7fe4caad>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-7fe4caad><code data-v-7fe4caad>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-7fe4caad>间隔格式: <code data-v-7fe4caad>2h</code>(2小时), <code data-v-7fe4caad>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
+                            _cache[59] || (_cache[59] = _createStaticVNode("<h3 class=\"det-title\" data-v-4dff8e85>群消息总结（.sum 命令）</h3><section class=\"card\" data-v-4dff8e85><p class=\"tip\" data-v-4dff8e85>在群聊中发送 <code data-v-4dff8e85>.sum 100</code> 快速总结最近消息，无需额外配置，复用 AI 接口配置。</p><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum 100</code> — 总结最近100条 </div><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum add 群组ID 2h 100</code> — 添加定时总结任务 </div><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum list</code> — 查看所有任务 </div><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum run 1</code> — 立即执行任务 </div><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum del 1</code> — 删除任务 </div><div class=\"row-usage\" data-v-4dff8e85><code data-v-4dff8e85>.sum disable 1</code> — 禁用任务 </div><p class=\"tip\" style=\"margin-top:8px;\" data-v-4dff8e85>间隔格式: <code data-v-4dff8e85>2h</code>(2小时), <code data-v-4dff8e85>30m</code>(30分钟), 或 cron 表达式</p></section>", 2))
                           ], 64))
                         : (group.value === 'explain')
                           ? (_openBlock(), _createElementBlock(_Fragment, { key: 5 }, [
-                              _cache[63] || (_cache[63] = _createElementVNode("h3", { class: "det-title" }, "/ai 解释命令", -1)),
+                              _cache[64] || (_cache[64] = _createElementVNode("h3", { class: "det-title" }, "/ai 解释命令", -1)),
                               _createElementVNode("section", _hoisted_38, [
                                 _createElementVNode("label", _hoisted_39, [
                                   _withDirectives(_createElementVNode("input", {
@@ -624,9 +628,9 @@ return (_ctx, _cache) => {
                                   }, null, 512), [
                                     [_vModelCheckbox, cfg.enable_explain_command]
                                   ]),
-                                  _cache[59] || (_cache[59] = _createElementVNode("span", null, "启用 /ai 解释命令", -1))
+                                  _cache[60] || (_cache[60] = _createElementVNode("span", null, "启用 /ai 解释命令", -1))
                                 ]),
-                                _cache[62] || (_cache[62] = _createElementVNode("p", { class: "tip" }, "回复一条消息（或图片）再发 /ai，让 AI 解释/解答（单次，无记忆）。", -1)),
+                                _cache[63] || (_cache[63] = _createElementVNode("p", { class: "tip" }, "回复一条消息（或图片）再发 /ai，让 AI 解释/解答（单次，无记忆）。", -1)),
                                 (cfg.enable_explain_command)
                                   ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
                                       _createElementVNode("label", _hoisted_40, [
@@ -636,11 +640,11 @@ return (_ctx, _cache) => {
                                         }, null, 512), [
                                           [_vModelCheckbox, cfg.enable_explain_prompt]
                                         ]),
-                                        _cache[60] || (_cache[60] = _createElementVNode("span", null, "用解释模板（否则直接把内容丢给 AI）", -1))
+                                        _cache[61] || (_cache[61] = _createElementVNode("span", null, "用解释模板（否则直接把内容丢给 AI）", -1))
                                       ]),
                                       (cfg.enable_explain_prompt)
                                         ? (_openBlock(), _createElementBlock("label", _hoisted_41, [
-                                            _cache[61] || (_cache[61] = _createElementVNode("span", null, "解释模板", -1)),
+                                            _cache[62] || (_cache[62] = _createElementVNode("span", null, "解释模板", -1)),
                                             _withDirectives(_createElementVNode("textarea", {
                                               "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((cfg.explain_prompt) = $event)),
                                               class: "inp",
@@ -657,10 +661,10 @@ return (_ctx, _cache) => {
                             ], 64))
                           : (group.value === 'scope')
                             ? (_openBlock(), _createElementBlock(_Fragment, { key: 6 }, [
-                                _cache[66] || (_cache[66] = _createElementVNode("h3", { class: "det-title" }, "生效范围", -1)),
+                                _cache[67] || (_cache[67] = _createElementVNode("h3", { class: "det-title" }, "生效范围", -1)),
                                 _createElementVNode("section", _hoisted_42, [
                                   _createElementVNode("label", _hoisted_43, [
-                                    _cache[64] || (_cache[64] = _createElementVNode("span", null, "会话白名单", -1)),
+                                    _cache[65] || (_cache[65] = _createElementVNode("span", null, "会话白名单", -1)),
                                     _withDirectives(_createElementVNode("textarea", {
                                       "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((cfg.white_list_chats) = $event)),
                                       class: "inp",
@@ -671,7 +675,7 @@ return (_ctx, _cache) => {
                                     ])
                                   ]),
                                   _createElementVNode("label", _hoisted_44, [
-                                    _cache[65] || (_cache[65] = _createElementVNode("span", null, "群组黑名单", -1)),
+                                    _cache[66] || (_cache[66] = _createElementVNode("span", null, "群组黑名单", -1)),
                                     _withDirectives(_createElementVNode("textarea", {
                                       "onUpdate:modelValue": _cache[25] || (_cache[25] = $event => ((cfg.blacklist_chats) = $event)),
                                       class: "inp",
@@ -698,7 +702,7 @@ return (_ctx, _cache) => {
           _withDirectives(_createElementVNode("div", _hoisted_47, [
             _createElementVNode("div", _hoisted_48, [
               _createElementVNode("span", _hoisted_49, "下次主动搭话：" + _toDisplayString(proactiveNext.value || '—'), 1),
-              _cache[67] || (_cache[67] = _createElementVNode("span", { class: "grow" }, null, -1)),
+              _cache[68] || (_cache[68] = _createElementVNode("span", { class: "grow" }, null, -1)),
               _createElementVNode("button", {
                 class: "btn",
                 onClick: loadHistories
@@ -712,7 +716,7 @@ return (_ctx, _cache) => {
             (histLoading.value)
               ? (_openBlock(), _createElementBlock("div", _hoisted_51, "加载中…"))
               : (!histories.value.length)
-                ? (_openBlock(), _createElementBlock("div", _hoisted_52, [...(_cache[68] || (_cache[68] = [
+                ? (_openBlock(), _createElementBlock("div", _hoisted_52, [...(_cache[69] || (_cache[69] = [
                     _createTextVNode("暂无对话记忆", -1),
                     _createElementVNode("br", null, null, -1),
                     _createElementVNode("span", { class: "muted" }, "私聊/群@你对话后会在这里记录会话记忆", -1)
@@ -767,6 +771,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7fe4caad"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-4dff8e85"]]);
 
 export { Config as default };
