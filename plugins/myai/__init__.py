@@ -1094,12 +1094,8 @@ async def setup(ctx):
     @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
         _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
-        try:
-            data = await req.json()
-            _log_debug(ctx, f"重置监控: data={data}")
-        except Exception as e:
-            _log_debug(ctx, f"重置监控: json解析失败 {e}")
-            data = req if isinstance(req, dict) else {}
+        data = req if isinstance(req, dict) else {}
+        _log_debug(ctx, f"重置监控: data={data}")
         user_id = str(data.get("user_id", "") or "")
         chat_id = str(data.get("chat_id", "") or "")
         _log_debug(ctx, f"重置监控: user_id={user_id} chat_id={chat_id}")
