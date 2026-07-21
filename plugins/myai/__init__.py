@@ -32,7 +32,7 @@ def _log_debug(ctx, msg: str):
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.3.14",
+    "version": "1.4.0",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
@@ -904,7 +904,7 @@ async def setup(ctx):
                 except Exception as e:  # noqa: BLE001
                     ctx.log.warning("[AI] 自动发言发送失败 group=%s: %r", chat_id, e)
                 if i < len(msgs) - 1:
-                    await asyncio.sleep(random.uniform(3, 8))
+                    await asyncio.sleep(random.uniform(15, 20))
             await asyncio.sleep(1)
 
     ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
