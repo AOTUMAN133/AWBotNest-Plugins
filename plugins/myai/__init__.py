@@ -948,9 +948,11 @@ async def setup(ctx):
         ctx.kv.set("auto_say_pending_rewards", [p for p in pending if now - p.get("time", 0) < 300])
 
         text = (message.text or "").strip()
+        _log_debug(ctx, f"检查数学题: text={text[:50]}")
         # 匹配数学题: 数字 + 运算符 + 数字 = ?
         m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*\?", text)
         if not m:
+            _log_debug(ctx, "未匹配数学题格式")
             return
         a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
         if op in ("+",):
