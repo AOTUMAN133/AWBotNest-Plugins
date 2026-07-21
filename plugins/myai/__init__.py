@@ -11,6 +11,7 @@
 # =============================================================================
 
 import asyncio
+import json
 import os
 import random
 import re
@@ -23,6 +24,7 @@ from html import escape
 from ._engine import generate, classify_error
 
 _KV_DEBUG = "ai_debug_logs"
+_KV_MONITOR_STATE = "ai_monitor_state"
 
 def _log_debug(ctx, msg: str):
     logs = ctx.kv.get(_KV_DEBUG, [])
@@ -974,6 +976,130 @@ async def setup(ctx):
         # 暂停自动发言，等答题完成后再继续
         ctx.kv.set("auto_say_next_ts", time.time() + 60)
         ctx.log.info("[AI] 答题完成，60秒后继续自动发言")
+
+    # ── 用户监控（监控指定用户在指定群组的发言，自动回复） ──
+    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=4)
+    async def _monitor_handler(client, message):
+        _log_debug(ctx, f"监控处理器收到消息: id={message.id}")
+        if not ctx.config.get("monitor_enabled", False):
+            return
+        raw = str(ctx.config.get("monitor_config", "[]") or "").strip()
+        _log_debug(ctx, f"监控规则: len={len(raw)} first={raw[:80]}")
+        try:
+            rules = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+            _log_debug(ctx, f"解析规则: {len(rules)}条")
+        except Exception as e:
+            _log_debug(ctx, f"解析失败: {e}")
+            return
+        if not rules:
+            _log_debug(ctx, "规则为空")
+            return
+        chat_id = message.chat.id
+        sender_id = str(message.from_user.id) if message.from_user else ""
+        _log_debug(ctx, f"消息: chat={chat_id} sender={sender_id} text={message.text[:30] if message.text else ''}")
+        if not sender_id:
+            return
+        text = (message.text or "").strip()
+        if not text:
+            return
+
+        # 找匹配的规则
+        rule = None
+        for r in rules:
+            r_chats = [int(x.strip()) for x in str(r.get("chat_ids", "") or "").replace("，", ",").split(",") if x.strip()]
+            r_users = [str(x.strip()) for x in str(r.get("user_ids", "") or "").replace("，", ",").split(",") if x.strip()]
+            _log_debug(ctx, f"检查规则: chats={r_chats} users={r_users} cur_chat={chat_id} cur_user={sender_id}")
+            if chat_id in r_chats and sender_id in r_users:
+                rule = r
+                break
+        if not rule:
+            _log_debug(ctx, "无匹配规则")
+            return
+
+        first_reply = str(rule.get("first_reply", "") or "").strip()
+        triggers = rule.get("triggers", []) or []
+        if not first_reply and not triggers:
+            return
+
+        state = ctx.kv.get(_KV_MONITOR_STATE, {})
+        key = f"{sender_id}:{chat_id}"
+        st = state.get(key, {})
+
+        # 检查是否超过重置时间
+        reset_hours = int(rule.get("reset_hours", 0) or 0)
+        if reset_hours > 0 and st:
+            last_time = st.get("time", 0)
+            if time.time() - last_time > reset_hours * 3600:
+                _log_debug(ctx, f"监控: {sender_id} 超过{reset_hours}小时，重置状态")
+                st = {}
+                state[key] = st
+
+        if not st:
+            # 第一句，直接回复
+            if not first_reply:
+                return
+            _log_debug(ctx, f"监控回复(首句): {sender_id} -> {first_reply}")
+            await asyncio.sleep(random.uniform(2, 5))
+            await client.send_message(chat_id, first_reply)
+            state[key] = {"stage": 1, "used": [], "time": time.time()}
+            ctx.kv.set(_KV_MONITOR_STATE, state)
+            _log_debug(ctx, f"监控: {sender_id} 首句回复完成")
+            return
+
+        # 后续消息，检查关键词
+        stage = st.get("stage", 1)
+        used = st.get("used", [])
+        for ti, tr in enumerate(triggers):
+            if ti in used:
+                continue
+            kws = str(tr.get("keywords", "") or tr.get("keyword", "") or "").strip()
+            if not kws:
+                continue
+            kw_list = [k.strip() for k in kws.replace("，", ",").split(",") if k.strip()]
+            matched_kw = None
+            for kw in kw_list:
+                if kw and kw in text:
+                    matched_kw = kw
+                    break
+            if not matched_kw:
+                continue
+            replies_raw = str(tr.get("replies", "") or tr.get("reply", "") or "").strip()
+            if not replies_raw:
+                continue
+            reply_list = [r.strip() for r in replies_raw.replace("，", ",").split(",") if r.strip()]
+            if not reply_list:
+                continue
+            reply = random.choice(reply_list)
+            _log_debug(ctx, f"监控回复(关键词): {sender_id} kw={matched_kw} -> {reply}")
+            await asyncio.sleep(random.uniform(2, 5))
+            await client.send_message(chat_id, reply)
+            used.append(ti)
+            state[key] = {"stage": stage + 1, "used": used, "time": time.time()}
+            ctx.kv.set(_KV_MONITOR_STATE, state)
+            _log_debug(ctx, f"监控: {sender_id} 关键词触发完成")
+            return
+
+    @ctx.on_api("/reset_monitor", methods=["POST"])
+    async def _api_reset_monitor(req):
+        _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
+        try:
+            data = await req.json()
+            _log_debug(ctx, f"重置监控: data={data}")
+        except Exception as e:
+            _log_debug(ctx, f"重置监控: json解析失败 {e}")
+            data = req if isinstance(req, dict) else {}
+        user_id = str(data.get("user_id", "") or "")
+        chat_id = str(data.get("chat_id", "") or "")
+        _log_debug(ctx, f"重置监控: user_id={user_id} chat_id={chat_id}")
+        if not user_id or not chat_id:
+            return {"ok": False, "message": "需要 user_id 和 chat_id"}
+        state = ctx.kv.get(_KV_MONITOR_STATE, {})
+        key = f"{user_id}:{chat_id}"
+        if key in state:
+            del state[key]
+            ctx.kv.set(_KV_MONITOR_STATE, state)
+            return {"ok": True, "message": f"已重置 {user_id} 的状态"}
+        return {"ok": False, "message": "未找到该用户状态"}
 
     @ctx.on_api("/get_debug_logs", methods=["GET"])
     async def _api_get_debug_logs(req):
