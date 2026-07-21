@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.3",
+    "version": "2.2.4",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -255,6 +255,14 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             return {"success": False, "message": "Cookie 失效，请重新登录"}
         if resp.status_code == 200:
             return {"success": True, "message": "签到请求已发送"}
+        elif resp.status_code == 409:
+            # 409 Conflict - 可能已签到或请求冲突
+            try:
+                body = resp.json()
+                msg = body.get("message") or body.get("error") or str(body)
+            except Exception:
+                msg = resp.text[:200]
+            return {"success": False, "message": f"HTTP 409: {msg}"}
         return {"success": False, "message": f"HTTP {resp.status_code}"}
     except Exception as e:
         return {"success": False, "message": str(e)}
