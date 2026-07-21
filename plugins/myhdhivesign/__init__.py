@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -92,6 +92,24 @@ async def _fetch_action_hash(base_url: str) -> str | None:
             return None
     except Exception:
         return None
+
+
+async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
+    """用用户名密码登录，返回完整 cookie 字符串"""
+    apis = ["/api/customer/user/login", "/api/customer/auth/login"]
+    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+    for api in apis:
+        try:
+            async with httpx.AsyncClient(timeout=15, verify=False) as cli:
+                r = await cli.post(f"{base_url}{api}", json={"username": username, "password": password}, headers=headers)
+                if r.status_code == 200:
+                    data = r.json()
+                    token = data.get("data", {}).get("token") or data.get("token", "")
+                    if token:
+                        return f"token={token}"
+        except Exception:
+            continue
+    return None
 
 
 async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: bool) -> dict:
@@ -218,6 +236,16 @@ async def setup(ctx):
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
             cookie = acc.get("cookie", "")
+            username = acc.get("username", "")
+            password = acc.get("password", "")
+            if not cookie and username and password:
+                _log_debug(ctx, f"{name}: 尝试自动登录")
+                cookie = await _login_get_token(base_url, username, password)
+                if cookie:
+                    acc["cookie"] = cookie
+                    _log_debug(ctx, f"{name}: 登录成功")
+                else:
+                    _log_debug(ctx, f"{name}: 登录失败")
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
