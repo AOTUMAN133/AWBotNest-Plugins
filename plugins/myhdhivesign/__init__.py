@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.4",
+    "version": "2.2.0",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -101,6 +101,51 @@ async def _fetch_action_hash(base_url: str) -> str | None:
             return None
     except Exception:
         return None
+
+
+async def _login_with_playwright(base_url: str, username: str, password: str) -> str | None:
+    """用 Playwright 浏览器模拟登录，返回 cookie 字符串"""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+            ctx = await browser.new_context()
+            page = await ctx.new_page()
+            try:
+                await page.goto(f"{base_url}/login", timeout=30000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+                uname = await page.query_selector('input[name="username"], input[type="text"]')
+                pwd = await page.query_selector('input[name="password"], input[type="password"]')
+                if not uname or not pwd:
+                    await browser.close()
+                    return None
+                await uname.fill(username)
+                await pwd.fill(password)
+                btn = await page.query_selector('button[type="submit"], input[type="submit"]')
+                if btn:
+                    await btn.click()
+                else:
+                    await page.keyboard.press("Enter")
+                await page.wait_for_timeout(5000)
+                cookies = await ctx.cookies()
+                token = ""
+                for c in cookies:
+                    if c["name"] == "token":
+                        token = c["value"]
+                    elif c["name"] == "sid":
+                        token = f"sid={c['value']}"
+                await browser.close()
+                if token:
+                    return f"token={token}"
+            except Exception:
+                await browser.close()
+                return None
+    except Exception:
+        return None
+    return None
 
 
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
@@ -249,9 +294,13 @@ async def setup(ctx):
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                _log_debug(ctx, f"{name}: 站点无公开登录API，请直接填Cookie")
-                logs.append({"time": _now(), "name": name, "status": "❌", "message": "请直接填Cookie，不支持自动登录"})
-                continue
+                _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
+                cookie = await _login_with_playwright(base_url, username, password)
+                if cookie:
+                    acc["cookie"] = cookie
+                    _log_debug(ctx, f"{name}: 登录成功")
+                else:
+                    _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码或直接填Cookie")
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
