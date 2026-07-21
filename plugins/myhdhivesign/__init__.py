@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.2",
+    "version": "2.2.3",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -217,7 +217,8 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
             resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
         text = resp.text
-        # 解析响应
+        # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
+        redirected = False
         for line in text.splitlines():
             m = re.match(r"^\d+:(\{.*\})\s*$", line)
             if not m:
@@ -228,17 +229,30 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 continue
             if not isinstance(obj, dict):
                 continue
-            if "login" in str(obj):
-                return {"success": False, "message": "Cookie 失效，请重新登录"}
-            if "f" in obj and any(k in obj for k in ("error", "response", "success", "message")):
-                payload = obj.get("response") or obj
-                msg = str(payload.get("message") or payload.get("description") or "")
-                already = any(k in msg for k in ("已经签到", "签到过", "明天再来"))
-                if already:
-                    return {"success": True, "message": "今日已签到"}
-                if bool(payload.get("success")):
-                    return {"success": True, "message": msg or "签到成功"}
-                return {"success": False, "message": msg or "签到失败"}
+            keys = set(obj.keys())
+            # 跳过 RSC 元数据行
+            if keys <= {"a", "f", "b", "q", "i", "S"}:
+                if "login" in str(obj):
+                    redirected = True
+                continue
+            if "f" in obj and not any(k in obj for k in ("error", "response", "success", "message", "description")):
+                if "login" in str(obj):
+                    redirected = True
+                continue
+            if "error" in obj and isinstance(obj["error"], dict):
+                err = obj["error"]
+                return {"success": False, "message": str(err.get("message") or err.get("description") or "签到失败")}
+            # 找到有效响应
+            payload = obj.get("response") or obj
+            msg = str(payload.get("message") or payload.get("description") or "")
+            already = any(k in msg for k in ("已经签到", "签到过", "明天再来"))
+            if already:
+                return {"success": True, "message": "今日已签到"}
+            if bool(payload.get("success")):
+                return {"success": True, "message": msg or "签到成功"}
+            return {"success": False, "message": msg or "签到失败"}
+        if redirected:
+            return {"success": False, "message": "Cookie 失效，请重新登录"}
         if resp.status_code == 200:
             return {"success": True, "message": "签到请求已发送"}
         return {"success": False, "message": f"HTTP {resp.status_code}"}
