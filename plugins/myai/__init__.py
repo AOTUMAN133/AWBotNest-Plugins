@@ -1091,6 +1091,7 @@ async def setup(ctx):
             _log_debug(ctx, f"监控: {sender_id} 关键词触发完成")
             return
 
+    _log_debug(ctx, "注册重置监控API")
     @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
         _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
