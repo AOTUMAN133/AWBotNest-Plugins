@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.3",
+    "version": "1.1.4",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -29,9 +29,6 @@ __plugin__ = {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
             "action": "sign_now", "danger": False
         },
-        "_logs": {
-            "type": "info", "label": "签到记录", "section": "日志"
-        },
         "sign_hour": {
             "type": "number", "default": 9, "label": "签到时间(时)",
             "section": "定时", "help": "0-23"
@@ -40,12 +37,22 @@ __plugin__ = {
             "type": "number", "default": 0, "label": "签到时间(分)",
             "section": "定时", "help": "0-59"
         },
+        "_logs": {
+            "type": "info", "label": "运行日志", "section": "日志"
+        },
     },
 }
 
 _KV_ACCOUNTS = "hdhive_accounts"
 _KV_LOGS = "hdhive_logs"
 _KV_HASH = "hdhive_action_hash"
+_KV_DEBUG = "hdhive_debug_logs"
+
+def _log_debug(ctx, msg: str):
+    """记录调试日志，最多保留50条"""
+    logs = ctx.kv.get(_KV_DEBUG, [])
+    logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
+    ctx.kv.set(_KV_DEBUG, logs[-50:])
 
 _SIGN_API_CANDIDATES = [
     "/api/customer/user/login",
@@ -228,6 +235,7 @@ async def setup(ctx):
         # 获取 action hash
         action_hash = ctx.kv.get(_KV_HASH, "")
         if not action_hash:
+            _log_debug(ctx, f"获取action hash: {base_url}")
             ctx.log.info("[影巢签到] 获取 action hash: %s", base_url)
             action_hash = await _fetch_action_hash(base_url)
             if action_hash:
@@ -359,6 +367,10 @@ async def setup(ctx):
     @ctx.on_api("/get_logs", methods=["GET"])
     async def _api_get_logs(req):
         return {"logs": ctx.kv.get(_KV_LOGS, [])}
+
+    @ctx.on_api("/get_debug_logs", methods=["GET"])
+    async def _api_get_debug_logs(req):
+        return {"logs": ctx.kv.get(_KV_DEBUG, [])}
 
 
 async def teardown(ctx):
