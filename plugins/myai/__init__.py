@@ -913,9 +913,11 @@ async def setup(ctx):
     _log_debug(ctx, "注册答题奖励处理器")
     @ctx.on_message(ctx.filters.group & ctx.filters.text, group=5)
     async def _reward_handler(client, message):
+        _log_debug(ctx, f"答题处理器收到消息: id={message.id} from={message.from_user.id if message.from_user else '?'} reply_to={message.reply_to_message_id}")
         if not ctx.config.get("enable_auto_say", False):
             return
         if not ctx.config.get("enable_reward_answer", False):
+            _log_debug(ctx, "答题奖励未开启")
             return
         if not message.reply_to_message_id:
             return
