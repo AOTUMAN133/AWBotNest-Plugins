@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.5",
+    "version": "1.1.6",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -282,17 +282,22 @@ async def setup(ctx):
         except Exception:
             accounts = []
         if not accounts:
+            _log_debug(ctx, "无账号配置")
             return {"ok": False, "message": "未配置账号"}
+        _log_debug(ctx, f"账号数: {len(accounts)}")
         base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
         action_hash = ctx.kv.get(_KV_HASH, "")
         if not action_hash:
+            _log_debug(ctx, f"获取action hash: {base_url}")
             action_hash = await _fetch_action_hash(base_url)
             if action_hash:
                 ctx.kv.set(_KV_HASH, action_hash)
+                _log_debug(ctx, f"hash获取成功: {action_hash[:16]}...")
             else:
+                _log_debug(ctx, "无法获取action hash")
                 return {"ok": False, "message": "无法获取 action hash"}
-
-        logs = []
+        else:
+            _log_debug(ctx, f"使用缓存的hash: {action_hash[:16]}...")
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
             mode = "赌狗" if acc.get("gamble") else "普通"
