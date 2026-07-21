@@ -1094,18 +1094,18 @@ async def setup(ctx):
     _log_debug(ctx, "注册重置监控API")
     @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
-        _log_debug(ctx, f"重置监控: req type={type(req).__name__} dir={[x for x in dir(req) if not x.startswith('_')]}")
+        _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
         data = {}
-        if hasattr(req, 'json'):
+        if hasattr(req, 'body') and req.body:
             try:
-                data = await req.json()
-                _log_debug(ctx, f"重置监控: json={data}")
+                data = json.loads(req.body)
+                _log_debug(ctx, f"重置监控: body解析成功")
             except Exception as e:
-                _log_debug(ctx, f"重置监控: json解析失败 {e}")
-        if hasattr(req, 'body'):
-            _log_debug(ctx, f"重置监控: body={req.body}")
+                _log_debug(ctx, f"重置监控: body解析失败 {e}")
+        if hasattr(req, 'json') and isinstance(req.json, dict):
+            _log_debug(ctx, f"重置监控: json字段={req.json}")
+            data = req.json
         if isinstance(req, dict):
-            _log_debug(ctx, f"重置监控: dict={req}")
             data = req
         user_id = str(data.get("user_id", "") or "")
         chat_id = str(data.get("chat_id", "") or "")
