@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -111,32 +111,53 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
         return None
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
-            ctx = await browser.new_context()
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            )
+            ctx = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
             page = await ctx.new_page()
             try:
-                await page.goto(f"{base_url}/login", timeout=30000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(2000)
-                uname = await page.query_selector('input[name="username"], input[type="text"]')
-                pwd = await page.query_selector('input[name="password"], input[type="password"]')
-                if not uname or not pwd:
+                # 先访问首页获取 CSRF token
+                await page.goto(f"{base_url}/", timeout=30000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(5000)
+
+                # 获取 CSRF token
+                csrf_cookie = ""
+                for c in await ctx.cookies():
+                    if c["name"] == "hdh_sa_token":
+                        csrf_cookie = c["value"]
+                        break
+                if not csrf_cookie:
                     await browser.close()
                     return None
-                await uname.fill(username)
-                await pwd.fill(password)
-                btn = await page.query_selector('button[type="submit"], input[type="submit"]')
-                if btn:
-                    await btn.click()
-                else:
-                    await page.keyboard.press("Enter")
-                await page.wait_for_timeout(5000)
+
+                # 用 fetch 调用 server action 登录
+                js = f"""
+                (async () => {{
+                    const r = await fetch('/', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'text/plain;charset=UTF-8',
+                            'next-action': '40b2c3190fb3396c5f003b3ca996db391fb6693f32',
+                            'Accept': 'text/x-component',
+                        }},
+                        body: JSON.stringify([{{username: '{username}', password: '{password}', remember: true}}])
+                    }});
+                    return await r.text();
+                }})()
+                """
+                await page.evaluate(js)
+                await page.wait_for_timeout(3000)
+
+                # 检查是否登录成功
                 cookies = await ctx.cookies()
                 token = ""
                 for c in cookies:
                     if c["name"] == "token":
                         token = c["value"]
-                    elif c["name"] == "sid":
-                        token = f"sid={c['value']}"
                 await browser.close()
                 if token:
                     return f"token={token}"
