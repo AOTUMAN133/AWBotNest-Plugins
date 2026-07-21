@@ -921,6 +921,10 @@ async def setup(ctx):
             return
         if not message.reply_to_message_id:
             return
+        # 只处理配置的群组
+        cids = [int(x.strip()) for x in str(ctx.config.get("auto_say_chat_ids", "") or "").replace("，", ",").split(",") if x.strip()]
+        if cids and message.chat.id not in cids:
+            return
         _log_debug(ctx, f"收到回复 msg_id={message.id} reply_to={message.reply_to_message_id}")
         # 检查是不是来自指定机器人
         reward_bots = str(ctx.config.get("reward_bot_ids", "") or "").strip()
