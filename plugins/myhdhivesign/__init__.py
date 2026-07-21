@@ -13,15 +13,32 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.0",
+    "version": "1.1.3",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
+    "default_enabled": True,
+    "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
-        "cron": {
-            "type": "string", "default": "0 0 9 * * *", "label": "定时签到(cron)",
-            "section": "定时"
+        "accounts": {
+            "type": "text", "default": "[]", "label": "账号配置(JSON)",
+            "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
+        },
+        "sign_now": {
+            "type": "action", "label": "▶ 立即签到", "section": "操作",
+            "action": "sign_now", "danger": False
+        },
+        "_logs": {
+            "type": "info", "label": "签到记录", "section": "日志"
+        },
+        "sign_hour": {
+            "type": "number", "default": 9, "label": "签到时间(时)",
+            "section": "定时", "help": "0-23"
+        },
+        "sign_minute": {
+            "type": "number", "default": 0, "label": "签到时间(分)",
+            "section": "定时", "help": "0-59"
         },
     },
 }
@@ -41,28 +58,41 @@ def _now() -> str:
 
 
 async def _fetch_action_hash(base_url: str) -> str | None:
-    """从 Next.js chunk 文件中提取签到 action hash"""
+    """从 Next.js 页面中提取签到 action hash"""
     try:
-        async with httpx.AsyncClient(timeout=15, verify=False) as cli:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+        async with httpx.AsyncClient(timeout=15, verify=False, headers=headers) as cli:
+            # 加载首页
             r = await cli.get(f"{base_url}/")
+            if r.status_code != 200:
+                return None
             html = r.text
-            # 找到主要的 chunk 文件
-            chunks = re.findall(r'_next/static/chunks/[^"\']+\.js', html)
-            for chunk_url in chunks[:10]:
-                full_url = f"{base_url}/{chunk_url}" if chunk_url.startswith("_next") else f"{base_url}/{chunk_url}"
+            # 找所有 chunk URL
+            chunk_urls = set()
+            for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
+                chunk_urls.add(m.group(1))
+            for m in re.finditer(r'(/chunks/[^"\'\\s]+\.js)', html):
+                chunk_urls.add(m.group(1))
+
+            # 优先找 main/app/pages chunk
+            priority = sorted(chunk_urls, key=lambda u: 0 if any(k in u for k in ["main", "app", "pages", "framework"]) else 1)
+
+            for chunk_rel in priority[:30]:
+                chunk_url = f"{base_url}{chunk_rel}" if chunk_rel.startswith("/") else f"{base_url}/{chunk_rel}"
                 try:
-                    cr = await cli.get(full_url)
-                    m = re.search(
-                        r'createServerReference\s*\(\s*["\']([0-9a-f]{40,})["\']',
-                        cr.text,
-                    )
+                    cr = await cli.get(chunk_url, timeout=15)
+                    if cr.status_code != 200:
+                        continue
+                    text = cr.text
+                    # 找 createServerReference("hash"
+                    m = re.search(r'createServerReference\s*\(\s*["\']([0-9a-f]{40,})["\']', text)
                     if m:
                         return m.group(1)
                 except Exception:
                     continue
+            return None
     except Exception:
-        pass
-    return None
+        return None
 
 
 async def _login_get_token(base_url: str, username: str, password: str) -> tuple[str, str] | None:
@@ -187,16 +217,22 @@ def _parse_rsc_result(text: str) -> dict | None:
 async def setup(ctx):
     # 初始化定时签到
     async def _sign_tick():
-        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        acc_json = ctx.config.get("accounts", "[]")
+        try:
+            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
+        except Exception:
+            accounts = []
         if not accounts:
             return
         base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
         # 获取 action hash
         action_hash = ctx.kv.get(_KV_HASH, "")
         if not action_hash:
+            ctx.log.info("[影巢签到] 获取 action hash: %s", base_url)
             action_hash = await _fetch_action_hash(base_url)
             if action_hash:
                 ctx.kv.set(_KV_HASH, action_hash)
+                ctx.log.info("[影巢签到] action hash 获取成功: %s", action_hash[:20])
             else:
                 ctx.log.warning("[影巢签到] 无法获取 action hash")
                 return
@@ -216,11 +252,25 @@ async def setup(ctx):
 
         ctx.kv.set(_KV_LOGS, logs)
 
-    ctx.schedule(_sign_tick, "cron", cron="0 0 9 * * *", id="hdhive_sign")
+    sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
+    sign_minute = int(ctx.config.get("sign_minute", 0) or 0)
+    ctx.schedule(_sign_tick, "cron", hour=sign_hour, minute=sign_minute, id="hdhive_sign")
 
-    @ctx.on_api("/sign_now", methods=["POST"])
-    async def _api_sign_now(req):
-        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+    # 同步 accounts 配置到 KV
+    acc_json = ctx.config.get("accounts", "[]")
+    try:
+        parsed = json.loads(acc_json) if isinstance(acc_json, str) else acc_json
+        ctx.kv.set(_KV_ACCOUNTS, parsed if isinstance(parsed, list) else [])
+    except Exception:
+        pass
+
+    async def _do_sign_all():
+        """执行所有账号签到"""
+        acc_json = ctx.config.get("accounts", "[]")
+        try:
+            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
+        except Exception:
+            accounts = []
         if not accounts:
             return {"ok": False, "message": "未配置账号"}
         base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
@@ -245,8 +295,16 @@ async def setup(ctx):
         ctx.kv.set(_KV_LOGS, logs)
         return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
 
-    @ctx.on_api("/refresh_hash", methods=["POST"])
-    async def _api_refresh_hash(req):
+    @ctx.action("sign_now")
+    async def _api_sign_now(req=None):
+        return await _do_sign_all()
+
+    @ctx.on_api("/sign_now", methods=["POST"])
+    async def _api_sign_now_api(req):
+        return await _do_sign_all()
+
+    @ctx.action("refresh_hash")
+    async def _api_refresh_hash(req=None):
         accounts = ctx.kv.get(_KV_ACCOUNTS, [])
         base_url = accounts[0].get("base_url", "https://hdhive.in") if accounts else "https://hdhive.in"
         h = await _fetch_action_hash(base_url)
@@ -257,7 +315,12 @@ async def setup(ctx):
 
     @ctx.on_api("/get_accounts", methods=["GET"])
     async def _api_get_accounts(req):
-        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        acc_json = ctx.config.get("accounts", "[]")
+        accounts = []
+        try:
+            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
+        except Exception:
+            pass
         # 脱敏，不返回密码和完整cookie
         safe = []
         for a in accounts:
@@ -273,9 +336,14 @@ async def setup(ctx):
 
     @ctx.on_api("/save_accounts", methods=["POST"])
     async def _api_save_accounts(req):
-        import json
-        data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
+        try:
+            data = await req.json()
+        except Exception:
+            data = req if isinstance(req, dict) else {}
         accounts = data.get("accounts", [])
+        if not accounts:
+            return {"ok": False, "message": "未收到账号数据"}
+        ctx.log.info("[影巢签到] 保存 %d 个账号", len(accounts))
         # 尝试自动登录获取cookie
         for acc in accounts:
             if not acc.get("cookie") and acc.get("username") and acc.get("password"):
