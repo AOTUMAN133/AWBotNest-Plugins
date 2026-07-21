@@ -13,13 +13,13 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.1",
+    "version": "2.2.2",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "default_enabled": True,
     "render_mode": "vue",
-    "requirements": ["httpx"],
+    "requirements": ["httpx", "playwright"],
     "config_schema": {
         "accounts": {
             "type": "text", "default": "[]", "label": "账号配置(JSON)",
@@ -120,21 +120,21 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
             )
             page = await ctx.new_page()
             try:
-                # 先访问首页获取 CSRF token
-                await page.goto(f"{base_url}/", timeout=30000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(5000)
+                # 访问首页，等待 Cloudflare 验证通过
+                await page.goto(f"{base_url}/", timeout=60000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(10000)
 
                 # 获取 CSRF token
-                csrf_cookie = ""
-                for c in await ctx.cookies():
+                cookies = await ctx.cookies()
+                csrf = ""
+                for c in cookies:
                     if c["name"] == "hdh_sa_token":
-                        csrf_cookie = c["value"]
-                        break
-                if not csrf_cookie:
+                        csrf = c["value"]
+                if not csrf:
                     await browser.close()
                     return None
 
-                # 用 fetch 调用 server action 登录
+                # 用 fetch 调 server action 登录
                 js = f"""
                 (async () => {{
                     const r = await fetch('/', {{
@@ -150,9 +150,9 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                 }})()
                 """
                 await page.evaluate(js)
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(5000)
 
-                # 检查是否登录成功
+                # 检查是否登录成功（有没有 token cookie）
                 cookies = await ctx.cookies()
                 token = ""
                 for c in cookies:
