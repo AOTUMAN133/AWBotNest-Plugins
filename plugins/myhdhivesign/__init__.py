@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -92,8 +92,8 @@ async def _fetch_action_hash(base_url: str) -> str | None:
                     if cr.status_code != 200:
                         continue
                     text = cr.text
-                    # 找 createServerReference("hash"
-                    m = re.search(r'createServerReference\s*\(\s*["\']([0-9a-f]{40,})["\']', text)
+                    # 匹配 createServerReference)("hash"... "checkIn"
+                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
                     if m:
                         return m.group(1)
                 except Exception:
