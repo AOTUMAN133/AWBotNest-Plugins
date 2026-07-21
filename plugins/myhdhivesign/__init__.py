@@ -13,16 +13,12 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "requirements": ["httpx"],
     "config_schema": {
-        "accounts": {
-            "type": "text", "default": "[]", "label": "账号配置(JSON)",
-            "section": "账号", "help": "格式: [{\"name\":\"别名\",\"base_url\":\"https://hdhive.in\",\"cookie\":\"token=xxx;...\",\"gamble\":false}]"
-        },
         "cron": {
             "type": "string", "default": "0 0 9 * * *", "label": "定时签到(cron)",
             "section": "定时"
@@ -30,7 +26,6 @@ __plugin__ = {
     },
 }
 
-# KV key
 _KV_ACCOUNTS = "hdhive_accounts"
 _KV_LOGS = "hdhive_logs"
 _KV_HASH = "hdhive_action_hash"
@@ -70,11 +65,51 @@ async def _fetch_action_hash(base_url: str) -> str | None:
     return None
 
 
+async def _login_get_token(base_url: str, username: str, password: str) -> tuple[str, str] | None:
+    """用用户名密码登录，返回 (cookie_str, token)"""
+    apis = ["/api/customer/user/login", "/api/customer/auth/login"]
+    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+    for api in apis:
+        try:
+            async with httpx.AsyncClient(timeout=15, verify=False) as cli:
+                r = await cli.post(f"{base_url}{api}", json={"username": username, "password": password}, headers=headers)
+                if r.status_code == 200:
+                    data = r.json()
+                    token = data.get("data", {}).get("token") or data.get("token", "")
+                    if token:
+                        return f"token={token}", token
+        except Exception:
+            continue
+    return None
+
+
+async def _ensure_account_ready(account: dict) -> dict:
+    """确保账号有有效cookie，必要时自动登录"""
+    base_url = account.get("base_url", "https://hdhive.in").rstrip("/")
+    cookie = account.get("cookie", "")
+    username = account.get("username", "")
+    password = account.get("password", "")
+
+    # 已经有cookie，直接返回
+    if cookie and "token" in cookie:
+        return account
+
+    # 有用户名密码，尝试登录
+    if username and password:
+        result = await _login_get_token(base_url, username, password)
+        if result:
+            cookie_str, token = result
+            account["cookie"] = cookie_str
+            return account
+
+    return account
+
+
 async def _do_sign(account: dict, action_hash: str) -> dict:
     """执行单账号签到"""
     base_url = account.get("base_url", "https://hdhive.in").rstrip("/")
-    cookie_str = account.get("cookie", "")
     gamble = account.get("gamble", False)
+    cookie_str = account.get("cookie", "")
     token = ""
     cookies = {}
 
@@ -86,7 +121,7 @@ async def _do_sign(account: dict, action_hash: str) -> dict:
                 token = v
 
     if not token:
-        return {"success": False, "message": "Cookie 缺少 token"}
+        return {"success": False, "message": "未登录，请配置账号密码或 Cookie"}
 
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     headers = {
@@ -169,10 +204,13 @@ async def setup(ctx):
         logs = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
-            ctx.log.info("[影巢签到] 签到 %s", name)
+            mode = "赌狗" if acc.get("gamble") else "普通"
+            ctx.log.info("[影巢签到] %s(%s) 签到", name, mode)
+            # 确保已登录
+            acc = await _ensure_account_ready(acc)
             result = await _do_sign(acc, action_hash)
             status = "✅" if result["success"] else "❌"
-            logs.append({"time": _now(), "name": name, "status": status, "message": result["message"]})
+            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
             ctx.log.info("[影巢签到] %s: %s", name, result["message"])
             await asyncio.sleep(2)
 
@@ -197,13 +235,15 @@ async def setup(ctx):
         logs = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
+            mode = "赌狗" if acc.get("gamble") else "普通"
+            acc = await _ensure_account_ready(acc)
             result = await _do_sign(acc, action_hash)
             status = "✅" if result["success"] else "❌"
-            logs.append({"time": _now(), "name": name, "status": status, "message": result["message"]})
+            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
             await asyncio.sleep(2)
 
         ctx.kv.set(_KV_LOGS, logs)
-        return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}: {l['message']}" for l in logs)}
+        return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
 
     @ctx.on_api("/refresh_hash", methods=["POST"])
     async def _api_refresh_hash(req):
@@ -217,13 +257,34 @@ async def setup(ctx):
 
     @ctx.on_api("/get_accounts", methods=["GET"])
     async def _api_get_accounts(req):
-        return {"accounts": ctx.kv.get(_KV_ACCOUNTS, [])}
+        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
+        # 脱敏，不返回密码和完整cookie
+        safe = []
+        for a in accounts:
+            s = dict(a)
+            if s.get("password"):
+                s["password"] = "******"
+            if s.get("cookie"):
+                c = s["cookie"]
+                s["cookie"] = c[:20] + "..." if len(c) > 20 else c
+            s["login_method"] = "cookie" if a.get("cookie") else "密码"
+            safe.append(s)
+        return {"accounts": safe}
 
     @ctx.on_api("/save_accounts", methods=["POST"])
     async def _api_save_accounts(req):
         import json
         data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
         accounts = data.get("accounts", [])
+        # 尝试自动登录获取cookie
+        for acc in accounts:
+            if not acc.get("cookie") and acc.get("username") and acc.get("password"):
+                result = await _login_get_token(
+                    acc.get("base_url", "https://hdhive.in").rstrip("/"),
+                    acc["username"], acc["password"]
+                )
+                if result:
+                    acc["cookie"] = result[0]
         ctx.kv.set(_KV_ACCOUNTS, accounts)
         return {"ok": True, "message": f"已保存 {len(accounts)} 个账号"}
 
