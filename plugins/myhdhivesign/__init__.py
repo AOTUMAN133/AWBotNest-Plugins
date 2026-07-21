@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.0.1",
+    "version": "2.1.0",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -21,21 +21,13 @@ __plugin__ = {
     "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
-        "api_key": {
-            "type": "string", "default": "", "label": "API Key",
-            "section": "接口", "help": "HDHive OpenAPI 应用级 Key，必填"
-        },
-        "user_token": {
-            "type": "string", "default": "", "label": "User Token",
-            "section": "接口", "help": "HDHive OpenAPI 用户授权 Bearer Token，必填"
-        },
-        "base_url": {
-            "type": "string", "default": "https://hdhive.com", "label": "站点地址",
-            "section": "接口", "help": "一般不用改"
-        },
         "accounts": {
             "type": "text", "default": "[]", "label": "账号配置(JSON)",
             "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
+        },
+        "action_hash": {
+            "type": "string", "default": "", "label": "Action Hash(留空自动获取)",
+            "section": "哈希", "help": "如果自动获取失败，可打开浏览器F12→网络→点签到→找next-action请求头，复制值填这里"
         },
         "sign_now": {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
@@ -57,10 +49,11 @@ __plugin__ = {
 
 _KV_ACCOUNTS = "hdhive_accounts"
 _KV_LOGS = "hdhive_logs"
+_KV_HASH = "hdhive_action_hash"
 _KV_DEBUG = "hdhive_debug_logs"
 
+
 def _log_debug(ctx, msg: str):
-    """记录调试日志，最多保留50条"""
     logs = ctx.kv.get(_KV_DEBUG, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
@@ -71,30 +64,26 @@ def _now() -> str:
 
 
 async def _fetch_action_hash(base_url: str) -> str | None:
-    """从 Next.js 页面中提取签到 action hash"""
+    """从 Next.js chunk 中提取签到 action hash"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
         async with httpx.AsyncClient(timeout=15, verify=False, headers=headers) as cli:
-            # 加载首页
             r = await cli.get(f"{base_url}/")
             if r.status_code != 200:
                 return None
             html = r.text
-            # 找所有 chunk URL
             chunk_urls = set()
-            for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
-                chunk_urls.add(m.group(1))
             for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
 
             for chunk_rel in chunk_urls:
-                chunk_url = f"{base_url}{chunk_rel}" if chunk_rel.startswith("/") else f"{base_url}/{chunk_rel}"
+                chunk_url = f"{base_url}{chunk_rel}"
                 try:
                     cr = await cli.get(chunk_url, timeout=15)
                     if cr.status_code != 200:
                         continue
                     text = cr.text
-                    # 匹配 createServerReference)("hash"... "checkIn"
+                    # 原插件格式: createServerReference)("hash"... "checkIn"
                     m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
                     if m:
                         return m.group(1)
@@ -105,26 +94,18 @@ async def _fetch_action_hash(base_url: str) -> str | None:
         return None
 
 
-
-
-
-async def _do_sign(account: dict, action_hash: str) -> dict:
-    """执行单账号签到"""
-    base_url = account.get("base_url", "https://hdhive.in").rstrip("/")
-    gamble = account.get("gamble", False)
-    cookie_str = account.get("cookie", "")
+async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: bool) -> dict:
+    """执行签到"""
     token = ""
     cookies = {}
-
     for item in cookie_str.split(";"):
         if "=" in item:
             k, v = item.strip().split("=", 1)
             cookies[k] = v
             if k == "token":
                 token = v
-
     if not token:
-        return {"success": False, "message": "未登录，请配置账号密码或 Cookie"}
+        return {"success": False, "message": "Cookie 缺少 token"}
 
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     headers = {
@@ -140,57 +121,42 @@ async def _do_sign(account: dict, action_hash: str) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
-            resp = await cli.post(
-                base_url,
-                headers=headers,
-                cookies=cookies,
-                content=body,
-            )
+            resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
         text = resp.text
         # 解析响应
-        result = _parse_rsc_result(text)
-        if result is None:
-            if resp.status_code == 200:
-                return {"success": True, "message": "签到请求已发送"}
-            return {"success": False, "message": f"HTTP {resp.status_code}"}
-
-        payload = result.get("response") or result
-        message = str(payload.get("message") or "")
-        description = str(payload.get("description") or "")
-        display = description or message or "未知结果"
-
-        already = any(k in message + description for k in ("已经签到", "签到过", "明天再来"))
-        success = bool(payload.get("success")) or already
-        if already:
-            display = "今日已签到"
-        return {"success": success, "message": display}
+        for line in text.splitlines():
+            m = re.match(r"^\d+:(\{.*\})\s*$", line)
+            if not m:
+                continue
+            try:
+                obj = json.loads(m.group(1))
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if "login" in str(obj):
+                return {"success": False, "message": "Cookie 失效，请重新登录"}
+            if "f" in obj and any(k in obj for k in ("error", "response", "success", "message")):
+                payload = obj.get("response") or obj
+                msg = str(payload.get("message") or payload.get("description") or "")
+                already = any(k in msg for k in ("已经签到", "签到过", "明天再来"))
+                if already:
+                    return {"success": True, "message": "今日已签到"}
+                if bool(payload.get("success")):
+                    return {"success": True, "message": msg or "签到成功"}
+                return {"success": False, "message": msg or "签到失败"}
+        if resp.status_code == 200:
+            return {"success": True, "message": "签到请求已发送"}
+        return {"success": False, "message": f"HTTP {resp.status_code}"}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
 
-def _parse_rsc_result(text: str) -> dict | None:
-    """解析 Next.js RSC 响应"""
-    for line in text.splitlines():
-        m = re.match(r"^\d+:(\{.*\})\s*$", line)
-        if not m:
-            continue
-        try:
-            obj = json.loads(m.group(1))
-        except Exception:
-            continue
-        if not isinstance(obj, dict):
-            continue
-        if "login" in str(obj):
-            continue
-        if "f" in obj and any(k in obj for k in ("error", "response", "success", "message")):
-            return obj
-    return None
-
-
 async def setup(ctx):
     _log_debug(ctx, "插件加载完成")
-    # 初始化定时签到
+
     async def _sign_tick():
+        base_url = ctx.config.get("base_url", "https://hdhive.com")
         acc_json = ctx.config.get("accounts", "[]")
         try:
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
@@ -198,43 +164,33 @@ async def setup(ctx):
             accounts = []
         if not accounts:
             return
-        base_url = accounts[0].get("base_url", "https://hdhive.in").rstrip("/")
-        # 获取 action hash
-        action_hash = ctx.kv.get(_KV_HASH, "")
+        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if not action_hash:
-            _log_debug(ctx, f"获取action hash: {base_url}")
-            ctx.log.info("[影巢签到] 获取 action hash: %s", base_url)
             action_hash = await _fetch_action_hash(base_url)
             if action_hash:
                 ctx.kv.set(_KV_HASH, action_hash)
-                ctx.log.info("[影巢签到] action hash 获取成功: %s", action_hash[:20])
             else:
-                ctx.log.warning("[影巢签到] 无法获取 action hash")
                 return
-
         logs = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
-            mode = "赌狗" if acc.get("gamble") else "普通"
+            cookie = acc.get("cookie", "")
+            if not cookie:
+                continue
+            gamble = acc.get("gamble", False)
+            mode = "赌狗" if gamble else "普通"
             ctx.log.info("[影巢签到] %s(%s) 签到", name, mode)
-            # 确保已登录
-            acc = await _ensure_account_ready(acc)
-            result = await _do_sign(acc, action_hash)
+            result = await _do_sign(cookie, base_url, action_hash, gamble)
             status = "✅" if result["success"] else "❌"
             logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
             ctx.log.info("[影巢签到] %s: %s", name, result["message"])
-            await asyncio.sleep(2)
-
-        ctx.kv.set(_KV_LOGS, logs)
+            await asyncio.sleep(1)
 
     sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
     sign_minute = int(ctx.config.get("sign_minute", 0) or 0)
     ctx.schedule(_sign_tick, "cron", hour=sign_hour, minute=sign_minute, id="hdhive_sign")
 
-
-
     async def _do_sign_all():
-        """执行所有账号签到"""
         _log_debug(ctx, "开始签到")
         base_url = ctx.config.get("base_url", "https://hdhive.com")
         acc_json = ctx.config.get("accounts", "[]")
@@ -247,19 +203,29 @@ async def setup(ctx):
             return {"ok": False, "message": "未配置账号"}
         _log_debug(ctx, f"账号数: {len(accounts)}")
 
+        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+        if not action_hash:
+            _log_debug(ctx, f"获取action hash: {base_url}")
+            action_hash = await _fetch_action_hash(base_url)
+            if action_hash:
+                ctx.kv.set(_KV_HASH, action_hash)
+                _log_debug(ctx, f"hash: {action_hash[:16]}...")
+            else:
+                _log_debug(ctx, "无法获取hash，请在配置中手动填写")
+                return {"ok": False, "message": "无法获取 action hash，请手动填写"}
+
         logs = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
-            api_key = acc.get("api_key", "")
-            user_token = acc.get("user_token", "")
-            if not api_key or not user_token:
-                _log_debug(ctx, f"{name}: 缺少API Key或Token")
-                logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少API Key或Token"})
+            cookie = acc.get("cookie", "")
+            if not cookie:
+                _log_debug(ctx, f"{name}: 缺少Cookie")
+                logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
                 continue
             gamble = acc.get("gamble", False)
             mode = "赌狗" if gamble else "普通"
             _log_debug(ctx, f"签到: {name}({mode})")
-            result = await _do_sign(api_key, user_token, base_url, gamble)
+            result = await _do_sign(cookie, base_url, action_hash, gamble)
             status = "✅" if result["success"] else "❌"
             logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
             _log_debug(ctx, f"{name}: {result['message']}")
@@ -276,16 +242,6 @@ async def setup(ctx):
     async def _api_sign_now_api(req):
         return await _do_sign_all()
 
-    @ctx.action("refresh_hash")
-    async def _api_refresh_hash(req=None):
-        accounts = ctx.kv.get(_KV_ACCOUNTS, [])
-        base_url = accounts[0].get("base_url", "https://hdhive.in") if accounts else "https://hdhive.in"
-        h = await _fetch_action_hash(base_url)
-        if h:
-            ctx.kv.set(_KV_HASH, h)
-            return {"ok": True, "message": f"Hash 已更新: {h[:16]}..."}
-        return {"ok": False, "message": "获取失败"}
-
     @ctx.on_api("/get_accounts", methods=["GET"])
     async def _api_get_accounts(req):
         acc_json = ctx.config.get("accounts", "[]")
@@ -295,8 +251,6 @@ async def setup(ctx):
         except Exception:
             pass
         return {"accounts": accounts}
-
-
 
     @ctx.on_api("/get_logs", methods=["GET"])
     async def _api_get_logs(req):
