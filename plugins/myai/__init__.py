@@ -910,7 +910,8 @@ async def setup(ctx):
     ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
 
     # ── 答题奖励（自动发言触发后，回复机器人的数学题） ──
-    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=6)
+    _log_debug(ctx, "注册答题奖励处理器")
+    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=5)
     async def _reward_handler(client, message):
         if not ctx.config.get("enable_auto_say", False):
             return
