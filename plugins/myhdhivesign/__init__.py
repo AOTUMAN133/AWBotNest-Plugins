@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -222,6 +222,7 @@ def _parse_rsc_result(text: str) -> dict | None:
 
 
 async def setup(ctx):
+    _log_debug(ctx, "插件加载完成")
     # 初始化定时签到
     async def _sign_tick():
         acc_json = ctx.config.get("accounts", "[]")
@@ -274,6 +275,7 @@ async def setup(ctx):
 
     async def _do_sign_all():
         """执行所有账号签到"""
+        _log_debug(ctx, "开始签到")
         acc_json = ctx.config.get("accounts", "[]")
         try:
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
