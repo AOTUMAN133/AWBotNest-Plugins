@@ -994,6 +994,18 @@ async def setup(ctx):
         if not rules:
             _log_debug(ctx, "规则为空")
             return
+        # 只处理配置的群组
+        all_chats = set()
+        for r in rules:
+            for c in str(r.get("chat_ids", "") or "").replace("，", ",").split(","):
+                c = c.strip()
+                if c:
+                    try:
+                        all_chats.add(int(c))
+                    except ValueError:
+                        pass
+        if all_chats and message.chat.id not in all_chats:
+            return
         chat_id = message.chat.id
         sender_id = str(message.from_user.id) if message.from_user else ""
         _log_debug(ctx, f"消息: chat={chat_id} sender={sender_id} text={message.text[:30] if message.text else ''}")
@@ -1082,13 +1094,12 @@ async def setup(ctx):
     @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
         _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
-        data = req if isinstance(req, dict) else {}
-        if hasattr(req, 'body') and req.body:
-            try:
-                import json
-                data = json.loads(req.body) if isinstance(req.body, str) else req.body
-            except Exception:
-                pass
+        try:
+            data = await req.json()
+            _log_debug(ctx, f"重置监控: data={data}")
+        except Exception as e:
+            _log_debug(ctx, f"重置监控: json解析失败 {e}")
+            data = req if isinstance(req, dict) else {}
         user_id = str(data.get("user_id", "") or "")
         chat_id = str(data.get("chat_id", "") or "")
         _log_debug(ctx, f"重置监控: user_id={user_id} chat_id={chat_id}")
