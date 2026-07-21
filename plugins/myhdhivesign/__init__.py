@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.3",
+    "version": "2.1.4",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -249,13 +249,9 @@ async def setup(ctx):
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                _log_debug(ctx, f"{name}: 尝试自动登录到 {base_url}")
-                cookie = await _login_get_token(base_url, username, password)
-                if cookie:
-                    acc["cookie"] = cookie
-                    _log_debug(ctx, f"{name}: 登录成功")
-                else:
-                    _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码或直接填Cookie")
+                _log_debug(ctx, f"{name}: 站点无公开登录API，请直接填Cookie")
+                logs.append({"time": _now(), "name": name, "status": "❌", "message": "请直接填Cookie，不支持自动登录"})
+                continue
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
