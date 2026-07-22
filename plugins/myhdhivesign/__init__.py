@@ -222,15 +222,20 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             for line in hr.text.splitlines():
                 if '"currentUser"' in line:
                     try:
-                        m = re.search(r'\{[^{}]*"points"\s*:\s*(\d+)[^{}]*"signin_days_total"\s*:\s*(\d+)[^{}]*\}', line)
-                        if m:
-                            user_info["points"] = int(m.group(1))
-                            user_info["signin_days"] = int(m.group(2))
                         m = re.search(r'"nickname"\s*:\s*"([^"]+)"', line)
                         if m:
                             user_info["nickname"] = m.group(1)
-                        if '"signin"' in line.lower() or '"signed"' in line.lower():
-                            user_info["signed_in_today"] = "已签到" in line or "true" in line.lower()
+                        m = re.search(r'"points"\s*:\s*(\d+)', line)
+                        if m:
+                            user_info["points"] = int(m.group(1))
+                        m = re.search(r'"signin_days_total"\s*:\s*(\d+)', line)
+                        if m:
+                            user_info["signin_days"] = int(m.group(1))
+                        # 检查是否已签到 - 看 signin 状态
+                        if '"is_signin"' in line.lower() or '"signin"' in line.lower():
+                            m = re.search(r'"is_signin"\s*:\s*(true|false)', line, re.IGNORECASE)
+                            if m:
+                                user_info["signed_in_today"] = m.group(1).lower() == "true"
                     except Exception:
                         pass
 
