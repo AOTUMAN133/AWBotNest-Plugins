@@ -63,7 +63,7 @@ def _now() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-async def _fetch_action_hash(base_url: str) -> str | None:
+async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
     """从 Next.js chunk 中提取签到 action hash"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
