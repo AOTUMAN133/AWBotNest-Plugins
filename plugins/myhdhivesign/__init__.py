@@ -193,7 +193,7 @@ async def _login_get_token(base_url: str, username: str, password: str) -> str |
 
 
 async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: bool) -> dict:
-    """执行签到，自动获取 CSRF token"""
+    """执行签到，自动获取 CSRF token，返回签到结果和用户信息"""
     token = ""
     cookies = {}
     for item in cookie_str.split(";"):
@@ -208,18 +208,36 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     body = json.dumps([gamble])
 
+    # 解析用户信息
+    user_info = {"points": 0, "signin_days": 0, "nickname": "", "signed_in_today": False}
+
     try:
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
-            # 先请求首页获取 CSRF token
+            # 先请求首页获取 CSRF token 和用户信息
             hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
             csrf_cookie = ""
             for c in hr.cookies:
                 if c.name == "hdh_sa_token":
                     csrf_cookie = c.value
                     break
-            # 合并 CSRF 到 cookies
             if csrf_cookie:
                 cookies["hdh_sa_token"] = csrf_cookie
+
+            # 从 RSC 响应中解析用户信息
+            for line in hr.text.splitlines():
+                if '"currentUser"' in line:
+                    try:
+                        m = re.search(r'\{[^{}]*"points"\s*:\s*(\d+)[^{}]*"signin_days_total"\s*:\s*(\d+)[^{}]*\}', line)
+                        if m:
+                            user_info["points"] = int(m.group(1))
+                            user_info["signin_days"] = int(m.group(2))
+                        m = re.search(r'"nickname"\s*:\s*"([^"]+)"', line)
+                        if m:
+                            user_info["nickname"] = m.group(1)
+                        if '"signin"' in line.lower() or '"signed"' in line.lower():
+                            user_info["signed_in_today"] = "已签到" in line or "true" in line.lower()
+                    except Exception:
+                        pass
 
             headers = {
                 "User-Agent": ua,
@@ -262,14 +280,14 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             msg = str(payload.get("message") or payload.get("description") or "")
             already = any(k in msg for k in ("已经签到", "签到过", "明天再来"))
             if already:
-                return {"success": True, "message": "今日已签到"}
+                return {"success": True, "message": "今日已签到", "user": user_info}
             if bool(payload.get("success")):
-                return {"success": True, "message": msg or "签到成功"}
-            return {"success": False, "message": msg or "签到失败"}
+                return {"success": True, "message": msg or "签到成功", "user": user_info}
+            return {"success": False, "message": msg or "签到失败", "user": user_info}
         if redirected:
-            return {"success": False, "message": "Cookie 失效，请重新登录"}
+            return {"success": False, "message": "Cookie 失效，请重新登录", "user": user_info}
         if resp.status_code == 200:
-            return {"success": True, "message": "签到请求已发送"}
+            return {"success": True, "message": "签到请求已发送", "user": user_info}
         elif resp.status_code == 409:
             # 409 Conflict - 可能已签到或请求冲突
             try:
@@ -370,6 +388,12 @@ async def setup(ctx):
             status = "✅" if result["success"] else "❌"
             logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
             _log_debug(ctx, f"{name}: {result['message']}")
+            if result.get("user"):
+                u = result["user"]
+                pts = u.get("points", 0)
+                days = u.get("signin_days", 0)
+                nick = u.get("nickname", "")
+                _log_debug(ctx, f"{name}: {nick} 积分={pts} 签到天数={days}")
             await asyncio.sleep(1)
 
         ctx.kv.set(_KV_LOGS, logs)
