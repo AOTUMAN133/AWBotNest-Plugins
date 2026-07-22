@@ -419,6 +419,49 @@ async def setup(ctx):
             pass
         return {"accounts": accounts}
 
+    @ctx.on_api("/get_account_status", methods=["POST"])
+    async def _api_get_account_status(req):
+        """获取每个账号的当前状态（积分、签到天数等）"""
+        acc_json = ctx.config.get("accounts", "[]")
+        try:
+            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
+        except Exception:
+            accounts = []
+        results = []
+        for acc in accounts:
+            cookie = acc.get("cookie", "")
+            if not cookie:
+                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "signed": False, "error": "无Cookie"})
+                continue
+            try:
+                ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                cookies = {}
+                for item in cookie.split(";"):
+                    if "=" in item:
+                        k, v = item.strip().split("=", 1)
+                        cookies[k] = v
+                get_cookies = {k: v for k, v in cookies.items() if k != "hdh_sa_token"}
+                async with httpx.AsyncClient(timeout=15, verify=False) as cli:
+                    hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=get_cookies)
+                    text = hr.text
+                    pts = 0; days = 0; nick = ""
+                    m = re.search(r'\\"nickname\\"\s*:\s*\\"([^"]+)\\"', text)
+                    if m:
+                        try:
+                            nick = json.loads('"' + m.group(1) + '"')
+                        except Exception:
+                            nick = m.group(1)
+                    m = re.search(r'\\"points\\"\s*:\s*(\d+)', text)
+                    if m:
+                        pts = int(m.group(1))
+                    m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text)
+                    if m:
+                        days = int(m.group(1))
+                    results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": False})
+            except Exception as e:
+                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "signed": False, "error": str(e)})
+        return {"results": results}
+
     @ctx.on_api("/get_logs", methods=["GET"])
     async def _api_get_logs(req):
         return {"logs": ctx.kv.get(_KV_LOGS, [])}
