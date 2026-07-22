@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.7",
+    "version": "2.2.9",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -213,18 +213,10 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
 
     try:
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
-            # 先请求首页获取 CSRF token 和用户信息
-            hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
-            csrf_cookie = ""
-            # 从响应头中提取 CSRF cookie（httpx 的 cookie jar 可能不捕获 HttpOnly cookie）
-            for k, v in hr.headers.items():
-                if k.lower() == "set-cookie" and "hdh_sa_token" in v:
-                    m = re.search(r'hdh_sa_token=([^;]+)', v)
-                    if m:
-                        csrf_cookie = m.group(1)
-                        break
-            if csrf_cookie:
-                cookies["hdh_sa_token"] = csrf_cookie
+            # 先请求首页获取 CSRF token（不传 hdh_sa_token，让服务器下发新的）
+            get_cookies = {k: v for k, v in cookies.items() if k != "hdh_sa_token"}
+            hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=get_cookies)
+            # 此时 cli.cookies 中已有服务器下发的 hdh_sa_token
 
             # 从 RSC 响应中解析用户信息
             for line in hr.text.splitlines():
@@ -251,7 +243,7 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 "next-action": action_hash,
                 "Authorization": f"Bearer {token}",
             }
-            resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
+            resp = await cli.post(base_url, headers=headers, content=body)
         text = resp.text
         # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
         redirected = False
