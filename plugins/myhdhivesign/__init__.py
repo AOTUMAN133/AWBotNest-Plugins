@@ -422,6 +422,7 @@ async def setup(ctx):
     @ctx.on_api("/get_account_status", methods=["POST"])
     async def _api_get_account_status(req):
         """获取每个账号的当前状态（积分、签到天数等）"""
+        _log_debug(ctx, "获取账号状态")
         acc_json = ctx.config.get("accounts", "[]")
         try:
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
