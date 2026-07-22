@@ -218,26 +218,20 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=get_cookies)
             # 此时 cli.cookies 中已有服务器下发的 hdh_sa_token
 
-            # 从 RSC 响应中解析用户信息
-            for line in hr.text.splitlines():
-                if '"currentUser"' in line:
-                    try:
-                        m = re.search(r'"nickname"\s*:\s*"([^"]+)"', line)
-                        if m:
-                            user_info["nickname"] = m.group(1)
-                        m = re.search(r'"points"\s*:\s*(\d+)', line)
-                        if m:
-                            user_info["points"] = int(m.group(1))
-                        m = re.search(r'"signin_days_total"\s*:\s*(\d+)', line)
-                        if m:
-                            user_info["signin_days"] = int(m.group(1))
-                        # 检查是否已签到 - 看 signin 状态
-                        if '"is_signin"' in line.lower() or '"signin"' in line.lower():
-                            m = re.search(r'"is_signin"\s*:\s*(true|false)', line, re.IGNORECASE)
-                            if m:
-                                user_info["signed_in_today"] = m.group(1).lower() == "true"
-                    except Exception:
-                        pass
+            # 从 RSC 响应中解析用户信息（RSC 格式中 JSON 是转义的）
+            text_raw = hr.text
+            m = re.search(r'\\"nickname\\"\s*:\s*\\"([^"]+)\\"', text_raw)
+            if m:
+                try:
+                    user_info["nickname"] = json.loads('"' + m.group(1) + '"')
+                except Exception:
+                    user_info["nickname"] = m.group(1)
+            m = re.search(r'\\"points\\"\s*:\s*(\d+)', text_raw)
+            if m:
+                user_info["points"] = int(m.group(1))
+            m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text_raw)
+            if m:
+                user_info["signin_days"] = int(m.group(1))
 
             headers = {
                 "User-Agent": ua,
