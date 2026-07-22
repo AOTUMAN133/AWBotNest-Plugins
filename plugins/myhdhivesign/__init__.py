@@ -388,6 +388,8 @@ async def setup(ctx):
                 nick = u.get("nickname", "")
                 if nick:
                     msg += f" | {nick} 积分={pts} 已签{days}天"
+                if days > 0:
+                    ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
             logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
             _log_debug(ctx, f"{name}: {msg}")
             if result.get("user"):
@@ -430,7 +432,6 @@ async def setup(ctx):
             accounts = []
         results = []
         base_url = ctx.config.get("base_url", "https://hdhive.com")
-        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         for acc in accounts:
             cookie = acc.get("cookie", "")
             if not cookie:
@@ -460,44 +461,10 @@ async def setup(ctx):
                     m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text)
                     if m:
                         days = int(m.group(1))
-                    # 通过调用签到API检查是否已签到（非赌狗模式，不改变状态）
-                    try:
-                        token = cookies.get("token", "")
-                        if token and action_hash:
-                            headers = {
-                                "User-Agent": ua,
-                                "Accept": "text/x-component",
-                                "Content-Type": "text/plain;charset=UTF-8",
-                                "next-action": action_hash,
-                                "Authorization": f"Bearer {token}",
-                            }
-                            body = json.dumps([False])
-                            sr = await cli.post(base_url, headers=headers, content=body)
-                            stext = sr.text
-                            signed = False
-                            for line in stext.splitlines():
-                                m = re.match(r'^\d+:(\{.*\})\s*$', line)
-                                if not m:
-                                    continue
-                                try:
-                                    obj = json.loads(m.group(1))
-                                    if isinstance(obj, dict):
-                                        resp_data = obj.get("response") or obj
-                                        msg = str(resp_data.get("message", "") or "")
-                                        if any(k in msg for k in ("已经签到", "签到过", "明天再来", "今日已签到")):
-                                            signed = True
-                                            break
-                                        if resp_data.get("success"):
-                                            # 签到成功，但这是状态检查，标记为已签到
-                                            signed = True
-                                            break
-                                except Exception:
-                                    continue
-                            results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
-                        else:
-                            results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": False})
-                    except Exception:
-                        results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": False})
+                    # 获取上次签到后记录的 days 值，判断是否已签到
+                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
+                    signed = days > last_days if last_days > 0 else False
+                    results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "error": str(e)})
         return {"results": results}
