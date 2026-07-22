@@ -466,7 +466,9 @@ async def setup(ctx):
                     signed = days > last_days if last_days > 0 else False
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
+                _log_debug(ctx, f"状态查询失败: {e}")
                 results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "error": str(e)})
+        _log_debug(ctx, f"状态结果: {len(results)}条")
         return {"results": results}
 
     @ctx.on_api("/get_logs", methods=["GET"])
