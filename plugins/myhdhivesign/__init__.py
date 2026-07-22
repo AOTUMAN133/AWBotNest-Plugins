@@ -34,12 +34,16 @@ __plugin__ = {
             "action": "sign_now", "danger": False
         },
         "sign_hour": {
-            "type": "number", "default": 9, "label": "签到时间(时)",
-            "section": "定时", "help": "0-23"
+            "type": "number", "default": 9, "label": "签到开始时间(时)",
+            "section": "定时", "help": "定时签到开始的小时"
+        },
+        "sign_window": {
+            "type": "number", "default": 2, "label": "签到时间窗口(小时)",
+            "section": "定时", "help": "在开始时间后的窗口内随机签到，每个账号独立随机"
         },
         "sign_minute": {
-            "type": "number", "default": 0, "label": "签到时间(分)",
-            "section": "定时", "help": "0-59"
+            "type": "number", "default": 0, "label": "签到分钟",
+            "section": "定时", "help": "当窗口为0时固定使用此分钟"
         },
         "_logs": {
             "type": "info", "label": "运行日志", "section": "日志"
@@ -299,13 +303,21 @@ async def setup(ctx):
     _log_debug(ctx, "插件加载完成")
 
     async def _sign_tick():
+        """每分钟检查，在签到窗口内逐个账号签到"""
         base_url = ctx.config.get("base_url", "https://hdhive.com")
-        acc_json = ctx.config.get("accounts", "[]")
+        cfg = ctx.config
+        acc_json = cfg.get("accounts", "[]")
         try:
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
         except Exception:
             accounts = []
         if not accounts:
+            return
+        sign_hour = int(cfg.get("sign_hour", 9) or 9)
+        sign_window = int(cfg.get("sign_window", 2) or 2)
+        now = datetime.now(TZ)
+        window_end = sign_hour + sign_window
+        if now.hour < sign_hour or now.hour >= window_end:
             return
         action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if not action_hash:
@@ -314,24 +326,40 @@ async def setup(ctx):
                 ctx.kv.set(_KV_HASH, action_hash)
             else:
                 return
-        logs = []
+        total_minutes = sign_window * 60
+        today_str = now.strftime("%Y-%m-%d")
+        seed_base = abs(hash(today_str))
+        current_offset = (now.hour - sign_hour) * 60 + now.minute
         for i, acc in enumerate(accounts):
-            name = acc.get("name", f"账号{i+1}")
+            seed = seed_base + i
+            rng = random.Random(seed)
+            offset = rng.randint(0, total_minutes - 1)
+            if offset != current_offset:
+                continue
             cookie = acc.get("cookie", "")
             if not cookie:
                 continue
+            name = acc.get("name", f"账号{i+1}")
             gamble = acc.get("gamble", False)
             mode = "赌狗" if gamble else "普通"
-            ctx.log.info("[影巢签到] %s(%s) 签到", name, mode)
+            last_days_key = f"last_signin_days:{cookie[:20]}"
+            last_days = ctx.kv.get(last_days_key, 0)
+            if last_days > 0:
+                _log_debug(ctx, f"{name}: 今日已签，跳过")
+                continue
+            _log_debug(ctx, f"定时签到: {name}({mode})")
             result = await _do_sign(cookie, base_url, action_hash, gamble)
-            status = "✅" if result["success"] else "❌"
-            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
-            ctx.log.info("[影巢签到] %s: %s", name, result["message"])
-            await asyncio.sleep(1)
+            if result.get("user"):
+                u = result["user"]
+                days = u.get("signin_days", 0)
+                if days > 0:
+                    ctx.kv.set(last_days_key, days)
+            _log_debug(ctx, f"{name}: {result['message']}")
 
     sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
-    sign_minute = int(ctx.config.get("sign_minute", 0) or 0)
-    ctx.schedule(_sign_tick, "cron", hour=sign_hour, minute=sign_minute, id="hdhive_sign")
+    sign_window = int(ctx.config.get("sign_window", 2) or 2)
+    # 每分钟运行一次，在签到窗口内自动处理
+    ctx.schedule(_sign_tick, "interval", minutes=1, id="hdhive_sign")
 
     async def _do_sign_all():
         _log_debug(ctx, "开始签到")
@@ -468,7 +496,9 @@ async def setup(ctx):
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
                 results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "error": str(e)})
-        _log_debug(ctx, f"状态结果: {len(results)}条")
+        _log_debug(ctx, "状态: " + " | ".join(
+            f'{r["name"]}:{r["points"]}分/{r["days"]}天{"✅" if r.get("signed") else "⏳"}'
+            for r in results))
         return {"results": results}
 
     @ctx.on_api("/get_logs", methods=["GET"])
