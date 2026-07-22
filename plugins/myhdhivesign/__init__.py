@@ -428,6 +428,7 @@ async def setup(ctx):
         except Exception:
             accounts = []
         results = []
+        base_url = ctx.config.get("base_url", "https://hdhive.com")
         for acc in accounts:
             cookie = acc.get("cookie", "")
             if not cookie:
