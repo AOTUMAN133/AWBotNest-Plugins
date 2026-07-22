@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.2.4",
+    "version": "2.2.5",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
@@ -95,7 +95,11 @@ async def _fetch_action_hash(base_url: str) -> str | None:
                 if cr.status_code == 200:
                     m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\']', cr.text)
                     if m:
-                        return m.group(1)
+                        h = m.group(1)
+                        # layout chunk 里的 hash 是 encrypt/decrypt 的，不是 checkIn 的
+                        # 正确 hash 在动态加载的 chunk 中，只能用已知的 fallback
+                        _log_debug(ctx, f"layout hash: {h[:16]}...")
+                        return "4087930a783c3dca3c375217c4de7be2e0ef7f2a91"
             except Exception:
                 pass
             return None
@@ -189,7 +193,7 @@ async def _login_get_token(base_url: str, username: str, password: str) -> str |
 
 
 async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: bool) -> dict:
-    """执行签到"""
+    """执行签到，自动获取 CSRF token"""
     token = ""
     cookies = {}
     for item in cookie_str.split(";"):
@@ -202,19 +206,30 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
         return {"success": False, "message": "Cookie 缺少 token"}
 
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    headers = {
-        "User-Agent": ua,
-        "Accept": "text/x-component",
-        "Content-Type": "text/plain;charset=UTF-8",
-        "Origin": base_url,
-        "Referer": f"{base_url}/",
-        "next-action": action_hash,
-        "Authorization": f"Bearer {token}",
-    }
     body = json.dumps([gamble])
 
     try:
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
+            # 先请求首页获取 CSRF token
+            hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
+            csrf_cookie = ""
+            for c in hr.cookies:
+                if c.name == "hdh_sa_token":
+                    csrf_cookie = c.value
+                    break
+            # 合并 CSRF 到 cookies
+            if csrf_cookie:
+                cookies["hdh_sa_token"] = csrf_cookie
+
+            headers = {
+                "User-Agent": ua,
+                "Accept": "text/x-component",
+                "Content-Type": "text/plain;charset=UTF-8",
+                "Origin": base_url,
+                "Referer": f"{base_url}/",
+                "next-action": action_hash,
+                "Authorization": f"Bearer {token}",
+            }
             resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
         text = resp.text
         # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
