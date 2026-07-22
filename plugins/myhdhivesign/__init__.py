@@ -216,10 +216,13 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             # 先请求首页获取 CSRF token 和用户信息
             hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
             csrf_cookie = ""
-            for c in hr.cookies:
-                if c.name == "hdh_sa_token":
-                    csrf_cookie = c.value
-                    break
+            # 从响应头中提取 CSRF cookie（httpx 的 cookie jar 可能不捕获 HttpOnly cookie）
+            for k, v in hr.headers.items():
+                if k.lower() == "set-cookie" and "hdh_sa_token" in v:
+                    m = re.search(r'hdh_sa_token=([^;]+)', v)
+                    if m:
+                        csrf_cookie = m.group(1)
+                        break
             if csrf_cookie:
                 cookies["hdh_sa_token"] = csrf_cookie
 
@@ -386,8 +389,16 @@ async def setup(ctx):
             _log_debug(ctx, f"签到: {name}({mode})")
             result = await _do_sign(cookie, base_url, action_hash, gamble)
             status = "✅" if result["success"] else "❌"
-            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": result["message"]})
-            _log_debug(ctx, f"{name}: {result['message']}")
+            msg = result["message"]
+            if result.get("user"):
+                u = result["user"]
+                pts = u.get("points", 0)
+                days = u.get("signin_days", 0)
+                nick = u.get("nickname", "")
+                if nick:
+                    msg += f" | {nick} 积分={pts} 已签{days}天"
+            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
+            _log_debug(ctx, f"{name}: {msg}")
             if result.get("user"):
                 u = result["user"]
                 pts = u.get("points", 0)
