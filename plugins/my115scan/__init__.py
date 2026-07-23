@@ -225,7 +225,7 @@ def _guess_type(text: str):
     lower = text.lower()
     if any(k in lower for k in ["电影", "movie", "film"]):
         return "movie"
-    if any(k in lower for k in ["剧集", "电视剧", "tv", "series", "剧"]):
+    if any(k in lower for k in ["剧集", "电视剧", "tv", "series"]):
         return "tv"
     # 检测单集格式
     if re.search(r"\bs\d+\s*e\d+", lower) or re.search(r"e\s*p\s*\d+", lower) or re.search(r"第\s*\d+\s*[集話话]", lower):
