@@ -350,7 +350,7 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 return {"success": True, "message": "今日已签到", "user": user_info}
             if bool(payload.get("success")):
                 return {"success": True, "message": msg or "签到成功", "user": user_info}
-            return {"success": False, "message": msg or "签到失败", "user": user_info}
+            return {"success": False, "message": msg or "签到失败", "user": user_info, "raw": text[:200]}
         if redirected:
             return {"success": False, "message": "Cookie 失效，请重新登录", "user": user_info}
         if resp.status_code == 200:
