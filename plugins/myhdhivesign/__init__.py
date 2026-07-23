@@ -69,6 +69,8 @@ def _now() -> str:
 
 async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
     """从 Next.js chunk 中提取签到 action hash"""
+    if ctx:
+        _log_debug(ctx, "获取action hash...")
     from urllib.parse import quote
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
@@ -338,6 +340,7 @@ async def setup(ctx):
             action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if action_hash:
             ctx.kv.set(_KV_HASH, action_hash)
+            _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         else:
             return
         total_minutes = sign_window * 60
@@ -393,6 +396,7 @@ async def setup(ctx):
             action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if action_hash:
             ctx.kv.set(_KV_HASH, action_hash)
+            _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         else:
             _log_debug(ctx, "无法获取hash，请在配置中手动填写")
             return {"ok": False, "message": "无法获取 action hash，请手动填写"}
