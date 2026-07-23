@@ -10,6 +10,7 @@
 # =============================================================================
 
 import asyncio
+import hashlib
 import re
 import time
 from collections import deque
@@ -461,16 +462,29 @@ async def _process(client, cfg, message, ctx):
 
     label = cfg.get("forward_label", "115 网盘")
     # 转发去重：同一TMDB ID在冷却期内不重复转发
-    dedup_hours = int(cfg.get("dedup_hours", 24) or 24)
+    if tmdb_id:
+        dedup_hours = int(cfg.get("dedup_hours", 24) or 24)
+        if dedup_hours > 0:
+            dedup_key = f"my115_dedup_{tmdb_id}"
+            last_ts = ctx.kv.get(dedup_key, 0) or 0
+            now = time.time()
+            if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
+                ctx.log.info("[115扫描] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
+                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
+                return
+    # 链接去重（即使没有TMDB ID，相同链接也不重复转发）
+    link_hash = hashlib.md5("".join(sorted(links)).encode()).hexdigest()
+    link_dedup_key = "my115_link_dedup_" + link_hash
+    link_last = ctx.kv.get(link_dedup_key, 0) or 0
+    now = time.time()
+    link_dedup_hours = max(24, int(cfg.get("dedup_hours", 24) or 24))
+    if link_last > 0 and (now - link_last) < link_dedup_hours * 3600:
+        ctx.log.info("[115扫描] 链接在冷却期内，跳过重复转发")
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "链接重复跳过"})
+        return
+    ctx.kv.set(link_dedup_key, now)
     if tmdb_id and dedup_hours > 0:
-        dedup_key = f"my115_dedup_{tmdb_id}"
-        last_ts = ctx.kv.get(dedup_key, 0) or 0
-        now = time.time()
-        if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
-            ctx.log.info("[115扫描] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
-            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
-            return
-        ctx.kv.set(dedup_key, now)
+        ctx.kv.set(f"my115_dedup_{tmdb_id}", now)
     await _send_links(client, cfg, links, label, ctx)
     ctx.log.info("[115扫描] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
