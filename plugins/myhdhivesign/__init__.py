@@ -69,6 +69,7 @@ def _now() -> str:
 
 async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
     """从 Next.js chunk 中提取签到 action hash"""
+    from urllib.parse import quote
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
         async with httpx.AsyncClient(timeout=15, verify=False, headers=headers) as cli:
@@ -80,11 +81,13 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
             for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
 
-            # 第一步：查找包含 checkIn 的 hash
-            for chunk_rel in chunk_urls:
+            for chunk_rel in sorted(chunk_urls):
+                # 优先检查 layout chunk（包含 checkIn 的可能性最大）
                 if "layout" not in chunk_rel:
                     continue
-                chunk_url = f"{base_url}{chunk_rel}"
+                # URL 编码括号等特殊字符
+                encoded = quote(chunk_rel, safe='/:')
+                chunk_url = f"{base_url}{encoded}"
                 try:
                     cr = await cli.get(chunk_url, timeout=15)
                     if cr.status_code != 200:
@@ -95,35 +98,27 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
                     if m:
                         _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
                         return m.group(1)
+                except Exception as e:
+                    _log_debug(ctx, f"layout chunk 请求失败: {e}")
+                    continue
+
+            # 第二步：所有 chunk 中搜索
+            for chunk_rel in chunk_urls:
+                encoded = quote(chunk_rel, safe='/:')
+                chunk_url = f"{base_url}{encoded}"
+                try:
+                    cr = await cli.get(chunk_url, timeout=15)
+                    if cr.status_code != 200:
+                        continue
+                    text = cr.text
+                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
+                    if m:
+                        _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
+                        return m.group(1)
                 except Exception:
                     continue
 
-            # 第二步：从 RSC payload 中查找包含 checkIn 的 chunk
-            try:
-                rsc = await cli.get(base_url, headers={"User-Agent": headers["User-Agent"], "Accept": "text/x-component"})
-                if rsc.status_code == 200:
-                    for m in re.finditer(r'static/chunks/([^"\'\\,]+\.js)', rsc.text):
-                        chunk_rel = "/_next/static/chunks/" + m.group(1)
-                        if chunk_rel in chunk_urls:
-                            continue
-                        chunk_urls.add(chunk_rel)
-                    for chunk_rel in chunk_urls:
-                        chunk_url = f"{base_url}{chunk_rel}"
-                        try:
-                            cr = await cli.get(chunk_url, timeout=15)
-                            if cr.status_code != 200:
-                                continue
-                            text = cr.text
-                            m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
-                            if m:
-                                _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
-                                return m.group(1)
-                        except Exception:
-                            continue
-            except Exception:
-                pass
-
-            # 第三步：兜底，返回已知的 hash
+            # 第三步：兜底
             _log_debug(ctx, "使用已知 fallback hash")
             return "40ca031f4e08ca31564fb6889587933a9bb5bdea39"
     except Exception:
