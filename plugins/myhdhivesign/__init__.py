@@ -138,71 +138,79 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
 
 
 async def _login_with_playwright(base_url: str, username: str, password: str) -> str | None:
-    """用 Playwright 浏览器模拟登录，返回 cookie 字符串"""
+    """用 Playwright + CloakBrowser 模拟登录，返回 cookie 字符串"""
     try:
+        # 优先使用 cloakbrowser（指纹伪装，绕过 Cloudflare）
+        try:
+            from cloakbrowser import CloakBrowser
+            has_cloak = True
+        except ImportError:
+            has_cloak = False
         from playwright.async_api import async_playwright
     except ImportError:
         return None
+
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-            )
+            if has_cloak:
+                # 使用 CloakBrowser 伪装指纹
+                cloak = CloakBrowser(p)
+                browser = await cloak.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+                )
+            else:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+                )
+
             ctx = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             )
             page = await ctx.new_page()
+
+            # 访问登录页
+            login_url = f"{base_url}/login"
+            await page.goto(login_url, timeout=60000, wait_until="domcontentloaded")
+
+            # 等待 Cloudflare 验证通过（最多60秒）
+            max_wait = 60
+            start = time.time()
+            while time.time() - start < max_wait:
+                content = await page.content()
+                if "Checking your browser" in content or "Just a moment" in content:
+                    elapsed = int(time.time() - start)
+                    await asyncio.sleep(3)
+                    continue
+                # 检查是否已登录或页面加载完成
+                try:
+                    if await page.locator('input[name="username"]').count() > 0:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(3)
+
+            # 填表单
             try:
-                # 访问首页，等待 Cloudflare 验证通过
-                await page.goto(f"{base_url}/", timeout=60000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(10000)
-
-                # 获取 CSRF token
-                cookies = await ctx.cookies()
-                csrf = ""
-                for c in cookies:
-                    if c["name"] == "hdh_sa_token":
-                        csrf = c["value"]
-                if not csrf:
-                    await browser.close()
-                    return None
-
-                # 用 fetch 调 server action 登录
-                js = f"""
-                (async () => {{
-                    const r = await fetch('/', {{
-                        method: 'POST',
-                        headers: {{
-                            'Content-Type': 'text/plain;charset=UTF-8',
-                            'next-action': '40b2c3190fb3396c5f003b3ca996db391fb6693f32',
-                            'Accept': 'text/x-component',
-                        }},
-                        body: JSON.stringify([{{username: '{username}', password: '{password}', remember: true}}])
-                    }});
-                    return await r.text();
-                }})()
-                """
-                await page.evaluate(js)
+                await page.fill('input[name="username"]', username, timeout=15000)
+                await page.fill('input[name="password"]', password, timeout=15000)
+                await page.click('button[type="submit"]', timeout=15000)
                 await page.wait_for_timeout(5000)
-
-                # 检查是否登录成功（有没有 token cookie）
-                cookies = await ctx.cookies()
-                token = ""
-                for c in cookies:
-                    if c["name"] == "token":
-                        token = c["value"]
-                await browser.close()
-                if token:
-                    return f"token={token}"
             except Exception:
-                await browser.close()
-                return None
+                pass
+
+            # 提取 cookie
+            cookies = await ctx.cookies()
+            cookie_parts = []
+            for c in cookies:
+                cookie_parts.append(f"{c['name']}={c['value']}")
+            cookie_str = "; ".join(cookie_parts)
+
+            await browser.close()
+            return cookie_str if "token" in cookie_str else None
     except Exception:
         return None
-    return None
-
-
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
     """用用户名密码登录，返回完整 cookie 字符串"""
     apis = ["/api/customer/user/login", "/api/customer/auth/login"]
