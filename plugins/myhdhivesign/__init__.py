@@ -457,13 +457,17 @@ async def setup(ctx):
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
-                cookie = await _login_with_playwright(base_url, username, password)
-                if cookie:
-                    acc["cookie"] = cookie
-                    _log_debug(ctx, f"{name}: 登录成功")
-                else:
-                    _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码或直接填Cookie")
+                try:
+                    import playwright
+                    _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
+                    cookie = await _login_with_playwright(base_url, username, password)
+                    if cookie:
+                        acc["cookie"] = cookie
+                        _log_debug(ctx, f"{name}: 登录成功")
+                    else:
+                        _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码")
+                except ImportError:
+                    _log_debug(ctx, f"{name}: 平台未安装Playwright，请手动填写Cookie")
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
