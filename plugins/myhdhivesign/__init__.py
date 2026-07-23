@@ -530,6 +530,12 @@ async def setup(ctx):
             accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
         except Exception:
             pass
+        # 合并 KV 中保存的 Cookie
+        for acc in accounts:
+            if not acc.get("cookie"):
+                saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
+                if saved:
+                    acc["cookie"] = saved
         return {"accounts": accounts}
 
     @ctx.on_api("/get_account_status", methods=["POST"])
