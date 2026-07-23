@@ -289,6 +289,19 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 "Authorization": f"Bearer {token}",
             }
             resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
+        # 签到成功后重新获取用户信息
+        if resp.status_code == 200:
+            try:
+                hr2 = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
+                t2 = hr2.text
+                m = re.search(r'\\"points\\"\s*:\s*(\d+)', t2)
+                if m:
+                    user_info["points"] = int(m.group(1))
+                m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', t2)
+                if m:
+                    user_info["signin_days"] = int(m.group(1))
+            except Exception:
+                pass
         text = resp.text
         # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
         redirected = False
