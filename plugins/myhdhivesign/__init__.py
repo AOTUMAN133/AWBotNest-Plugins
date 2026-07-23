@@ -333,13 +333,13 @@ async def setup(ctx):
         window_end = sign_hour + sign_window
         if now.hour < sign_hour or now.hour >= window_end:
             return
-        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+        action_hash = await _fetch_action_hash(base_url)
         if not action_hash:
-            action_hash = await _fetch_action_hash(base_url)
-            if action_hash:
-                ctx.kv.set(_KV_HASH, action_hash)
-            else:
-                return
+            action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+        if action_hash:
+            ctx.kv.set(_KV_HASH, action_hash)
+        else:
+            return
         total_minutes = sign_window * 60
         today_str = now.strftime("%Y-%m-%d")
         seed_base = abs(hash(today_str))
@@ -388,16 +388,14 @@ async def setup(ctx):
             return {"ok": False, "message": "未配置账号"}
         _log_debug(ctx, f"账号数: {len(accounts)}")
 
-        action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+        action_hash = await _fetch_action_hash(base_url)
         if not action_hash:
-            _log_debug(ctx, f"获取action hash: {base_url}")
-            action_hash = await _fetch_action_hash(base_url)
-            if action_hash:
-                ctx.kv.set(_KV_HASH, action_hash)
-                _log_debug(ctx, f"hash: {action_hash[:16]}...")
-            else:
-                _log_debug(ctx, "无法获取hash，请在配置中手动填写")
-                return {"ok": False, "message": "无法获取 action hash，请手动填写"}
+            action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+        if action_hash:
+            ctx.kv.set(_KV_HASH, action_hash)
+        else:
+            _log_debug(ctx, "无法获取hash，请在配置中手动填写")
+            return {"ok": False, "message": "无法获取 action hash，请手动填写"}
 
         logs = []
         for i, acc in enumerate(accounts):
