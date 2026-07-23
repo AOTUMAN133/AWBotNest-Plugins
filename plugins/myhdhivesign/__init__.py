@@ -246,7 +246,23 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             # 先请求首页获取 CSRF token（不传 hdh_sa_token，让服务器下发新的）
             get_cookies = {k: v for k, v in cookies.items() if k != "hdh_sa_token"}
             hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=get_cookies)
-            # 此时 cli.cookies 中已有服务器下发的 hdh_sa_token
+            # 从响应头中提取 hdh_sa_token
+            csrf = ""
+            for k, v in hr.headers.items():
+                if k.lower() == "set-cookie" and "hdh_sa_token" in v:
+                    m = re.search(r'hdh_sa_token=([^;]+)', v)
+                    if m:
+                        csrf = m.group(1)
+                        break
+            # 如果从 headers 没找到，从 cli.cookies 获取
+            if not csrf:
+                for c in cli.cookies:
+                    if c.name == "hdh_sa_token":
+                        csrf = c.value
+                        break
+            # 合并 CSRF 到 cookies
+            if csrf:
+                cookies["hdh_sa_token"] = csrf
 
             # 从 RSC 响应中解析用户信息（RSC 格式中 JSON 是转义的）
             text_raw = hr.text
@@ -272,7 +288,7 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 "next-action": action_hash,
                 "Authorization": f"Bearer {token}",
             }
-            resp = await cli.post(base_url, headers=headers, content=body)
+            resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
         text = resp.text
         # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
         redirected = False
