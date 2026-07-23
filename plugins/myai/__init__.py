@@ -911,6 +911,19 @@ async def setup(ctx):
 
     ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
 
+    # ── 记录用户自己发的消息，用于答题奖励 ──
+    _log_debug(ctx, "注册用户消息记录器")
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=4)
+    async def _user_msg_handler(client, message):
+        if not ctx.config.get("enable_reward_answer", False):
+            return
+        cids = [int(x.strip()) for x in str(ctx.config.get("auto_say_chat_ids", "") or "").replace("，", ",").split(",") if x.strip()]
+        if cids and message.chat.id not in cids:
+            return
+        pending = ctx.kv.get("auto_say_pending_rewards", [])
+        pending.append({"chat_id": message.chat.id, "msg_id": message.id, "time": time.time()})
+        ctx.kv.set("auto_say_pending_rewards", pending[-20:])
+
     # ── 答题奖励（自动发言触发后，回复机器人的数学题） ──
     _log_debug(ctx, "注册答题奖励处理器")
     @ctx.on_message(ctx.filters.group & ctx.filters.text, group=5)
