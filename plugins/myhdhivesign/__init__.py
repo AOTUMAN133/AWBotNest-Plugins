@@ -463,19 +463,25 @@ async def setup(ctx):
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                try:
-                    import playwright
-                    _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
-                    cookie = await _login_with_playwright(base_url, username, password)
-                    if cookie:
-                        acc["cookie"] = cookie
-                        # 保存到配置
-                        ctx.config.set("accounts", json.dumps(accounts))
-                        _log_debug(ctx, f"{name}: 登录成功，Cookie已保存")
-                    else:
-                        _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码")
-                except ImportError:
-                    _log_debug(ctx, f"{name}: 平台未安装Playwright，请手动填写Cookie")
+                # 先从 KV 取已保存的 Cookie
+                saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
+                if saved:
+                    cookie = saved
+                    acc["cookie"] = saved
+                    _log_debug(ctx, f"{name}: 使用已保存的Cookie")
+                else:
+                    try:
+                        import playwright
+                        _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
+                        cookie = await _login_with_playwright(base_url, username, password)
+                        if cookie:
+                            acc["cookie"] = cookie
+                            ctx.kv.set(f"cookie:{acc.get('name', '')}", cookie)
+                            _log_debug(ctx, f"{name}: 登录成功，Cookie已保存")
+                        else:
+                            _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码")
+                    except ImportError:
+                        _log_debug(ctx, f"{name}: 平台未安装Playwright，请手动填写Cookie")
             if not cookie:
                 _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
