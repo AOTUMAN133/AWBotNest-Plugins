@@ -83,6 +83,16 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
             for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
 
+            # 也从 RSC payload 中获取 chunk
+            try:
+                rsc = await cli.get(base_url, headers={"User-Agent": headers["User-Agent"], "Accept": "text/x-component"})
+                if rsc.status_code == 200:
+                    for m in re.finditer(r'static/chunks/([^"\'\\,]+\.js)', rsc.text):
+                        chunk_rel = "/_next/static/chunks/" + m.group(1)
+                        chunk_urls.add(chunk_rel)
+            except Exception:
+                pass
+
             for chunk_rel in sorted(chunk_urls):
                 # 优先检查 layout chunk（包含 checkIn 的可能性最大）
                 if "layout" not in chunk_rel:
@@ -335,8 +345,9 @@ async def setup(ctx):
         window_end = sign_hour + sign_window
         if now.hour < sign_hour or now.hour >= window_end:
             return
-        action_hash = await _fetch_action_hash(base_url)
+        action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
+            _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
             action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if action_hash:
             ctx.kv.set(_KV_HASH, action_hash)
@@ -391,8 +402,9 @@ async def setup(ctx):
             return {"ok": False, "message": "未配置账号"}
         _log_debug(ctx, f"账号数: {len(accounts)}")
 
-        action_hash = await _fetch_action_hash(base_url)
+        action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
+            _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
             action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
         if action_hash:
             ctx.kv.set(_KV_HASH, action_hash)
