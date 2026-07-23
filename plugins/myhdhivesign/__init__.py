@@ -469,7 +469,9 @@ async def setup(ctx):
                     cookie = await _login_with_playwright(base_url, username, password)
                     if cookie:
                         acc["cookie"] = cookie
-                        _log_debug(ctx, f"{name}: 登录成功")
+                        # 保存到配置
+                        ctx.config.set("accounts", json.dumps(accounts))
+                        _log_debug(ctx, f"{name}: 登录成功，Cookie已保存")
                     else:
                         _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码")
                 except ImportError:
