@@ -140,24 +140,26 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
 async def _login_with_playwright(base_url: str, username: str, password: str) -> str | None:
     """用 Playwright + CloakBrowser 模拟登录，返回 cookie 字符串"""
     try:
-        # 优先使用 cloakbrowser（指纹伪装，绕过 Cloudflare）
-        try:
-            from cloakbrowser import CloakBrowser
-            has_cloak = True
-        except ImportError:
-            has_cloak = False
         from playwright.async_api import async_playwright
     except ImportError:
         return None
 
+    # 检测是否有 cloakbrowser
+    try:
+        import cloakbrowser
+        has_cloak = True
+    except ImportError:
+        has_cloak = False
+
     try:
         async with async_playwright() as p:
             if has_cloak:
-                # 使用 CloakBrowser 伪装指纹
-                cloak = CloakBrowser(p)
-                browser = await cloak.launch(
+                # 使用 CloakBrowser 伪装指纹（和AWPulse一样）
+                browser = await cloakbrowser.launch_async(
                     headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                    locale="zh-CN",
+                    timezone="Asia/Shanghai",
                 )
             else:
                 browser = await p.chromium.launch(
@@ -166,13 +168,17 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                 )
 
             ctx = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                viewport={"width": 1920, "height": 1080},
+                locale="zh-CN",
+                timezone_id="Asia/Shanghai",
             )
             page = await ctx.new_page()
+            page.set_default_timeout(60000)
 
             # 访问登录页
-            login_url = f"{base_url}/login"
-            await page.goto(login_url, timeout=60000, wait_until="domcontentloaded")
+            await page.goto(f"{base_url}/login", wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(3)
 
             # 等待 Cloudflare 验证通过（最多60秒）
             max_wait = 60
@@ -183,7 +189,6 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                     elapsed = int(time.time() - start)
                     await asyncio.sleep(3)
                     continue
-                # 检查是否已登录或页面加载完成
                 try:
                     if await page.locator('input[name="username"]').count() > 0:
                         break
@@ -193,10 +198,12 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
 
             # 填表单
             try:
-                await page.fill('input[name="username"]', username, timeout=15000)
-                await page.fill('input[name="password"]', password, timeout=15000)
-                await page.click('button[type="submit"]', timeout=15000)
-                await page.wait_for_timeout(5000)
+                await page.fill('input[name="username"]', username, timeout=30000)
+                await asyncio.sleep(1)
+                await page.fill('input[type="password"]', password, timeout=30000)
+                await asyncio.sleep(1)
+                await page.click('button[type="submit"]', timeout=30000)
+                await asyncio.sleep(5)
             except Exception:
                 pass
 
@@ -205,10 +212,9 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
             cookie_parts = []
             for c in cookies:
                 cookie_parts.append(f"{c['name']}={c['value']}")
-            cookie_str = "; ".join(cookie_parts)
 
             await browser.close()
-            return cookie_str if "token" in cookie_str else None
+            return "; ".join(cookie_parts) if "token" in "; ".join(cookie_parts) else None
     except Exception:
         return None
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
