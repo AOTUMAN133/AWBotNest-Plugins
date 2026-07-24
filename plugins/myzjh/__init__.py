@@ -215,10 +215,16 @@ async def setup(ctx):
                     # 显示手牌
                     detail = p.get("detail", "")
                     if detail and "→" in str(detail):
-                        cards = str(detail).split("→")[0].strip()
-                        cm = re.search(r"((?:\S+?[♠♥♦♣]\s*)+)$", cards)
+                        parts = str(detail).split("→")
+                        cards_part = parts[0].strip()
+                        hand_type = parts[1].strip() if len(parts) > 1 else ""
+                        cm = re.search(r"((?:\S+?[♠♥♦♣]\s*)+)$", cards_part)
                         if cm:
-                            lines[-1] += f"  [{cm.group(1).strip()}]"
+                            line = f"  [{cm.group(1).strip()}"
+                            if hand_type:
+                                line += f" {hand_type}"
+                            line += "]"
+                            lines[-1] += line
                 lines.append("")
             await message.edit("\n".join(lines))
             return
