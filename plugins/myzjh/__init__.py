@@ -250,26 +250,27 @@ async def setup(ctx):
         total_bet = sum(r.get("total_bet", 0) for r in records)
         total_rake = sum(r.get("rake", 0) for r in records)
         
-        lines = [f"📊 **炸金花统计**　共 {len(records)} 局"]
-        lines.append(f"💰 总下注 {total_bet:,}  | 💸 抽水 {total_rake:,}\n")
-        
+        lines = [f"📊 炸金花统计　共{len(records)}局　💰{total_bet:,}　💸{total_rake:,}\n"]
+
         for name, s in sorted_players:
             win_rate = s["win"] / s["total"] * 100 if s["total"] > 0 else 0
-            medal = "👑" if name == "滴滴答答💋" else "▫️"
-            win_str = f"🏆{s['win']}" if s['win'] > 0 else ""
-            lose_str = f"❌{s['lose']}" if s['lose'] > 0 else ""
-            fold_str = f"🏳️{s['fold']}" if s['fold'] > 0 else ""
-            parts = [x for x in [win_str, lose_str, fold_str] if x]
-            record_str = " ".join(parts) if parts else "—"
-            lines.append(f"{medal} **{name}**　{s['total']}局　🎯{win_rate:.0f}%")
-            lines.append(f"   {record_str}")
-        
+            medal = "👑" if name == "滴滴答答💋" else "·"
+            line = f"{medal} {name}　{s['total']}局"
+            if s['win'] > 0:
+                line += f" 🏆{s['win']}"
+            if s['lose'] > 0:
+                line += f" ❌{s['lose']}"
+            if s['fold'] > 0:
+                line += f" 🏳️{s['fold']}"
+            line += f"  {win_rate:.0f}%"
+            lines.append(line)
+
         me = "滴滴答答💋"
         if me in player_stats:
             s = player_stats[me]
-            lines.append(f"\n👑 **我**：{s['total']}局 {s['win']}胜 {s['lose']}负 {s['fold']}弃　胜率 {s['win']/s['total']*100:.0f}%")
-        
-        lines.append(f"\n📝 /jhd 查看详情")
+            lines.append(f"\n👑 我：{s['total']}局 {s['win']}胜 {s['lose']}负 {s['fold']}弃　胜率{s['win']/s['total']*100:.0f}%")
+
+        lines.append(f"\n/jhd 查看详情")
         
         await message.edit("\n".join(lines))
     
