@@ -913,13 +913,14 @@ async def setup(ctx):
 
     # ── 记录用户自己发的消息，用于答题奖励 ──
     _log_debug(ctx, "注册用户消息记录器")
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=4)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=3)
     async def _user_msg_handler(client, message):
         if not ctx.config.get("enable_reward_answer", False):
             return
         cids = [int(x.strip()) for x in str(ctx.config.get("auto_say_chat_ids", "") or "").replace("，", ",").split(",") if x.strip()]
         if cids and message.chat.id not in cids:
             return
+        _log_debug(ctx, f"记录消息: chat={message.chat.id} msg_id={message.id}")
         pending = ctx.kv.get("auto_say_pending_rewards", [])
         pending.append({"chat_id": message.chat.id, "msg_id": message.id, "time": time.time()})
         ctx.kv.set("auto_say_pending_rewards", pending[-20:])
