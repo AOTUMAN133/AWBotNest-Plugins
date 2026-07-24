@@ -472,12 +472,13 @@ async def setup(ctx):
                 days = u.get("signin_days", 0)
                 if days > 0:
                     ctx.kv.set(last_days_key, days)
+                    ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
             _log_debug(ctx, f"{name}: {result['message']}")
 
     sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
     sign_window = int(ctx.config.get("sign_window", 2) or 2)
     # 每分钟运行一次，在签到窗口内自动处理
-    ctx.schedule(_sign_tick, "interval", minutes=1, id="hdhive_sign")
+    ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到定时检查")
 
     async def _do_sign_all():
         _log_debug(ctx, "开始签到")
@@ -548,6 +549,7 @@ async def setup(ctx):
                     msg += f" | {nick} 积分={pts} 已签{days}天"
                 if days > 0:
                     ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
+                    ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
             logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
             _log_debug(ctx, f"{name}: {msg}")
             if result.get("user"):
@@ -627,7 +629,15 @@ async def setup(ctx):
                         days = int(m.group(1))
                     # 获取上次签到后记录的 days 值，判断是否已签到
                     last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
+                    # 如果 last_days > 0 且当前 days > last_days，说明签到成功了
+                    # 如果 last_days == 0，还没签过
                     signed = days > last_days if last_days > 0 else False
+                    # 如果当前 days == last_days（已签到且未过夜），也算已签到
+                    if last_days > 0 and days == last_days:
+                        # 检查是否今天已经签过（通过记录日期）
+                        signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
+                        if signed_today == datetime.now(TZ).strftime("%Y-%m-%d"):
+                            signed = True
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
