@@ -51,6 +51,14 @@ def _now():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _clean_name(name: str) -> str:
+    """清理玩家名，去掉卡牌符号"""
+    import re
+    # 去掉末尾的卡牌：如 "wg358963 10♦" → "wg358963"
+    cleaned = re.sub(r"\s+\S*[♠♥♦♣]\S*$", "", name)
+    return cleaned.strip()
+
+
 def parse_settlement(text: str) -> dict | None:
     """解析炸金花结算消息，返回结构化数据"""
     # 局号
@@ -90,7 +98,7 @@ def parse_settlement(text: str) -> dict | None:
         # 🏆 赢家带手牌: "🏆 元宝 A♠ 6♣ 4♦ → 散牌"
         m2 = re.search(r"^🏆\s+(.+?)\s+(?:\S+?[♠♥♦♣]\s*)+→", line)
         if m2:
-            players.append({"name": _normalize(m2.group(1)), "result": "win", "detail": line.strip()})
+            players.append({"name": _clean_name(_normalize(m2.group(1))), "result": "win", "detail": line.strip()})
             continue
         # ❌ 输家带手牌
         m2 = re.search(r"^❌\s+(.+?)\s+(?:\S+?[♠♥♦♣]\s*)+→", line)
@@ -105,7 +113,7 @@ def parse_settlement(text: str) -> dict | None:
         # 🏆 获胜（其余玩家弃牌）
         m2 = re.search(r"^🏆\s+(.+?)\s+获胜", line)
         if m2:
-            players.append({"name": _normalize(m2.group(1)), "result": "win", "detail": line.strip()})
+            players.append({"name": _clean_name(_normalize(m2.group(1))), "result": "win", "detail": line.strip()})
             continue
     
     return {
@@ -165,6 +173,21 @@ async def setup(ctx):
         if not records:
             await message.edit("📭 还没有炸金花记录，等待下一局结算吧。")
             return
+        
+        # 清理旧数据中可能带卡牌的名字
+        cleaned = False
+        for r in records:
+            for p in r.get("players", []):
+                clean = _clean_name(p["name"])
+                if clean != p["name"]:
+                    p["name"] = clean
+                    cleaned = True
+            w_clean = _clean_name(r.get("winner", ""))
+            if w_clean != r.get("winner", ""):
+                r["winner"] = w_clean
+                cleaned = True
+        if cleaned:
+            ctx.kv.set(_KV_DATA, records)
         
         if text in ("/jhd", ".jhd"):
             # 显示最近5局详情（太多会被Telegram截断）
