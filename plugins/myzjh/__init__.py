@@ -212,14 +212,13 @@ async def setup(ctx):
                     icon = {"win": "🏆", "lose": "❌", "fold": "🏳️"}.get(p["result"], "❓")
                     mark = " ⬅️" if p["name"] == "滴滴答答💋" else ""
                     lines.append(f"  {icon} {p['name']}{mark}")
-                # 显示手牌（如果有）
-                detail = p.get("detail", "")
-                if "→" in detail:
-                    cards = detail.split("→")[0].strip()
-                    # 提取卡牌部分
-                    card_match = re.search(r"((?:\S+?[♠♥♦♣]\s*)+)$", cards)
-                    if card_match:
-                        lines[-1] += f"  [{card_match.group(1).strip()}]"
+                    # 显示手牌
+                    detail = p.get("detail", "")
+                    if detail and "→" in str(detail):
+                        cards = str(detail).split("→")[0].strip()
+                        cm = re.search(r"((?:\S+?[♠♥♦♣]\s*)+)$", cards)
+                        if cm:
+                            lines[-1] += f"  [{cm.group(1).strip()}]"
                 lines.append("")
             await message.edit("\n".join(lines))
             return
