@@ -645,6 +645,23 @@ async def setup(ctx):
     async def _api_get_debug_logs(req):
         return {"logs": ctx.kv.get(_KV_DEBUG, [])}
 
+    @ctx.on_api("/save_time_config", methods=["POST"])
+    async def _api_save_time_config(req):
+        try:
+            body = req.json
+            cfg = ctx.config
+            if "sign_hour" in body:
+                cfg["sign_hour"] = body["sign_hour"]
+            if "sign_window" in body:
+                cfg["sign_window"] = body["sign_window"]
+            if "sign_minute" in body:
+                cfg["sign_minute"] = body["sign_minute"]
+            ctx.saveConfig(cfg)
+            _log_debug(ctx, f"时间配置已保存: {cfg.get('sign_hour')}h {cfg.get('sign_window')}w {cfg.get('sign_minute')}m")
+            return {"ok": True, "message": "已保存"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
 
 async def teardown(ctx):
     pass
