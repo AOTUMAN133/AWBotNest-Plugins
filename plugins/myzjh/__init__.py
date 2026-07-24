@@ -244,37 +244,32 @@ async def setup(ctx):
                 elif p["result"] == "fold":
                     player_stats[name]["fold"] += 1
         
-        # 排序：按参与次数降序
+        # 排序
         sorted_players = sorted(player_stats.items(), key=lambda x: x[1]["total"], reverse=True)
         
-        # 计算长条图比例
-        max_total = max(s["total"] for s in player_stats.values()) if player_stats else 1
+        total_bet = sum(r.get("total_bet", 0) for r in records)
+        total_rake = sum(r.get("rake", 0) for r in records)
         
-        lines = [f"📊 **炸金花统计**　共 {len(records)} 局 | 总抽水 {sum(r.get('rake',0) for r in records):,} 银元\n"]
+        lines = [f"📊 **炸金花统计**　共 {len(records)} 局"]
+        lines.append(f"💰 总下注 {total_bet:,}  | 💸 抽水 {total_rake:,}\n")
         
         for name, s in sorted_players:
             win_rate = s["win"] / s["total"] * 100 if s["total"] > 0 else 0
-            bar_len = int(s["total"] / max_total * 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
-            medal = "👑" if name == "滴滴答答💋" else "🎲"
-            lines.append(f"{medal} **{name}**")
-            lines.append(f"   {bar}  {s['total']}局")
-            win_str = "🏆" * min(s["win"], 5) + ("…" if s["win"] > 5 else "")
-            lines.append(f"   ✅胜 {s['win']}  ❌负 {s['lose']}  🏳️弃 {s['fold']}  🎯胜率 {win_rate:.1f}%  {win_str}")
-            lines.append("")
+            medal = "👑" if name == "滴滴答答💋" else "▫️"
+            win_str = f"🏆{s['win']}" if s['win'] > 0 else ""
+            lose_str = f"❌{s['lose']}" if s['lose'] > 0 else ""
+            fold_str = f"🏳️{s['fold']}" if s['fold'] > 0 else ""
+            parts = [x for x in [win_str, lose_str, fold_str] if x]
+            record_str = " ".join(parts) if parts else "—"
+            lines.append(f"{medal} **{name}**　{s['total']}局　🎯{win_rate:.0f}%")
+            lines.append(f"   {record_str}")
         
-        # 我自己的数据
         me = "滴滴答答💋"
         if me in player_stats:
             s = player_stats[me]
-            lines.append(f"👑 **我的战绩**：{s['total']}局 {s['win']}胜 {s['lose']}负 {s['fold']}弃")
-            lines.append(f"   胜率 {s['win']/s['total']*100:.1f}%")
+            lines.append(f"\n👑 **我**：{s['total']}局 {s['win']}胜 {s['lose']}负 {s['fold']}弃　胜率 {s['win']/s['total']*100:.0f}%")
         
-        # 总数据
-        total_bet = sum(r.get("total_bet", 0) for r in records)
-        total_rake = sum(r.get("rake", 0) for r in records)
-        lines.append(f"\n💰 总下注 {total_bet:,} 银元 | 💸 总抽水 {total_rake:,} 银元")
-        lines.append(f"📝 发送 /jhd 查看最近详情")
+        lines.append(f"\n📝 /jhd 查看详情")
         
         await message.edit("\n".join(lines))
     
