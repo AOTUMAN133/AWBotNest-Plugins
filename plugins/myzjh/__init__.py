@@ -32,7 +32,7 @@ __plugin__ = {
         },
         "info": {
             "type": "info", "label": "使用说明", "section": "命令",
-            "text": "插件启用后自动监控群里的炸金花结算消息。\n发送 /zj 查看统计概览\n发送 /zjd 查看最近20局详情"
+            "text": "插件启用后自动监控群里的炸金花结算消息。\n发送 /zjh 查看统计概览\n发送 /zjhd 查看最近20局详情"
         },
     },
 }
@@ -152,7 +152,7 @@ async def setup(ctx):
     async def cmd_stats(client, message):
         """命令：/zj 查看统计"""
         text = (message.text or "").strip()
-        if text not in ("/zj", ".zj", "/zjd", ".zjd"):
+        if text not in ("/zjh", ".zjh", "/zjhd", ".zjhd"):
             return
         
         records = ctx.kv.get(_KV_DATA, [])
@@ -160,7 +160,7 @@ async def setup(ctx):
             await message.edit("📭 还没有炸金花记录，等待下一局结算吧。")
             return
         
-        if text in ("/zjd", ".zjd"):
+        if text in ("/zjhd", ".zjhd"):
             # 显示最近20局详情
             recent = records[-20:]
             lines = [f"📊 **炸金花最近{len(recent)}局详情**"]
