@@ -54,9 +54,14 @@ def _now():
 def _clean_name(name: str) -> str:
     """清理玩家名，去掉卡牌符号"""
     import re
-    # 去掉末尾的卡牌：如 "wg358963 10♦" → "wg358963"
-    cleaned = re.sub(r"\s+\S*[♠♥♦♣]\S*$", "", name)
-    return cleaned.strip()
+    # 去掉末尾所有卡牌：如 "wg358963 10♦" → "wg358963"
+    # 也处理 "抽奖不再慢一拍 Q♣ 10♣" → "抽奖不再慢一拍"
+    while True:
+        cleaned = re.sub(r"\s+\S*[♠♥♦♣]\S*$", "", name)
+        if cleaned == name:
+            break
+        name = cleaned
+    return name.strip()
 
 
 def parse_settlement(text: str) -> dict | None:
