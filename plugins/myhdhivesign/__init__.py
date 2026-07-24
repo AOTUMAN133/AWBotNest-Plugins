@@ -388,6 +388,31 @@ async def setup(ctx):
         window_end = sign_hour + sign_window
         if now.hour < sign_hour or now.hour >= window_end:
             return
+        # 先检查有没有账号在本分钟需要签到，没有就不浪费时间
+        total_minutes = sign_window * 60
+        today_str = now.strftime("%Y-%m-%d")
+        seed_base = abs(hash(today_str))
+        current_offset = (now.hour - sign_hour) * 60 + now.minute
+        need_sign = False
+        for i, acc in enumerate(accounts):
+            seed = seed_base + i
+            rng = random.Random(seed)
+            offset = rng.randint(0, total_minutes - 1)
+            if offset != current_offset:
+                continue
+            cookie = acc.get("cookie", "")
+            if not cookie:
+                continue
+            name = acc.get("name", f"账号{i+1}")
+            last_days_key = f"last_signin_days:{cookie[:20]}"
+            last_days = ctx.kv.get(last_days_key, 0)
+            if last_days > 0:
+                continue
+            need_sign = True
+            break
+        if not need_sign:
+            return
+        # 有账号需要签到，获取 hash
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
             _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
@@ -397,10 +422,6 @@ async def setup(ctx):
             _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         else:
             return
-        total_minutes = sign_window * 60
-        today_str = now.strftime("%Y-%m-%d")
-        seed_base = abs(hash(today_str))
-        current_offset = (now.hour - sign_hour) * 60 + now.minute
         for i, acc in enumerate(accounts):
             seed = seed_base + i
             rng = random.Random(seed)
