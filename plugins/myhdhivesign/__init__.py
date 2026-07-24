@@ -467,13 +467,19 @@ async def setup(ctx):
                 continue
             _log_debug(ctx, f"定时签到: {name}({mode})")
             result = await _do_sign(cookie, base_url, action_hash, gamble)
+            status = "✅" if result["success"] else "❌"
+            msg = result["message"]
             if result.get("user"):
                 u = result["user"]
                 days = u.get("signin_days", 0)
                 if days > 0:
                     ctx.kv.set(last_days_key, days)
                     ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
-            _log_debug(ctx, f"{name}: {result['message']}")
+            # 记录到签到记录
+            logs = ctx.kv.get(_KV_LOGS, [])
+            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
+            ctx.kv.set(_KV_LOGS, logs[-50:])
+            _log_debug(ctx, f"{name}: {msg}")
 
     sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
     sign_window = int(ctx.config.get("sign_window", 2) or 2)
