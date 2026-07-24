@@ -397,9 +397,9 @@ async def setup(ctx):
             accounts = []
         if not accounts:
             return
-        sign_hour = int(cfg.get("sign_hour", 9) or 9)
-        sign_window = float(cfg.get("sign_window", 2) or 2)
-        sign_minute = int(cfg.get("sign_minute", 0) or 0)
+        sign_hour = int(ctx.kv.get("custom_sign_hour", cfg.get("sign_hour", 9) or 9))
+        sign_window = float(ctx.kv.get("custom_sign_window", cfg.get("sign_window", 2) or 2))
+        sign_minute = int(ctx.kv.get("custom_sign_minute", cfg.get("sign_minute", 0) or 0))
         now = datetime.now(TZ)
         _log_debug(ctx, f"定时检查: hour={now.hour} min={now.minute} cfg_hour={sign_hour} cfg_window={sign_window} cfg_min={sign_minute}")
         # 窗口为0时，固定到指定分钟签到
@@ -645,19 +645,26 @@ async def setup(ctx):
     async def _api_get_debug_logs(req):
         return {"logs": ctx.kv.get(_KV_DEBUG, [])}
 
+    @ctx.on_api("/get_kv", methods=["GET"])
+    async def _api_get_kv(req):
+        return {
+            "hour": ctx.kv.get("custom_sign_hour"),
+            "window": ctx.kv.get("custom_sign_window"),
+            "minute": ctx.kv.get("custom_sign_minute"),
+        }
+
     @ctx.on_api("/save_time_config", methods=["POST"])
     async def _api_save_time_config(req):
         try:
             body = req.json
-            cfg = ctx.config
+            # 保存到 KV（插件配置不可直接修改，用 KV 存）
             if "sign_hour" in body:
-                cfg["sign_hour"] = body["sign_hour"]
+                ctx.kv.set("custom_sign_hour", body["sign_hour"])
             if "sign_window" in body:
-                cfg["sign_window"] = body["sign_window"]
+                ctx.kv.set("custom_sign_window", body["sign_window"])
             if "sign_minute" in body:
-                cfg["sign_minute"] = body["sign_minute"]
-            ctx.saveConfig(cfg)
-            _log_debug(ctx, f"时间配置已保存: {cfg.get('sign_hour')}h {cfg.get('sign_window')}w {cfg.get('sign_minute')}m")
+                ctx.kv.set("custom_sign_minute", body["sign_minute"])
+            _log_debug(ctx, f"时间配置已保存: {body.get('sign_hour')}h {body.get('sign_window')}w {body.get('sign_minute')}m")
             return {"ok": True, "message": "已保存"}
         except Exception as e:
             return {"ok": False, "message": str(e)}
