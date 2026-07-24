@@ -167,13 +167,19 @@ async def setup(ctx):
             return
         
         if text in ("/jhd", ".jhd"):
-            # 显示最近10局详情（太多会超Telegram长度限制）
-            recent = records[-10:]
-            lines = [f"📊 **炸金花最近{len(recent)}局详情**\n"]
+            # 显示最近5局详情（太多会被Telegram截断）
+            recent = records[-5:]
+            lines = [f"📊 **炸金花最近{len(recent)}局**\n"]
             for r in reversed(recent):
                 win_icon = "🏆" if r.get("winner") else "❌"
-                lines.append(f"{win_icon} **#{r['game_id']}** {r['time'][5:16]}")
-                lines.append(f"  下注 {r['total_bet']:,} | 抽水 {r['rake']:,} | 赢家 {r['winner']} 得 {r['winner_return']:,}")
+                gid = r['game_id']
+                tm = r['time'][5:16]
+                bet = f"{r['total_bet']:,}"
+                rake = f"{r['rake']:,}"
+                w = r['winner']
+                ret = f"{r['winner_return']:,}"
+                lines.append(f"{win_icon} **#{gid}** {tm}  下注{bet} 抽水{rake}")
+                lines.append(f"  赢家 {w} 得 {ret}")
                 for p in r.get("players", []):
                     icon = {"win": "🏆", "lose": "❌", "fold": "🏳️"}.get(p["result"], "❓")
                     mark = " ⬅️" if p["name"] == "滴滴答答💋" else ""
