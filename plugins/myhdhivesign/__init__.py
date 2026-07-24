@@ -482,9 +482,23 @@ async def setup(ctx):
             _log_debug(ctx, f"{name}: {msg}")
 
     sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
-    sign_window = int(ctx.config.get("sign_window", 2) or 2)
-    # 每分钟运行一次，在签到窗口内自动处理
-    ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到定时检查")
+    sign_window = float(ctx.config.get("sign_window", 2) or 2)
+    sign_minute = int(ctx.config.get("sign_minute", 0) or 0)
+    # 从 KV 读取自定义时间配置
+    kv_hour = ctx.kv.get("custom_sign_hour")
+    kv_window = ctx.kv.get("custom_sign_window")
+    kv_minute = ctx.kv.get("custom_sign_minute")
+    schedule_hour = int(kv_hour) if kv_hour is not None else sign_hour
+    schedule_window = float(kv_window) if kv_window is not None else sign_window
+    schedule_minute = int(kv_minute) if kv_minute is not None else sign_minute
+    
+    # 根据窗口大小决定调度方式
+    if schedule_window <= 0:
+        # 固定分钟：用 cron 精确调度
+        ctx.schedule(_sign_tick, "cron", hour=str(schedule_hour), minute=str(schedule_minute), id=f"影巢签到-每天{schedule_hour:02d}:{schedule_minute:02d}")
+    else:
+        # 有窗口：每分钟检查
+        ctx.schedule(_sign_tick, "interval", minutes=1, id=f"影巢签到-{schedule_hour}时起{schedule_window}时窗口")
 
     async def _do_sign_all():
         _log_debug(ctx, "开始签到")
@@ -673,7 +687,6 @@ async def setup(ctx):
     async def _api_save_time_config(req):
         try:
             body = req.json
-            # 保存到 KV（插件配置不可直接修改，用 KV 存）
             if "sign_hour" in body:
                 ctx.kv.set("custom_sign_hour", body["sign_hour"])
             if "sign_window" in body:
@@ -681,6 +694,20 @@ async def setup(ctx):
             if "sign_minute" in body:
                 ctx.kv.set("custom_sign_minute", body["sign_minute"])
             _log_debug(ctx, f"时间配置已保存: {body.get('sign_hour')}h {body.get('sign_window')}w {body.get('sign_minute')}m")
+            # 重新调度定时任务
+            h = int(body.get("sign_hour", 9))
+            w = float(body.get("sign_window", 2))
+            m = int(body.get("sign_minute", 0))
+            try:
+                ctx.unschedule("影巢签到-定时检查")
+            except Exception:
+                pass
+            if w <= 0:
+                ctx.schedule(_sign_tick, "cron", hour=str(h), minute=str(m), id="影巢签到-定时检查")
+                _log_debug(ctx, f"定时任务已更新: 每天 {h:02d}:{m:02d}")
+            else:
+                ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到-定时检查")
+                _log_debug(ctx, f"定时任务已更新: 每1分钟检查（{h}时起{w}时窗口）")
             return {"ok": True, "message": "已保存"}
         except Exception as e:
             return {"ok": False, "message": str(e)}
