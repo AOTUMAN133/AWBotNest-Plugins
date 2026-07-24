@@ -41,6 +41,12 @@ _KV_DATA = "zjh_records"
 _KV_STATS = "zjh_stats_cache"
 
 
+def _normalize(name: str) -> str:
+    """统一玩家名格式，去掉多余空格"""
+    import unicodedata
+    return unicodedata.normalize("NFKC", name.strip())
+
+
 def _now():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -63,7 +69,7 @@ def parse_settlement(text: str) -> dict | None:
     winner = ""
     m = re.search(r"赢家[：:]\s*(.+)", text)
     if m:
-        winner = m.group(1).strip()
+        winner = _normalize(m.group(1))
     
     # 赢家返还
     winner_return = 0
@@ -84,22 +90,22 @@ def parse_settlement(text: str) -> dict | None:
         # 🏆 赢家带手牌: "🏆 元宝 A♠ 6♣ 4♦ → 散牌"
         m2 = re.search(r"^🏆\s+(.+?)\s+(?:\S[♠♥♦♣]\s*)+→", line)
         if m2:
-            players.append({"name": m2.group(1).strip(), "result": "win", "detail": line.strip()})
+            players.append({"name": _normalize(m2.group(1)), "result": "win", "detail": line.strip()})
             continue
         # ❌ 输家带手牌
         m2 = re.search(r"^❌\s+(.+?)\s+(?:\S[♠♥♦♣]\s*)+→", line)
         if m2:
-            players.append({"name": m2.group(1).strip(), "result": "lose", "detail": line.strip()})
+            players.append({"name": _normalize(m2.group(1)), "result": "lose", "detail": line.strip()})
             continue
         # 🏳️ 弃牌
         m2 = re.search(r"^🏳️\s+(.+?)\s+已弃牌", line)
         if m2:
-            players.append({"name": m2.group(1).strip(), "result": "fold", "detail": line.strip()})
+            players.append({"name": _normalize(m2.group(1)), "result": "fold", "detail": line.strip()})
             continue
         # 🏆 获胜（其余玩家弃牌）
         m2 = re.search(r"^🏆\s+(.+?)\s+获胜", line)
         if m2:
-            players.append({"name": m2.group(1).strip(), "result": "win", "detail": line.strip()})
+            players.append({"name": _normalize(m2.group(1)), "result": "win", "detail": line.strip()})
             continue
     
     return {
