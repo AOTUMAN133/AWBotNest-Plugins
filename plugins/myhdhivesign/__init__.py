@@ -385,16 +385,26 @@ async def setup(ctx):
         if not accounts:
             return
         sign_hour = int(cfg.get("sign_hour", 9) or 9)
-        sign_window = int(cfg.get("sign_window", 2) or 2)
+        sign_window = float(cfg.get("sign_window", 2) or 2)
+        sign_minute = int(cfg.get("sign_minute", 0) or 0)
         now = datetime.now(TZ)
-        window_end = sign_hour + sign_window
-        if now.hour < sign_hour or now.hour >= window_end:
-            return
+        # 窗口为0时，固定到指定分钟签到
+        if sign_window <= 0:
+            if now.hour != sign_hour or now.minute != sign_minute:
+                return
+            total_minutes = 1
+            current_offset = 0
+            need_check_minute = False
+        else:
+            window_end = sign_hour + sign_window
+            if now.hour < sign_hour or now.hour >= window_end:
+                return
+            total_minutes = int(sign_window * 60)
+            current_offset = (now.hour - sign_hour) * 60 + now.minute
+            need_check_minute = True
         # 先检查有没有账号在本分钟需要签到，没有就不浪费时间
-        total_minutes = sign_window * 60
         today_str = now.strftime("%Y-%m-%d")
         seed_base = int(hashlib.md5(today_str.encode()).hexdigest()[:12], 16)
-        current_offset = (now.hour - sign_hour) * 60 + now.minute
         need_sign = False
         for i, acc in enumerate(accounts):
             seed = seed_base + i
