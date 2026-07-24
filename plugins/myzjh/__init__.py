@@ -88,12 +88,12 @@ def parse_settlement(text: str) -> dict | None:
     for line in text.split("\n"):
         line = line.strip()
         # 🏆 赢家带手牌: "🏆 元宝 A♠ 6♣ 4♦ → 散牌"
-        m2 = re.search(r"^🏆\s+(.+?)\s+(?:\S[♠♥♦♣]\s*)+→", line)
+        m2 = re.search(r"^🏆\s+(.+?)\s+(?:\S+?[♠♥♦♣]\s*)+→", line)
         if m2:
             players.append({"name": _normalize(m2.group(1)), "result": "win", "detail": line.strip()})
             continue
         # ❌ 输家带手牌
-        m2 = re.search(r"^❌\s+(.+?)\s+(?:\S[♠♥♦♣]\s*)+→", line)
+        m2 = re.search(r"^❌\s+(.+?)\s+(?:\S+?[♠♥♦♣]\s*)+→", line)
         if m2:
             players.append({"name": _normalize(m2.group(1)), "result": "lose", "detail": line.strip()})
             continue
