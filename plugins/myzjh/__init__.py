@@ -161,17 +161,18 @@ async def setup(ctx):
             return
         
         if text in ("/jhd", ".jhd"):
-            # 显示最近20局详情
-            recent = records[-20:]
-            lines = [f"📊 **炸金花最近{len(recent)}局详情**"]
+            # 显示最近10局详情（太多会超Telegram长度限制）
+            recent = records[-10:]
+            lines = [f"📊 **炸金花最近{len(recent)}局详情**\n"]
             for r in reversed(recent):
-                status = "✅" if r.get("winner") else "❌"
-                lines.append(f"\n{status} **#{r['game_id']}** {r['time'][5:16]}")
-                lines.append(f"  总下注: {r['total_bet']:,} | 抽水: {r['rake']:,}")
-                lines.append(f"  赢家: {r['winner']} | 返还: {r['winner_return']:,}")
+                win_icon = "🏆" if r.get("winner") else "❌"
+                lines.append(f"{win_icon} **#{r['game_id']}** {r['time'][5:16]}")
+                lines.append(f"  下注 {r['total_bet']:,} | 抽水 {r['rake']:,} | 赢家 {r['winner']} 得 {r['winner_return']:,}")
                 for p in r.get("players", []):
                     icon = {"win": "🏆", "lose": "❌", "fold": "🏳️"}.get(p["result"], "❓")
-                    lines.append(f"  {icon} {p['name']}")
+                    mark = " ⬅️" if p["name"] == "滴滴答答💋" else ""
+                    lines.append(f"  {icon} {p['name']}{mark}")
+                lines.append("")
             await message.edit("\n".join(lines))
             return
         
