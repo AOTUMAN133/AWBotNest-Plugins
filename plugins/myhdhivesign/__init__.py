@@ -59,10 +59,23 @@ _KV_HASH = "hdhive_action_hash"
 _KV_DEBUG = "hdhive_debug_logs"
 
 
+_LOG_FILE = "/tmp/hdhive_sign.log"
+
+
 def _log_debug(ctx, msg: str):
     logs = ctx.kv.get(_KV_DEBUG, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
+    # 同时写入文件，方便调试
+    _log_file(msg)
+
+
+def _log_file(msg: str):
+    try:
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now(TZ).strftime('%H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
 
 
 def _now() -> str:
