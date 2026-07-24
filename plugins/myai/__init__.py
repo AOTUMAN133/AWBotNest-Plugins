@@ -34,7 +34,7 @@ def _log_debug(ctx, msg: str):
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
     "scope": "user",
