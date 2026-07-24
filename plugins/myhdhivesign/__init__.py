@@ -388,6 +388,7 @@ async def setup(ctx):
         sign_window = float(cfg.get("sign_window", 2) or 2)
         sign_minute = int(cfg.get("sign_minute", 0) or 0)
         now = datetime.now(TZ)
+        _log_debug(ctx, f"定时检查: hour={now.hour} min={now.minute} cfg_hour={sign_hour} cfg_window={sign_window} cfg_min={sign_minute}")
         # 窗口为0时，固定到指定分钟签到
         if sign_window <= 0:
             if now.hour != sign_hour or now.minute != sign_minute:
