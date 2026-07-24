@@ -5,6 +5,8 @@ import asyncio
 import json
 import re
 import time
+import random
+import hashlib
 import httpx
 from datetime import datetime, timezone, timedelta
 
@@ -391,7 +393,7 @@ async def setup(ctx):
         # 先检查有没有账号在本分钟需要签到，没有就不浪费时间
         total_minutes = sign_window * 60
         today_str = now.strftime("%Y-%m-%d")
-        seed_base = abs(hash(today_str))
+        seed_base = int(hashlib.md5(today_str.encode()).hexdigest()[:12], 16)
         current_offset = (now.hour - sign_hour) * 60 + now.minute
         need_sign = False
         for i, acc in enumerate(accounts):
