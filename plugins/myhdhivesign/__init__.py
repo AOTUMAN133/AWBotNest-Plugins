@@ -21,7 +21,7 @@ __plugin__ = {
     "scope": "user",
     "default_enabled": True,
     "render_mode": "vue",
-    "requirements": ["httpx"],
+    "requirements": ["httpx", "playwright"],
     "config_schema": {
         "accounts": {
             "type": "text", "default": "[]", "label": "账号配置(JSON)",
