@@ -32,7 +32,7 @@ __plugin__ = {
         },
         "info": {
             "type": "info", "label": "使用说明", "section": "命令",
-            "text": "插件启用后自动监控群里的炸金花结算消息。\n发送 /jh 查看统计概览\n发送 /jhd 查看最近20局详情"
+            "text": "插件启用后自动监控群里的炸金花结算消息。\\n发送 /jh 查看统计概览\\n发送 /jht 查看今日统计\\n发送 /jhd 查看最近5局详情"
         },
     },
 }
@@ -171,13 +171,21 @@ async def setup(ctx):
     async def cmd_stats(client, message):
         """命令：/zj 查看统计"""
         text = (message.text or "").strip()
-        if text not in ("/jh", ".jh", "/jhd", ".jhd"):
+        if text not in ("/jh", ".jh", "/jhd", ".jhd", "/jht", ".jht"):
             return
         
         records = ctx.kv.get(_KV_DATA, [])
         if not records:
             await message.edit("📭 还没有炸金花记录，等待下一局结算吧。")
             return
+        
+        # 今日统计过滤
+        if text in ("/jht", ".jht"):
+            today = datetime.now(TZ).strftime("%Y-%m-%d")
+            records = [r for r in records if r.get("time", "").startswith(today)]
+            if not records:
+                await message.edit("📭 今天还没有炸金花记录。")
+                return
         
         # 清理旧数据中可能带卡牌的名字
         cleaned = False
