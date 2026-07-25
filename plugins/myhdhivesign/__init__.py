@@ -28,29 +28,22 @@ __plugin__ = {
             "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
         },
         "action_hash": {
-            "type": "string", "default": "", "label": "Action Hash(留空自动获取)",
-            "section": "哈希", "help": "如果自动获取失败，可打开浏览器F12→网络→点签到→找next-action请求头，复制值填这里"
+                "type": "string", "default": "", "label": "Action Hash(留空自动获取)",
+                "section": "账号", "help": "签到接口的action hash，留空会自动获取"
+            },
+            "sign_hour": {
+                "type": "number", "default": 9, "label": "签到开始时间(时)",
+                "section": "定时签到", "min": 0, "max": 23, "order": 1
+            },
+            "sign_window": {
+                "type": "number", "default": 2, "label": "签到时间窗口(小时)",
+                "section": "定时签到", "min": 0, "max": 24, "help": "0=固定分钟签到", "order": 2
+            },
+            "sign_minute": {
+                "type": "number", "default": 0, "label": "签到分钟",
+                "section": "定时签到", "min": 0, "max": 59, "order": 3
+            },
         },
-        "sign_now": {
-            "type": "action", "label": "▶ 立即签到", "section": "操作",
-            "action": "sign_now", "danger": False
-        },
-        "sign_hour": {
-            "type": "number", "default": 9, "label": "签到开始时间(时)",
-            "section": "定时", "help": "定时签到开始的小时"
-        },
-        "sign_window": {
-            "type": "number", "default": 2, "label": "签到时间窗口(小时)",
-            "section": "定时", "help": "在开始时间后的窗口内随机签到，每个账号独立随机"
-        },
-        "sign_minute": {
-            "type": "number", "default": 0, "label": "签到分钟",
-            "section": "定时", "help": "当窗口为0时固定使用此分钟"
-        },
-        "_logs": {
-            "type": "info", "label": "运行日志", "section": "日志"
-        },
-    },
 }
 
 _KV_ACCOUNTS = "hdhive_accounts"
