@@ -12,11 +12,12 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
     "scope": "user",
     "default_enabled": False,
+    "render_mode": "vue",
     "config_schema": {
         "host": {
             "type": "string", "default": "http://192.168.1.33:12712", "label": "DockerCopilot 地址",
@@ -152,7 +153,7 @@ async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
 
 
 async def setup(ctx):
-    _log(ctx, "DC助手插件已加载")
+    ctx.log.info("DC助手插件已加载")
 
     @ctx.action("check_updatable")
     async def _check(req=None):
