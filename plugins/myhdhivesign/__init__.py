@@ -7,7 +7,6 @@ import re
 import time
 import random
 import hashlib
-import httpx
 from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
@@ -376,6 +375,7 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
 
 
 async def setup(ctx):
+    import httpx
     _log_debug(ctx, "插件加载完成")
 
     async def _sign_tick():
