@@ -19,6 +19,7 @@ __plugin__ = {
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "default_enabled": False,
+    "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
         "accounts": {
@@ -376,7 +377,6 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
 
 async def setup(ctx):
     import httpx
-    _log_debug(ctx, "插件加载完成")
 
     async def _sign_tick():
         """每分钟检查，在签到窗口内逐个账号签到"""
