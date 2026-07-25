@@ -278,7 +278,7 @@ async def setup(ctx):
             return {"ok": True, "message": msg}
         return None
 
-    # 定时任务
+    # 定时任务：每分钟检查，立即更新立即执行，定时更新按cron
     async def _auto_tick():
         if not ctx.config.get("secret_key"):
             return
@@ -289,15 +289,19 @@ async def setup(ctx):
         include = _parse_list(ctx.config.get("auto_update_include", ""))
         imm = _parse_list(ctx.config.get("auto_update_immediate", ""))
         filtered = [c for c in containers if not include or c.get("name", "") in include]
-        # 立即更新
+        now = datetime.now(TZ)
+
+        # 立即更新：每分钟检查，发现可更新容器就执行
         for c in filtered:
             if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
-                    await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                    r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                    if r:
+                        ctx.log.info(f"立即更新: {c.get('name', cid)}")
                     await asyncio.sleep(2)
-        # 定时更新
-        now = datetime.now(TZ)
+
+        # 定时更新：只在cron时间点执行
         cron = ctx.config.get("auto_update_cron", "0 4 * * *")
         parts = cron.split()
         if len(parts) == 5:
@@ -326,17 +330,8 @@ async def setup(ctx):
         if r and ctx.config.get("backup_notify", True):
             await ctx.notify("💾 Docker 容器配置定时备份完成")
 
-    # 注册定时
-    cron = ctx.config.get("auto_update_cron", "0 4 * * *")
-    parts = cron.split()
-    if len(parts) == 5:
-        try:
-            ctx.schedule(_auto_tick, "cron", minute=parts[0], hour=parts[1],
-                        day=parts[2], month=parts[3], day_of_week=parts[4], id="DC助手-自动更新")
-        except Exception:
-            ctx.schedule(_auto_tick, "cron", hour=4, minute=0, id="DC助手-自动更新")
-    else:
-        ctx.schedule(_auto_tick, "cron", hour=4, minute=0, id="DC助手-自动更新")
+    # 注册定时：自动更新每分钟检查，备份按cron
+    ctx.schedule(_auto_tick, "interval", minutes=1, id="DC助手-自动更新")
 
     bc = ctx.config.get("backup_cron", "0 5 * * 0")
     parts = bc.split()
