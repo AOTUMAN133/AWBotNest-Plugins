@@ -138,7 +138,7 @@ async def setup(ctx):
             ctx.update_config({"_status": "❌ 无法连接 DockerCopilot"})
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
         containers = data.get("data") or data.get("containers") or []
-        updatable = [c for c in containers if c.get("updatable") or c.get("can_update")]
+        updatable = [c for c in containers if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         ctx.update_config({"_status": f"可更新: {len(updatable)}/{len(containers)} 个容器"})
         if updatable:
             names = [c.get("name", c.get("id", "?"))[:20] for c in updatable]
@@ -155,7 +155,7 @@ async def setup(ctx):
         if not data:
             return {"ok": False, "message": "获取容器列表失败"}
         containers = data.get("data") or data.get("containers") or []
-        updatable = [c for c in containers if c.get("updatable") or c.get("can_update")]
+        updatable = [c for c in containers if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         if not updatable:
             return {"ok": True, "message": "没有需要更新的容器"}
         updated = 0
@@ -163,7 +163,7 @@ async def setup(ctx):
             cid = c.get("id") or c.get("containerId") or c.get("name")
             if not cid:
                 continue
-            r = await _api_call(ctx, "POST", f"/container/{cid}/update")
+            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
             if r:
                 updated += 1
                 _log(ctx, f"更新完成: {c.get('name', cid)}")
@@ -222,7 +222,7 @@ async def setup(ctx):
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
-        updatable = [c for c in containers if c.get("updatable") or c.get("can_update")]
+        updatable = [c for c in containers if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         if not updatable:
             _log(ctx, "定时检查: 无容器需要更新")
             return
@@ -231,7 +231,7 @@ async def setup(ctx):
             cid = c.get("id") or c.get("containerId") or c.get("name")
             if not cid:
                 continue
-            r = await _api_call(ctx, "POST", f"/container/{cid}/update")
+            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
             if r:
                 updated += 1
             await asyncio.sleep(2)
