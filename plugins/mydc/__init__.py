@@ -202,8 +202,9 @@ async def setup(ctx):
             ctx.update_config({"_status": "❌ 无法连接 DockerCopilot"})
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
         containers = data.get("data") or data.get("containers") or []
-        include = _parse_list(ctx.config.get("auto_update_include", ""))
-        imm = _parse_list(ctx.config.get("auto_update_immediate", ""))
+        # 检查可更新
+        include = ctx.kv.get("mydc_include", [])
+        imm = ctx.kv.get("mydc_immediate", [])
         filtered = [c for c in containers if not include or c.get("name", "") in include]
         updatable = [c for c in filtered if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         has_imm = [c for c in updatable if c.get("name", "") in imm]
@@ -286,10 +287,9 @@ async def setup(ctx):
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
-        include = _parse_list(ctx.config.get("auto_update_include", ""))
-        imm = _parse_list(ctx.config.get("auto_update_immediate", ""))
+        include = ctx.kv.get("mydc_include", [])
+        imm = ctx.kv.get("mydc_immediate", [])
         filtered = [c for c in containers if not include or c.get("name", "") in include]
-        now = datetime.now(TZ)
 
         # 立即更新：每分钟检查，发现可更新容器就执行
         for c in filtered:
@@ -302,6 +302,7 @@ async def setup(ctx):
                     await asyncio.sleep(2)
 
         # 定时更新：只在cron时间点执行
+        now = datetime.now(TZ)
         cron = ctx.config.get("auto_update_cron", "0 4 * * *")
         parts = cron.split()
         if len(parts) == 5:
