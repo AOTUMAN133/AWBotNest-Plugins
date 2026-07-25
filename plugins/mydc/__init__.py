@@ -30,6 +30,14 @@ __plugin__ = {
             "type": "string", "default": "0 4 * * *", "label": "自动更新定时",
             "section": "自动更新", "help": "cron 表达式，默认每天凌晨4点"
         },
+        "auto_update_include": {
+            "type": "text", "default": "", "label": "更新容器列表",
+            "section": "自动更新", "help": "留空=更新所有容器。填写容器名，每行一个，只更新这些"
+        },
+        "auto_update_immediate": {
+            "type": "text", "default": "", "label": "发现更新立即执行",
+            "section": "自动更新", "help": "这些容器发现有新版本时不等待定时，立即更新。每行一个容器名"
+        },
         "auto_update_notify": {
             "type": "boolean", "default": True, "label": "更新通知",
             "section": "自动更新"
@@ -52,6 +60,10 @@ __plugin__ = {
         "check_now": {
             "type": "action", "label": "🔍 检查可更新容器", "section": "操作",
             "action": "check_updatable"
+        },
+        "list_all": {
+            "type": "action", "label": "📋 列出所有容器", "section": "操作",
+            "action": "list_containers"
         },
         "update_all": {
             "type": "action", "label": "▶ 更新全部容器", "section": "操作",
@@ -80,6 +92,23 @@ def _log(ctx, msg: str):
     logs = ctx.kv.get(_KV_LOGS, [])
     logs.append({"t": _now(), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-50:])
+
+
+def _parse_container_list(raw: str) -> list[str]:
+    """解析容器名列表（每行一个，逗号分隔也行）"""
+    names = []
+    for line in (raw or "").replace("，", ",").split(","):
+        line = line.strip()
+        if line:
+            names.append(line)
+    return names
+
+
+def _filter_containers(containers: list, include_list: list[str]) -> list:
+    """根据include列表过滤容器"""
+    if not include_list:
+        return containers
+    return [c for c in containers if c.get("name", "") in include_list]
 
 
 async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
@@ -138,15 +167,41 @@ async def setup(ctx):
             ctx.update_config({"_status": "❌ 无法连接 DockerCopilot"})
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
         containers = data.get("data") or data.get("containers") or []
-        updatable = [c for c in containers if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
-        ctx.update_config({"_status": f"可更新: {len(updatable)}/{len(containers)} 个容器"})
+        include_list = _parse_container_list(ctx.config.get("auto_update_include", ""))
+        imm_list = _parse_container_list(ctx.config.get("auto_update_immediate", ""))
+        filtered = _filter_containers(containers, include_list)
+        updatable = [c for c in filtered if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
+        immediate = [c for c in updatable if c.get("name", "") in imm_list]
+        scheduled = [c for c in updatable if c.get("name", "") not in imm_list]
+        ctx.update_config({"_status": f"可更新: {len(updatable)}/{len(filtered)} 个容器"})
+        msg_parts = []
         if updatable:
-            names = [c.get("name", c.get("id", "?"))[:20] for c in updatable]
-            _log(ctx, f"可更新容器: {', '.join(names)}")
-            return {"ok": True, "message": f"可更新 {len(updatable)} 个容器: {', '.join(names)}"}
+            if immediate:
+                names = [c.get("name", "?")[:20] for c in immediate]
+                msg_parts.append(f"立即更新: {', '.join(names)}")
+            if scheduled:
+                names = [c.get("name", "?")[:20] for c in scheduled]
+                msg_parts.append(f"等待定时: {', '.join(names)}")
+            _log(ctx, "; ".join(msg_parts))
+            return {"ok": True, "message": "; ".join(msg_parts) if msg_parts else "无更新"}
         else:
             _log(ctx, "所有容器已是最新")
             return {"ok": True, "message": "所有容器已是最新 ✅"}
+
+    @ctx.action("list_containers")
+    async def _list_all(req=None):
+        data = await _api_call(ctx, "GET", "/containers")
+        if not data:
+            return {"ok": False, "message": "获取容器列表失败"}
+        containers = data.get("data") or data.get("containers") or []
+        include_list = _parse_container_list(ctx.config.get("auto_update_include", ""))
+        msg = f"📋 共 {len(containers)} 个容器"
+        for c in containers:
+            name = c.get("name", "?")
+            flag = " ✅" if name in include_list else ""
+            upd = " 🔄" if c.get("haveUpdate") else ""
+            msg += f"\n{name}{flag}{upd}"
+        return {"ok": True, "message": msg}
 
     @ctx.action("update_all")
     async def _update_all(req=None):
@@ -222,25 +277,47 @@ async def setup(ctx):
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
-        updatable = [c for c in containers if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
-        if not updatable:
-            _log(ctx, "定时检查: 无容器需要更新")
-            return
-        updated = 0
-        for c in updatable:
-            cid = c.get("id") or c.get("containerId") or c.get("name")
-            if not cid:
-                continue
-            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
-            if r:
-                updated += 1
-            await asyncio.sleep(2)
-        if ctx.config.get("delete_images", True) and updated > 0:
-            await _clean_images(ctx)
-        msg = f"定时更新完成: {updated}/{len(updatable)} 个容器"
-        _log(ctx, msg)
-        if ctx.config.get("auto_update_notify", True):
-            await ctx.notify(f"🔄 {msg}")
+        include_list = _parse_container_list(ctx.config.get("auto_update_include", ""))
+        imm_list = _parse_container_list(ctx.config.get("auto_update_immediate", ""))
+        filtered = _filter_containers(containers, include_list)
+        # 立即更新的：发现可更新就马上更新
+        immediate_containers = [c for c in filtered if c.get("name", "") in imm_list and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update"))]
+        if immediate_containers:
+            for c in immediate_containers:
+                cid = c.get("id") or c.get("containerId") or c.get("name")
+                if not cid:
+                    continue
+                r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                if r:
+                    _log(ctx, f"立即更新完成: {c.get('name', cid)}")
+                await asyncio.sleep(2)
+        # 定时更新的：按cron调度
+        now = datetime.now(TZ)
+        cron = ctx.config.get("auto_update_cron", "0 4 * * *")
+        parts = cron.split()
+        if len(parts) == 5:
+            cron_hour = int(parts[1])
+            cron_minute = int(parts[0])
+            if now.hour == cron_hour and now.minute == cron_minute:
+                scheduled = [c for c in filtered if c.get("name", "") not in imm_list and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update"))]
+                if not scheduled:
+                    _log(ctx, "定时检查: 无容器需要更新")
+                    return
+                updated = 0
+                for c in scheduled:
+                    cid = c.get("id") or c.get("containerId") or c.get("name")
+                    if not cid:
+                        continue
+                    r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                    if r:
+                        updated += 1
+                    await asyncio.sleep(2)
+                if ctx.config.get("delete_images", True) and updated > 0:
+                    await _clean_images(ctx)
+                msg = f"定时更新完成: {updated}/{len(scheduled)} 个容器"
+                _log(ctx, msg)
+                if ctx.config.get("auto_update_notify", True):
+                    await ctx.notify(f"🔄 {msg}")
 
     # 定时备份
     async def _backup_tick():
