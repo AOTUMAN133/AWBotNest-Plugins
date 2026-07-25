@@ -396,9 +396,9 @@ async def setup(ctx):
             accounts = []
         if not accounts:
             return
-        sign_hour = int(ctx.kv.get("custom_sign_hour", cfg.get("sign_hour", 9) or 9))
-        sign_window = float(ctx.kv.get("custom_sign_window", cfg.get("sign_window", 2) or 2))
-        sign_minute = int(ctx.kv.get("custom_sign_minute", cfg.get("sign_minute", 0) or 0))
+        sign_hour = int(ctx.kv.get("custom_sign_hour") or cfg.get("sign_hour", 9) or 9)
+        sign_window = float(ctx.kv.get("custom_sign_window") or cfg.get("sign_window", 2) or 2)
+        sign_minute = int(ctx.kv.get("custom_sign_minute") or cfg.get("sign_minute", 0) or 0)
         now = datetime.now(TZ)
         _log_debug(ctx, f"定时检查: hour={now.hour} min={now.minute} cfg_hour={sign_hour} cfg_window={sign_window} cfg_min={sign_minute}")
         # 窗口为0时，固定到指定分钟签到
