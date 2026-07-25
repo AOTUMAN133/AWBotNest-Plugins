@@ -236,7 +236,7 @@ async def setup(ctx):
             cid = c.get("id") or c.get("containerId") or c.get("name")
             if not cid:
                 continue
-            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
             if r:
                 updated += 1
             await asyncio.sleep(2)
@@ -296,7 +296,7 @@ async def setup(ctx):
             if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
-                    r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                    r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
                         ctx.log.info(f"立即更新: {c.get('name', cid)}")
                     await asyncio.sleep(2)
@@ -315,7 +315,7 @@ async def setup(ctx):
                     for c in scheduled:
                         cid = c.get("id") or c.get("containerId") or c.get("name")
                         if cid:
-                            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", "")})
+                            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                             if r:
                                 updated += 1
                             await asyncio.sleep(2)
