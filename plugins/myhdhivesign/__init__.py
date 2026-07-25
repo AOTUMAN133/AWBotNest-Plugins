@@ -19,12 +19,12 @@ __plugin__ = {
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
-    "default_enabled": False,
+    "default_enabled": True,
     "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
         "accounts": {
-            "type": "text", "default": "", "label": "账号配置(JSON)",
+            "type": "text", "default": "[]", "label": "账号配置(JSON)",
             "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
         },
         "action_hash": {
