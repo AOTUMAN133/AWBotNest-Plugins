@@ -487,9 +487,18 @@ async def setup(ctx):
     kv_hour = ctx.kv.get("custom_sign_hour")
     kv_window = ctx.kv.get("custom_sign_window")
     kv_minute = ctx.kv.get("custom_sign_minute")
-    schedule_hour = int(kv_hour) if kv_hour is not None else sign_hour
-    schedule_window = float(kv_window) if kv_window is not None else sign_window
-    schedule_minute = int(kv_minute) if kv_minute is not None else sign_minute
+    try:
+        schedule_hour = int(kv_hour) if kv_hour is not None and kv_hour != "" else sign_hour
+    except (ValueError, TypeError):
+        schedule_hour = sign_hour
+    try:
+        schedule_window = float(kv_window) if kv_window is not None and kv_window != "" else sign_window
+    except (ValueError, TypeError):
+        schedule_window = sign_window
+    try:
+        schedule_minute = int(kv_minute) if kv_minute is not None and kv_minute != "" else sign_minute
+    except (ValueError, TypeError):
+        schedule_minute = sign_minute
     
     # 根据窗口大小决定调度方式
     if schedule_window <= 0:
