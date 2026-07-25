@@ -16,6 +16,7 @@ __plugin__ = {
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
     "scope": "user",
     "default_enabled": False,
+    "render_mode": "vue",
     "config_schema": {
         "host": {
             "type": "string", "default": "http://192.168.1.33:13001", "label": "DockerCopilot 地址",
@@ -136,6 +137,47 @@ def _parse_list(raw: str) -> list[str]:
 
 async def setup(ctx):
     ctx.log.info("DC助手插件已加载")
+
+    @ctx.on_api("/containers", methods=["GET"])
+    async def _api_containers(req):
+        """获取容器列表"""
+        data = await _api_call(ctx, "GET", "/containers")
+        if not data:
+            return {"ok": False, "message": "获取失败"}
+        containers = data.get("data") or data.get("containers") or []
+        include = ctx.kv.get("mydc_include", [])
+        immediate = ctx.kv.get("mydc_immediate", [])
+        result = []
+        for c in containers:
+            name = c.get("name", "?")
+            result.append({
+                "name": name,
+                "status": c.get("status", ""),
+                "image": c.get("usingImage", ""),
+                "haveUpdate": c.get("haveUpdate", False),
+                "selected": name in include,
+                "immediate": name in immediate,
+            })
+        return {"ok": True, "containers": result}
+
+    @ctx.on_api("/save_selection", methods=["POST"])
+    async def _api_save(req):
+        """保存容器选择"""
+        body = req.json
+        selected = body.get("selected", [])
+        immediate = body.get("immediate", [])
+        ctx.kv.set("mydc_include", selected)
+        ctx.kv.set("mydc_immediate", immediate)
+        _log(ctx, f"容器选择已保存: {len(selected)}个选中, {len(immediate)}个立即更新")
+        return {"ok": True, "message": "已保存"}
+
+    @ctx.on_api("/selection", methods=["GET"])
+    async def _api_selection(req):
+        """获取当前选择"""
+        return {
+            "selected": ctx.kv.get("mydc_include", []),
+            "immediate": ctx.kv.get("mydc_immediate", []),
+        }
 
     @ctx.action("list_containers")
     async def _list(req=None):
