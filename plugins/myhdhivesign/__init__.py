@@ -20,7 +20,6 @@ __plugin__ = {
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "default_enabled": False,
-    "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
         "accounts": {
