@@ -429,9 +429,10 @@ async def setup(ctx):
             if not cookie:
                 continue
             name = acc.get("name", f"账号{i+1}")
-            last_days_key = f"last_signin_days:{cookie[:20]}"
-            last_days = ctx.kv.get(last_days_key, 0)
-            if last_days > 0:
+            # 检查今日是否已签到
+            signed_key = f"signed_today:{cookie[:20]}"
+            signed_today = ctx.kv.get(signed_key, "")
+            if signed_today == today_str:
                 continue
             need_sign = True
             break
