@@ -379,14 +379,61 @@ async def setup(ctx):
         if not apps:
             return {"ok": False, "message": "无可用账号"}
         client = apps[0]
+
+        # 构建发言池（同自动发言逻辑）
+        phrases_raw = str(ctx.config.get("auto_say_phrases", "") or "").strip()
+        user_phrases = [p.strip() for p in phrases_raw.replace("\r\n", "\n").split("\n") if p.strip()]
+        use_lyrics = ctx.config.get("auto_say_use_lyrics", True)
+
+        class PoolItem:
+            __slots__ = ("text", "next_text")
+        pool = []
+        for p in user_phrases:
+            item = PoolItem()
+            item.text = p
+            item.next_text = None
+            pool.append(item)
+
+        if use_lyrics and _LYRICS:
+            for l in random.sample(list(_LYRICS), min(10, len(_LYRICS))):
+                parts = None
+                for sep in ("，", "。", "；", "！", "？", ",", "?"):
+                    if sep in l:
+                        s = l.split(sep, 1)
+                        parts = (s[0].strip(), s[1].strip())
+                        break
+                if parts and parts[0]:
+                    item = PoolItem()
+                    item.text = parts[0]
+                    item.next_text = parts[1] if parts[1] else None
+                    pool.append(item)
+                elif l:
+                    item = PoolItem()
+                    item.text = l
+                    item.next_text = None
+                    pool.append(item)
+
+        if len(pool) < 1:
+            pool.append(PoolItem())
+            pool[0].text = "🎤 测试发言"
+            pool[0].next_text = None
+
+        chosen = random.sample(pool, min(random.randint(1, 3), len(pool)))
         sent = 0
         for chat_id in cids[:3]:
-            try:
-                await client.send_message(chat_id, "🎤 测试发言")
-                sent += 1
-            except Exception as e:
-                ctx.log.warning("测试发言发送失败 group=%s: %r", chat_id, e)
-        return {"ok": True, "message": f"已发送 {sent}/{len(cids[:3])} 个群组"}
+            msgs = []
+            for item in chosen:
+                msgs.append(item.text)
+                if item.next_text:
+                    msgs.append(item.next_text)
+            for msg in msgs:
+                try:
+                    await client.send_message(chat_id, msg)
+                    sent += 1
+                except Exception as e:
+                    ctx.log.warning("测试发言发送失败 group=%s: %r", chat_id, e)
+                await asyncio.sleep(random.uniform(15, 20))
+        return {"ok": True, "message": f"测试发言完成，发送 {sent} 条消息"}
 
 
 def _effective_cfg(ctx):
