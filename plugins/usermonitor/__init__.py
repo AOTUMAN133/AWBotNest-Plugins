@@ -9,7 +9,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "用户监控",
     "id": "usermonitor",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "监控指定用户在指定群组的发言，自动回复。支持AI智能回复或固定回复。",
     "scope": "user",
