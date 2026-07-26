@@ -77,5 +77,11 @@
     "version": "1.0.0",
     "author": "凹凸曼",
     "description": "监控指定用户在指定群组的发言，自动回复。支持AI智能回复或固定回复。"
+  },
+  "auto_changename": {
+    "name": "自动报时昵称",
+    "version": "1.1.0",
+    "author": "凹凸曼",
+    "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。"
   }
 }
