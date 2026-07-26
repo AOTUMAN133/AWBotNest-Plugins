@@ -331,19 +331,24 @@ async def setup(ctx):
         if r and ctx.config.get("backup_notify", True):
             await ctx.notify("💾 Docker 容器配置定时备份完成")
 
-    # 注册定时：自动更新每分钟检查，备份按cron
-    ctx.schedule(_auto_tick, "interval", minutes=1, id="DC助手-自动更新")
+    # 注册定时：只有配置了连接信息才注册
+    if ctx.config.get("secret_key"):
+        ctx.schedule(_auto_tick, "interval", minutes=1, id="DC助手-自动更新")
+        ctx.log.info("DC助手-自动更新 已注册")
 
-    bc = ctx.config.get("backup_cron", "0 5 * * 0")
-    parts = bc.split()
-    if len(parts) == 5:
-        try:
-            ctx.schedule(_backup_tick, "cron", minute=parts[0], hour=parts[1],
-                        day=parts[2], month=parts[3], day_of_week=parts[4], id="DC助手-自动备份")
-        except Exception:
+        bc = ctx.config.get("backup_cron", "0 5 * * 0")
+        parts = bc.split()
+        if len(parts) == 5:
+            try:
+                ctx.schedule(_backup_tick, "cron", minute=parts[0], hour=parts[1],
+                            day=parts[2], month=parts[3], day_of_week=parts[4], id="DC助手-自动备份")
+            except Exception:
+                ctx.schedule(_backup_tick, "cron", hour=5, minute=0, day_of_week="sun", id="DC助手-自动备份")
+        else:
             ctx.schedule(_backup_tick, "cron", hour=5, minute=0, day_of_week="sun", id="DC助手-自动备份")
+        ctx.log.info("DC助手-自动备份 已注册")
     else:
-        ctx.schedule(_backup_tick, "cron", hour=5, minute=0, day_of_week="sun", id="DC助手-自动备份")
+        ctx.log.info("DC助手未配置连接信息，定时任务未注册")
 
     ctx.log.info("DC助手已就绪")
 
