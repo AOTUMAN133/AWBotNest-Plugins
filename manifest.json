@@ -62,7 +62,7 @@
   },
   "myskyanswer": {
     "name": "天空自动答题",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。"
   }

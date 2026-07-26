@@ -10,13 +10,10 @@ from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
 
-def _log_debug(ctx, msg):
-    ctx.log.info("[DEBUG] %s", msg)
-
 __plugin__ = {
     "name": "天空自动答题",
     "id": "myskyanswer",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。",
     "scope": "user",
@@ -316,16 +313,12 @@ async def setup(ctx):
     # ── 答题奖励 ──
     @ctx.on_message(ctx.filters.group & ctx.filters.text, group=5)
     async def _reward_handler(client, message):
-        _log_debug(ctx, f"答题处理器收到消息: id={message.id} from={message.from_user.id if message.from_user else '?'} reply_to={message.reply_to_message_id}")
         if not ctx.config.get("enable_reward_answer", False):
-            _log_debug(ctx, "答题奖励未开启")
             return
         if not message.reply_to_message_id:
-            _log_debug(ctx, "非回复消息，跳过")
             return
         cids = _parse_ids(ctx.config.get("auto_say_chat_ids", ""))
         if cids and message.chat.id not in cids:
-            _log_debug(ctx, f"非配置群组 {message.chat.id}，跳过")
             return
         # 检查是否来自指定机器人
         reward_bots = str(ctx.config.get("reward_bot_ids", "") or "").strip()
@@ -333,23 +326,18 @@ async def setup(ctx):
             bot_ids = [b.strip().lstrip("@") for b in reward_bots.replace("，", ",").split(",") if b.strip()]
             sender_id = str(message.from_user.id) if message.from_user else ""
             sender_name = (message.from_user.username or "") if message.from_user else ""
-            _log_debug(ctx, f"bot_ids={bot_ids} sender_id={sender_id} sender_name={sender_name}")
             if bot_ids and sender_id not in bot_ids and sender_name not in bot_ids:
-                _log_debug(ctx, f"非指定机器人 {sender_id}，跳过")
                 return
         # 检查是否回复了我们的自动发言
         pending = ctx.kv.get(_KV_PENDING, [])
-        _log_debug(ctx, f"pending={pending} chat={message.chat.id} reply_to={message.reply_to_message_id}")
         matched = [p for p in pending if p["chat_id"] == message.chat.id and p["msg_id"] == message.reply_to_message_id]
         if not matched:
-            _log_debug(ctx, "非回复我们的消息，跳过")
             return
         # 清理过期记录
         now = time.time()
         ctx.kv.set(_KV_PENDING, [p for p in pending if now - p.get("time", 0) < 300])
 
         text = (message.text or "").strip()
-        _log_debug(ctx, f"检查数学题: text={text[:50]}")
         m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*(?:\?|？|多少\s*[?？]|)\s*$", text)
         if not m:
             m = re.search(r"(\d+)\s*([+\-×xX*/])\s*(\d+)\s*=\s*多少\s*[?？]", text)
