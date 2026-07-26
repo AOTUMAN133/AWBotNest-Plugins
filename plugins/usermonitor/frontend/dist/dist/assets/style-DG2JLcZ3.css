@@ -1,0 +1,59 @@
+
+.monitor-config[data-v-016916ec] { padding: 16px; color: #e0e0e0; font-size: 14px;
+}
+.header[data-v-016916ec] { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
+}
+.header h2[data-v-016916ec] { margin: 0; font-size: 18px;
+}
+.actions[data-v-016916ec] { display: flex; gap: 8px;
+}
+.loading[data-v-016916ec] { text-align: center; padding: 40px; color: #888;
+}
+.rules[data-v-016916ec] { display: flex; flex-direction: column; gap: 12px;
+}
+.rule-card[data-v-016916ec] { background: #2a2a2a; border-radius: 8px; padding: 12px; border: 1px solid #3a3a3a;
+}
+.rule-header[data-v-016916ec] { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+}
+.rule-title[data-v-016916ec] { font-weight: bold; color: #4fc3f7;
+}
+.rule-body[data-v-016916ec] { display: flex; flex-direction: column; gap: 8px;
+}
+.field[data-v-016916ec] { display: flex; flex-direction: column; gap: 4px;
+}
+.field-row[data-v-016916ec] { display: flex; gap: 8px;
+}
+.field label[data-v-016916ec] { font-size: 12px; color: #aaa;
+}
+.flex[data-v-016916ec] { flex: 1;
+}
+.inp[data-v-016916ec] { background: #1e1e1e; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; color: #e0e0e0; font-size: 13px; width: 100%; box-sizing: border-box;
+}
+.inp[data-v-016916ec]:focus { border-color: #4fc3f7; outline: none;
+}
+.triggers[data-v-016916ec] { margin-top: 4px;
+}
+.triggers-header[data-v-016916ec] { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.triggers-header label[data-v-016916ec] { font-size: 12px; color: #aaa;
+}
+.trigger-row[data-v-016916ec] { display: flex; gap: 6px; margin-bottom: 6px; align-items: center;
+}
+.trigger-row .inp[data-v-016916ec] { flex: 1;
+}
+.btn[data-v-016916ec] { background: #3a3a3a; border: 1px solid #555; border-radius: 4px; padding: 6px 12px; color: #e0e0e0; cursor: pointer; font-size: 13px;
+}
+.btn[data-v-016916ec]:hover { background: #4a4a4a;
+}
+.btn.primary[data-v-016916ec] { background: #1976d2; border-color: #1976d2;
+}
+.btn.primary[data-v-016916ec]:hover { background: #1565c0;
+}
+.btn.danger[data-v-016916ec] { background: #c62828; border-color: #c62828;
+}
+.btn.danger[data-v-016916ec]:hover { background: #b71c1c;
+}
+.btn.sm[data-v-016916ec] { padding: 4px 8px; font-size: 12px;
+}
+.btn[data-v-016916ec]:disabled { opacity: 0.5; cursor: default;
+}
