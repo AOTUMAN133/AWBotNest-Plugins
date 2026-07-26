@@ -804,7 +804,12 @@ async def setup(ctx):
                 pass
             return
 
-    ctx.schedule(proactive_tick, "interval", minutes=1, id="AI主动搭话")
+    # 只有开启主动搭话才注册定时任务
+    if ctx.config.get("enable_proactive", False):
+        pro_min = int(ctx.config.get("proactive_min_minutes", 60) or 60)
+        ctx.schedule(proactive_tick, "interval", minutes=pro_min, id="AI主动搭话")
+    else:
+        ctx.log.info("AI主动搭话未开启，不注册定时任务")
 
     # ── 功能 4：随机自定发言 ──
     async def auto_say_tick():
@@ -909,7 +914,12 @@ async def setup(ctx):
                     await asyncio.sleep(random.uniform(15, 20))
             await asyncio.sleep(1)
 
-    ctx.schedule(auto_say_tick, "interval", minutes=1, id="AI自动发言")
+    # 只有开启自动发言才注册定时任务
+    if ctx.config.get("enable_auto_say", False):
+        say_min = int(ctx.config.get("auto_say_min_minutes", 5) or 5)
+        ctx.schedule(auto_say_tick, "interval", minutes=say_min, id="AI自动发言")
+    else:
+        ctx.log.info("AI自动发言未开启，不注册定时任务")
 
     # ── 记录用户自己发的消息，用于答题奖励 ──
     _log_debug(ctx, "注册用户消息记录器")
