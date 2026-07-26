@@ -697,9 +697,12 @@ async def setup(ctx):
                 ctx.kv.set("custom_sign_minute", body["sign_minute"])
             _log_debug(ctx, f"时间配置已保存: {body.get('sign_hour')}h {body.get('sign_window')}w {body.get('sign_minute')}m")
             # 重新调度定时任务
-            h = int(body.get("sign_hour", 9))
-            w = float(body.get("sign_window", 2))
-            m = int(body.get("sign_minute", 0))
+            h = int(body.get("sign_hour", 9) or 9)
+            w = float(body.get("sign_window", 2) or 2)
+            try:
+                m = int(body.get("sign_minute", 0) or 0)
+            except (ValueError, TypeError):
+                m = 0
             try:
                 ctx.unschedule("影巢签到-定时检查")
             except Exception:
