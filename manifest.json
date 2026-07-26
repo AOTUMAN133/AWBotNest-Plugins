@@ -80,7 +80,13 @@
   },
   "auto_changename": {
     "name": "自动报时昵称",
-    "version": "1.1.0",
+    "version": "1.0.4",
+    "author": "凹凸曼",
+    "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。"
+  },
+  "myname": {
+    "name": "自动报时昵称",
+    "version": "1.0.0",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。"
   }
