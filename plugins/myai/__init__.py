@@ -1181,6 +1181,7 @@ async def setup(ctx):
                 if result["success"]:
                     header = f"📊 群组总结\n{result['title']} · {_sum_now()}\n\n"
                     await client.send_message(message.chat.id, header + result["result"])
+                    await message.delete()
                 else:
                     await message.edit(f"❌ {result['error']}")
                 return
