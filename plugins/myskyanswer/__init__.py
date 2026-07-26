@@ -67,6 +67,10 @@ __plugin__ = {
             "type": "number", "default": 5, "label": "延迟最大",
             "section": "答题奖励", "min": 1, "max": 60, "help": "秒", "order": 4
         },
+        "test_say": {
+            "type": "action", "label": "🎤 立即发言", "section": "操作",
+            "action": "test_say"
+        },
     },
 }
 
@@ -362,6 +366,27 @@ async def setup(ctx):
         ctx.log.info("[天空答题] 答题完成，60秒后继续自动发言")
 
     ctx.log.info("天空自动答题已就绪")
+
+    # ── 测试按钮 ──
+    @ctx.action("test_say")
+    async def _test_say(req=None):
+        if not ctx.config.get("enable_auto_say", False):
+            return {"ok": False, "message": "请先开启自动发言"}
+        cids = _parse_ids(ctx.config.get("auto_say_chat_ids", ""))
+        if not cids:
+            return {"ok": False, "message": "请先配置发言群组"}
+        apps = list(ctx.user_apps or [])
+        if not apps:
+            return {"ok": False, "message": "无可用账号"}
+        client = apps[0]
+        sent = 0
+        for chat_id in cids[:3]:
+            try:
+                await client.send_message(chat_id, "🎤 测试发言")
+                sent += 1
+            except Exception as e:
+                ctx.log.warning("测试发言发送失败 group=%s: %r", chat_id, e)
+        return {"ok": True, "message": f"已发送 {sent}/{len(cids[:3])} 个群组"}
 
 
 def _effective_cfg(ctx):
