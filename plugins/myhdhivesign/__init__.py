@@ -656,20 +656,10 @@ async def setup(ctx):
                     m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text)
                     if m:
                         days = int(m.group(1))
-                    # 获取上次签到后记录的 days 值，判断是否已签到
-                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
-                    # 先检查 signed_today 记录
-                    signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
+                    # 用 signed_today 记录判断今日是否已签到
                     today_str = datetime.now(TZ).strftime("%Y-%m-%d")
-                    if signed_today == today_str:
-                        signed = True
-                    elif last_days > 0 and days > last_days:
-                        # 网站天数比记录大，说明在其他地方签到了
-                        signed = True
-                        # 更新 signed_today 记录
-                        ctx.kv.set(f"signed_today:{acc.get('cookie','')[:20]}", today_str)
-                    else:
-                        signed = False
+                    signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
+                    signed = signed_today == today_str
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
