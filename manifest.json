@@ -59,5 +59,11 @@
     "version": "1.2.2",
     "author": "凹凸曼",
     "description": "配合DockerCopilot实现容器自动更新、清理、备份"
+  },
+  "myskyanswer": {
+    "name": "天空自动答题",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。"
   }
 }
