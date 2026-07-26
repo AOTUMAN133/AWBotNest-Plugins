@@ -658,15 +658,18 @@ async def setup(ctx):
                         days = int(m.group(1))
                     # 获取上次签到后记录的 days 值，判断是否已签到
                     last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
-                    # 如果 last_days > 0 且当前 days > last_days，说明签到成功了
-                    # 如果 last_days == 0，还没签过
-                    signed = days > last_days if last_days > 0 else False
-                    # 如果当前 days == last_days（已签到且未过夜），也算已签到
-                    if last_days > 0 and days == last_days:
-                        # 检查是否今天已经签过（通过记录日期）
-                        signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
-                        if signed_today == datetime.now(TZ).strftime("%Y-%m-%d"):
-                            signed = True
+                    # 先检查 signed_today 记录
+                    signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
+                    today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+                    if signed_today == today_str:
+                        signed = True
+                    elif last_days > 0 and days > last_days:
+                        # 网站天数比记录大，说明在其他地方签到了
+                        signed = True
+                        # 更新 signed_today 记录
+                        ctx.kv.set(f"signed_today:{acc.get('cookie','')[:20]}", today_str)
+                    else:
+                        signed = False
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
