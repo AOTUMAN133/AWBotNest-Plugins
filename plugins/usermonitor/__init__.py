@@ -14,6 +14,7 @@ __plugin__ = {
     "description": "监控指定用户在指定群组的发言，自动回复。支持AI智能回复或固定回复。",
     "scope": "user",
     "default_enabled": False,
+    "render_mode": "vue",
     "config_schema": {
         "monitor_enabled": {
             "type": "boolean", "default": False, "label": "开启监控",
@@ -181,6 +182,25 @@ async def setup(ctx):
     async def _reset_all(req=None):
         ctx.kv.set(_KV_STATE, {})
         return {"ok": True, "message": "所有监控状态已重置"}
+
+    @ctx.on_api("/get_rules", methods=["GET"])
+    async def _api_get_rules(req):
+        raw = str(ctx.config.get("monitor_config", "[]") or "").strip()
+        try:
+            rules = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+        except Exception:
+            rules = []
+        return {"ok": True, "rules": rules}
+
+    @ctx.on_api("/save_rules", methods=["POST"])
+    async def _api_save_rules(req):
+        try:
+            body = req.json if hasattr(req, 'json') else {}
+            rules = body.get("rules", []) if isinstance(body, dict) else []
+            ctx.update_config({"monitor_config": json.dumps(rules, ensure_ascii=False)})
+            return {"ok": True, "message": "已保存"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
 
     ctx.log.info("用户监控已就绪")
 
