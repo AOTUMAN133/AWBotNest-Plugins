@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
     "scope": "user",
@@ -292,14 +292,18 @@ async def setup(ctx):
         filtered = [c for c in containers if not include or c.get("name", "") in include]
 
         # 立即更新：每分钟检查，发现可更新容器就执行
+        imm_updated = 0
         for c in filtered:
             if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
                     r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
+                        imm_updated += 1
                         ctx.log.info(f"立即更新: {c.get('name', cid)}")
                     await asyncio.sleep(2)
+        if imm_updated > 0 and ctx.config.get("auto_update_notify", True):
+            await ctx.notify(f"🔄 立即更新: {imm_updated} 个容器")
 
         # 定时更新：只在cron时间点执行
         now = datetime.now(TZ)
