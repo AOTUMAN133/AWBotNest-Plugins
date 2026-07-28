@@ -509,6 +509,15 @@ async def setup(ctx):
         # 有窗口：每分钟检查
         ctx.schedule(_sign_tick, "interval", minutes=1, id=f"影巢签到-{schedule_hour}时起{schedule_window}时窗口")
 
+    # 启动时立即检查：如果当前时间在窗口内，立刻执行一次
+    _now = datetime.now(TZ)
+    if schedule_window > 0 and schedule_hour <= _now.hour < schedule_hour + schedule_window:
+        _log_debug(ctx, f"启动时在窗口内，立即执行签到")
+        asyncio.create_task(_sign_tick())
+    elif schedule_window <= 0 and _now.hour == schedule_hour and _now.minute == schedule_minute:
+        _log_debug(ctx, f"启动时在固定时间，立即执行签到")
+        asyncio.create_task(_sign_tick())
+
     async def _do_sign_all():
         _log_debug(ctx, "开始签到")
         base_url = ctx.config.get("base_url", "https://hdhive.com")
