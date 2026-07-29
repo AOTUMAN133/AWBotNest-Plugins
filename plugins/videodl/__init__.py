@@ -134,14 +134,11 @@ async def _parse_via_bridge(url: str) -> dict | None:
         sys_python = "/usr/bin/python3.12"
         if Path(sys_python).exists():
             python = sys_python
-    # 设置 PYTHONPATH 指向 venv 的 site-packages（确保 parsehub 可导入）
-    sp = str(Path("/root/.hermes/plugins_env/ph_venv/lib/python3.12/site-packages"))
     try:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
             [python, str(_BRIDGE_SCRIPT), url],
             capture_output=True, text=True, timeout=30,
-            env={**os.environ, "PYTHONPATH": sp},
         ))
         if cp.returncode != 0:
             err_msg = cp.stderr[:200] if cp.stderr else ""
