@@ -202,6 +202,11 @@ async def setup(ctx):
             return
 
         msg = await message.reply(f"⏳ 正在解析...")
+        # 删除原始消息
+        try:
+            await message.delete()
+        except Exception:
+            pass
         try:
             result = await _parse_via_bridge(url)
         except Exception as e:
