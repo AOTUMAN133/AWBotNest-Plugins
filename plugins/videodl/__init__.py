@@ -48,7 +48,7 @@ __plugin__ = {
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _KV_LOGS = "videodl_logs"
 _BRIDGE_SCRIPT = Path(__file__).parent / "_core" / "parse_bridge.py"
-_PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv/bin/python3"
+_PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 
 def _log(ctx, msg: str):

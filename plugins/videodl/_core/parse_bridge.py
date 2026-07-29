@@ -4,7 +4,7 @@ import sys
 import os
 
 # 添加 venv 的 site-packages 到路径（确保 parsehub 可导入）
-_venv_sp = "/root/.hermes/plugins_env/ph_venv/lib/python3.12/site-packages"
+_venv_sp = "/root/.hermes/plugins_env/ph_venv3/lib/python3.13/site-packages"
 if os.path.isdir(_venv_sp) and _venv_sp not in sys.path:
     sys.path.insert(0, _venv_sp)
 
