@@ -17,7 +17,7 @@ __plugin__ = {
     "id": "bili_search",
     "version": "1.1.0",
     "author": "凹凸曼",
-    "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
+    "description": "B站视频搜索与下载。支持 .sp 搜索，直接发送链接自动下载。",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
@@ -189,7 +189,7 @@ async def setup(ctx):
         text = (message.text or "").strip()
         if not text:
             return
-        if text.startswith("/sp "):
+        if text.startswith(".sp "):
             kw = text[4:].strip()
             await _do_search(ctx, client, message, kw)
             return
