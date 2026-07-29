@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -226,7 +226,7 @@ async def setup(ctx):
         lines.append(f"\n回复序号选择下载（30秒内），或发送0取消")
         await msg.edit("\n".join(lines))
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
-        ctx.kv.set(pending_key, {"results": results, "time": time.time()})
+        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id})
 
     # ── 处理用户选择回复 ──
     @ctx.on_message(ctx.filters.text, group=1)
@@ -249,7 +249,14 @@ async def setup(ctx):
             if 1 <= idx <= len(results):
                 ctx.kv.delete(pending_key)
                 r = results[idx - 1]
-                await message.reply(f"⏳ 正在下载第{idx}个: {r['title'][:30]}...")
+                # 删除搜索结果列表和回复消息
+                try:
+                    await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+                except Exception:
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
                 if r.get("bvid"):
                     await _do_bili_download(ctx, client, message, r["bvid"])
 
