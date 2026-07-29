@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
@@ -95,6 +95,25 @@ async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
         return False
 
 
+def _get_help_text() -> str:
+    return (
+        "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
+        "📌 <b>使用方法</b>\n"
+        "  /jx <链接或分享文本>  — 解析并下载\n"
+        "  直接发送链接 — 自动检测并解析\n\n"
+        "📌 <b>支持平台</b>\n"
+        "  🎬 抖音 · B站 · YouTube · TikTok · 快手\n"
+        "  📷 小红书 · 微博 · Instagram · Twitter/X\n"
+        "  📝 知乎 · 贴吧 · 微信公众号 · 酷安\n"
+        "  🌐 Facebook · Threads · Snapchat · 皮皮虾\n"
+        "  🎮 小黑盒 · 最右\n\n"
+        "📌 <b>说明</b>\n"
+        "  支持的媒体类型：视频、图文、音乐\n"
+        "  超过50MB自动提示处理方式\n"
+        "  可在插件配置中调整大小限制"
+    )
+
+
 async def setup(ctx):
     ctx.log.info("聚合解析插件已加载 (v2.0.0, ParseHub多平台)")
 
@@ -128,6 +147,11 @@ async def setup(ctx):
         if text.startswith("/jx "):
             content = text[4:].strip()
             await _do_parse(ctx, client, message, content)
+            return
+
+        # ── 帮助命令 ──
+        if text == "/help" or text == "/start":
+            await message.reply(_get_help_text())
             return
 
         # ── 自动检测链接 ──
