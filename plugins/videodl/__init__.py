@@ -110,8 +110,12 @@ def _get_help_text() -> str:
 async def _parse_via_bridge(url: str) -> dict | None:
     """通过 ParseHub 桥接脚本解析链接"""
     if not _BRIDGE_SCRIPT.exists():
-        return None
+        return {"error": f"桥接脚本不存在: {_BRIDGE_SCRIPT}"}
     python = _PH_VENV_PYTHON if Path(_PH_VENV_PYTHON).exists() else "python3.12"
+    if python == "python3.12":
+        import shutil
+        if not shutil.which("python3.12"):
+            return {"error": "Python3.12 不可用"}
     try:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
@@ -119,13 +123,17 @@ async def _parse_via_bridge(url: str) -> dict | None:
             capture_output=True, text=True, timeout=30,
         ))
         if cp.returncode != 0:
-            return None
+            return {"error": f"桥接脚本退出码={cp.returncode}, stderr={cp.stderr[:200]}"}
         result = json.loads(cp.stdout)
         if "error" in result:
-            return None
+            return {"error": f"桥接返回: {result['error']}"}
         return result
-    except Exception:
-        return None
+    except json.JSONDecodeError as e:
+        return {"error": f"JSON解析失败: {e}"}
+    except subprocess.TimeoutExpired:
+        return {"error": "桥接脚本执行超时"}
+    except Exception as e:
+        return {"error": f"桥接异常: {e}"}
 
 
 async def setup(ctx):
@@ -164,6 +172,9 @@ async def setup(ctx):
             return
         if not result:
             await msg.edit(f"❌ 解析失败，该平台暂不支持或链接无效")
+            return
+        if "error" in result:
+            await msg.edit(f"❌ {result['error']}")
             return
 
         platform = result.get("platform_name", "未知")
