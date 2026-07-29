@@ -48,7 +48,7 @@ __plugin__ = {
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _KV_LOGS = "videodl_logs"
 _BRIDGE_SCRIPT = Path(__file__).parent / "_core" / "parse_bridge.py"
-_PH_VENV_PYTHON = "/tmp/ph_venv/bin/python3"
+_PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv/bin/python3"
 
 
 def _log(ctx, msg: str):
@@ -111,11 +111,19 @@ async def _parse_via_bridge(url: str) -> dict | None:
     """通过 ParseHub 桥接脚本解析链接"""
     if not _BRIDGE_SCRIPT.exists():
         return {"error": f"桥接脚本不存在: {_BRIDGE_SCRIPT}"}
-    python = _PH_VENV_PYTHON if Path(_PH_VENV_PYTHON).exists() else "python3.12"
-    if python == "python3.12":
-        import shutil
-        if not shutil.which("python3.12"):
-            return {"error": "Python3.12 不可用"}
+    # 查找 Python 3.12（带 parsehub 库）
+    import shutil
+    python = None
+    for candidate in [
+        _PH_VENV_PYTHON,
+        shutil.which("python3.12"),
+        shutil.which("python3"),
+    ]:
+        if candidate and Path(candidate).exists():
+            python = candidate
+            break
+    if not python:
+        return {"error": "找不到 Python 3.12"}
     try:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
