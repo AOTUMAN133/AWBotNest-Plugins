@@ -125,7 +125,15 @@ async def _parse_via_bridge(url: str) -> dict | None:
     if not _BRIDGE_SCRIPT.exists():
         return {"error": f"桥接脚本不存在: {_BRIDGE_SCRIPT}"}
     import shutil
-    python = shutil.which("python3.12") or shutil.which("python3")
+    python = None
+    for candidate in [
+        _PH_VENV_PYTHON,
+        "/usr/bin/python3.12",
+        shutil.which("python3.12"),
+    ]:
+        if candidate and Path(candidate).exists():
+            python = candidate
+            break
     if not python:
         return {"error": "找不到 Python 3.12"}
     # 如果找到的是 Hermes 的 Python 3.11，尝试找系统 Python 3.12
