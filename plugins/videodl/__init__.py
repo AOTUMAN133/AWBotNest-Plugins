@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
@@ -150,7 +150,7 @@ async def setup(ctx):
             return
 
         # ── 帮助命令 ──
-        if text == "/help" or text == "/start":
+        if text == "/jxsm":
             await message.reply(_get_help_text())
             return
 
