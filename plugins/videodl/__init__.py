@@ -107,28 +107,29 @@ def _get_help_text() -> str:
     )
 
 
+async def _parse_via_bridge(url: str) -> dict | None:
+    """通过 ParseHub 桥接脚本解析链接"""
+    if not _BRIDGE_SCRIPT.exists():
+        return None
+    python = _PH_VENV_PYTHON if Path(_PH_VENV_PYTHON).exists() else "python3.12"
+    try:
+        loop = asyncio.get_running_loop()
+        cp = await loop.run_in_executor(None, lambda: subprocess.run(
+            [python, str(_BRIDGE_SCRIPT), url],
+            capture_output=True, text=True, timeout=30,
+        ))
+        if cp.returncode != 0:
+            return None
+        result = json.loads(cp.stdout)
+        if "error" in result:
+            return None
+        return result
+    except Exception:
+        return None
+
+
 async def setup(ctx):
     ctx.log.info("聚合解析插件已加载 (v2.2.1, ParseHub多平台)")
-
-    async def _parse_via_bridge(url: str) -> dict | None:
-        """通过 ParseHub 桥接脚本解析链接"""
-        if not _BRIDGE_SCRIPT.exists():
-            return None
-        python = _PH_VENV_PYTHON if Path(_PH_VENV_PYTHON).exists() else "python3.12"
-        try:
-            loop = asyncio.get_running_loop()
-            cp = await loop.run_in_executor(None, lambda: subprocess.run(
-                [python, str(_BRIDGE_SCRIPT), url],
-                capture_output=True, text=True, timeout=30,
-            ))
-            if cp.returncode != 0:
-                return None
-            result = json.loads(cp.stdout)
-            if "error" in result:
-                return None
-            return result
-        except Exception:
-            return None
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def _handler(client, message):
