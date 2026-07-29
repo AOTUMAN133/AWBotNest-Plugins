@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.0.7",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -205,107 +205,128 @@ async def setup(ctx):
                 return
 
     # ── B站搜索 ──
-    async def _do_search(ctx, client, message, keyword):
-        msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
-        # 删除原始消息
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        results = []
-        bili = await _bili_search(keyword, count=ctx.config.get("search_count", 5))
-        for v in bili:
-            results.append({"platform": "B站", **v})
-        if not results:
-            await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
-            return
-        lines = [f"🔍 <b>搜索「{keyword}」结果</b>\n"]
-        for i, r in enumerate(results, 1):
-            title = r.get("title", "?")[:40]
-            lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
-        lines.append(f"\n回复序号选择下载（30秒内），或发送0取消")
-        await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
-        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id})
+    async def _do_search(ctx, client, message, keyword, page=1):
+            msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            results = []
+            count = ctx.config.get("search_count", 5)
+            bili = await _bili_search(keyword, page=page, count=count)
+            for v in bili:
+                results.append({"platform": "B站", **v})
+            if not results:
+                if page == 1:
+                    await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
+                else:
+                    await msg.edit(f"📄 没有更多结果了")
+                return
+            lines = [f"🔍 <b>搜索「{keyword}」结果</b>\n"]
+            for i, r in enumerate(results, 1):
+                title = r.get("title", "?")[:40]
+                lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
+            lines.append(f"\n回复序号选择下载（30秒内）")
+            if len(results) >= count:
+                lines.append(f"回复 <b>0</b> 取消，<b>n</b> 下一页")
+            else:
+                lines.append(f"回复 <b>0</b> 取消")
+            await msg.edit("\n".join(lines))
+            pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+            ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── 处理用户选择回复 ──
     @ctx.on_message(ctx.filters.text, group=1)
     async def _select_handler(client, message):
-        text = (message.text or "").strip()
-        if not text.isdigit():
-            return
+        text = (message.text or "").strip().lower()
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
         pending = ctx.kv.get(pending_key, None)
-        if pending:
-            if time.time() - pending.get("time", 0) > 30:
+        if not pending:
+            # 检查超限选择
+            pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
+            pending = ctx.kv.get(pending_key, None)
+            if pending:
+                if not text.isdigit():
+                    return
+                if time.time() - pending.get("time", 0) > 60:
+                    ctx.kv.delete(pending_key)
+                    return
+                idx = int(text)
                 ctx.kv.delete(pending_key)
-                return
-            idx = int(text)
-            if idx == 0:
-                ctx.kv.delete(pending_key)
-                await message.reply("已取消")
-                return
-            results = pending.get("results", [])
-            if 1 <= idx <= len(results):
-                ctx.kv.delete(pending_key)
-                r = results[idx - 1]
-                # 删除搜索结果列表和回复消息
+                if idx == 0:
+                    await message.reply("已取消")
+                    return
+                bvid = pending.get("bvid", "")
+                url = pending.get("url", "")
+                title = pending.get("title", "视频")
+                msg_id = pending.get("msg_id")
                 try:
-                    await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+                    ids = [msg_id, message.id] if msg_id else [message.id]
+                    await client.delete_messages(message.chat.id, ids)
                 except Exception:
                     try:
                         await message.delete()
                     except Exception:
                         pass
-                if r.get("bvid"):
-                    await _do_bili_download(ctx, client, message, r["bvid"])
-                return
+                if idx == 1:
+                    dl_msg = await message.reply(f"⏳ 正在下载 {title[:30]}...")
+                    dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
+                    success = await _download_file(url, dl_path)
+                    if success and dl_path.exists():
+                        try:
+                            await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
+                            try:
+                                await dl_msg.delete()
+                            except Exception:
+                                pass
+                            dl_path.unlink(missing_ok=True)
+                        except Exception as e:
+                            await message.reply(f"❌ 发送失败: {e}")
+                    else:
+                        await message.reply("❌ 下载失败")
+                elif idx == 2:
+                    link = f"https://www.bilibili.com/video/{bvid}"
+                    await message.reply(f"🔗 {link}")
+                elif idx == 3:
+                    await message.reply(f"📁 已发送到收藏夹")
+            return
 
-        pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
-        pending = ctx.kv.get(pending_key, None)
-        if pending:
-            if time.time() - pending.get("time", 0) > 60:
-                ctx.kv.delete(pending_key)
-                return
-            idx = int(text)
+        # 处理搜索选择
+        if time.time() - pending.get("time", 0) > 30:
             ctx.kv.delete(pending_key)
-            if idx == 0:
-                await message.reply("已取消")
-                return
-            bvid = pending.get("bvid", "")
-            url = pending.get("url", "")
-            title = pending.get("title", "视频")
-            msg_id = pending.get("msg_id")
-            # 删除选项消息和用户回复
+            return
+
+        # 下一页
+        if text == "n":
+            page = pending.get("page", 1) + 1
+            keyword = pending.get("keyword", "")
+            if keyword:
+                ctx.kv.delete(pending_key)
+                await _do_search(ctx, client, message, keyword, page=page)
+            return
+
+        if not text.isdigit():
+            return
+
+        idx = int(text)
+        if idx == 0:
+            ctx.kv.delete(pending_key)
+            await message.reply("已取消")
+            return
+
+        results = pending.get("results", [])
+        if 1 <= idx <= len(results):
+            ctx.kv.delete(pending_key)
+            r = results[idx - 1]
             try:
-                ids = [msg_id, message.id] if msg_id else [message.id]
-                await client.delete_messages(message.chat.id, ids)
+                await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
             except Exception:
                 try:
                     await message.delete()
                 except Exception:
                     pass
-            if idx == 1:
-                dl_msg = await message.reply(f"⏳ 正在下载 {title[:30]}...")
-                dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
-                success = await _download_file(url, dl_path)
-                if success and dl_path.exists():
-                    try:
-                        await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
-                        try:
-                            await dl_msg.delete()
-                        except Exception:
-                            pass
-                        dl_path.unlink(missing_ok=True)
-                    except Exception as e:
-                        await message.reply(f"❌ 发送失败: {e}")
-                else:
-                    await message.reply("❌ 下载失败")
-            elif idx == 2:
-                link = f"https://www.bilibili.com/video/{bvid}"
-                await message.reply(f"🔗 {link}")
-            elif idx == 3:
-                await message.reply(f"📁 已发送到收藏夹")
+            if r.get("bvid"):
+                await _do_bili_download(ctx, client, message, r["bvid"])
 
     # ── B站下载 ──
     async def _do_bili_download(ctx, client, message, bvid):
