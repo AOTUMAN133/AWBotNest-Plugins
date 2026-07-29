@@ -189,14 +189,10 @@ async def setup(ctx):
         text = (message.text or "").strip()
         if not text:
             return
-
-        # ── 搜索命令 ──
         if text.startswith("/sp "):
             kw = text[4:].strip()
             await _do_search(ctx, client, message, kw)
             return
-
-        # ── 自动检测B站链接 ──
         if ctx.config.get("auto_detect", True):
             bili_m = re.search(r"(?:bilibili\.com/video/|b23\.tv/)(BV\w+)", text)
             if bili_m:
@@ -206,34 +202,51 @@ async def setup(ctx):
 
     # ── B站搜索 ──
     async def _do_search(ctx, client, message, keyword, page=1):
-            msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            results = []
-            count = ctx.config.get("search_count", 5)
-            bili = await _bili_search(keyword, page=page, count=count)
-            for v in bili:
-                results.append({"platform": "B站", **v})
-            if not results:
-                if page == 1:
-                    await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
-                else:
-                    await msg.edit(f"📄 没有更多结果了")
-                return
-            lines = [f"🔍 <b>搜索「{keyword}」结果</b>\n"]
-            for i, r in enumerate(results, 1):
-                title = r.get("title", "?")[:40]
-                lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
-            lines.append(f"\n回复序号选择下载（30秒内）")
-            if len(results) >= count:
-                lines.append(f"回复 <b>0</b> 取消，<b>n</b> 下一页")
+        msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        results = []
+        count = ctx.config.get("search_count", 5)
+        bili = await _bili_search(keyword, page=page, count=count)
+        for v in bili:
+            results.append({"platform": "B站", **v})
+        if not results:
+            if page == 1:
+                await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
             else:
-                lines.append(f"回复 <b>0</b> 取消")
-            await msg.edit("\n".join(lines))
-            pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
-            ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+                await msg.edit(f"📄 没有更多结果了")
+            return
+        lines = [f"🔍 <b>搜索「{keyword}」结果</b>\n"]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "?")[:40]
+            lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
+        lines.append(f"\n回复序号选择下载（30秒内）")
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        buttons = []
+        if len(results) >= count:
+            buttons.append(InlineKeyboardButton("下一页 ➡️", callback_data=f"bp:{keyword}:{page+1}"))
+        buttons.append(InlineKeyboardButton("❌ 取消", callback_data="bc"))
+        await msg.edit("\n".join(lines), reply_markup=InlineKeyboardMarkup([buttons]))
+        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+
+    # ── 处理回调查询 ──
+    @client.on_callback_query()
+    async def _callback_handler(client, callback_query):
+        data = callback_query.data
+        if data == "bc":
+            await callback_query.edit_message_text("已取消")
+            return
+        if data.startswith("bp:"):
+            parts = data.split(":", 2)
+            if len(parts) == 3:
+                keyword = parts[1]
+                page = int(parts[2])
+                msg = callback_query.message
+                await _do_search(ctx, client, msg, keyword, page=page)
+            await callback_query.answer()
 
     # ── 处理用户选择回复 ──
     @ctx.on_message(ctx.filters.text, group=1)
@@ -242,7 +255,6 @@ async def setup(ctx):
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
         pending = ctx.kv.get(pending_key, None)
         if not pending:
-            # 检查超限选择
             pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
             pending = ctx.kv.get(pending_key, None)
             if pending:
@@ -291,18 +303,8 @@ async def setup(ctx):
                     await message.reply(f"📁 已发送到收藏夹")
             return
 
-        # 处理搜索选择
         if time.time() - pending.get("time", 0) > 30:
             ctx.kv.delete(pending_key)
-            return
-
-        # 下一页
-        if text == "n":
-            page = pending.get("page", 1) + 1
-            keyword = pending.get("keyword", "")
-            if keyword:
-                ctx.kv.delete(pending_key)
-                await _do_search(ctx, client, message, keyword, page=page)
             return
 
         if not text.isdigit():
@@ -331,7 +333,6 @@ async def setup(ctx):
     # ── B站下载 ──
     async def _do_bili_download(ctx, client, message, bvid):
         msg = await message.reply(f"⏳ 正在解析 B站视频 {bvid}...")
-        # 删除原始消息
         try:
             await message.delete()
         except Exception:
