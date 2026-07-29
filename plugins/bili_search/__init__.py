@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -259,6 +259,7 @@ async def setup(ctx):
                         pass
                 if r.get("bvid"):
                     await _do_bili_download(ctx, client, message, r["bvid"])
+                return
 
         pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
         pending = ctx.kv.get(pending_key, None)
