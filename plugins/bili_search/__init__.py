@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -207,6 +207,11 @@ async def setup(ctx):
     # ── B站搜索 ──
     async def _do_search(ctx, client, message, keyword):
         msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
+        # 删除原始消息
+        try:
+            await message.delete()
+        except Exception:
+            pass
         results = []
         bili = await _bili_search(keyword, count=ctx.config.get("search_count", 5))
         for v in bili:
@@ -283,6 +288,11 @@ async def setup(ctx):
     # ── B站下载 ──
     async def _do_bili_download(ctx, client, message, bvid):
         msg = await message.reply(f"⏳ 正在解析 B站视频 {bvid}...")
+        # 删除原始消息
+        try:
+            await message.delete()
+        except Exception:
+            pass
         info = await _bili_video_info(bvid)
         if not info:
             await msg.edit(f"❌ 无法获取视频信息")

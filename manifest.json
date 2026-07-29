@@ -50,7 +50,7 @@
   },
   "myzjh": {
     "name": "炸金花监控",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "监控HDSky群炸金花结算，支持统计查询"
   },
@@ -86,7 +86,7 @@
   },
   "myname": {
     "name": "自动报时昵称",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。"
   },
@@ -99,7 +99,7 @@
   },
   "bili_search": {
     "name": "B站搜索",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "path": "plugins/bili_search/"
