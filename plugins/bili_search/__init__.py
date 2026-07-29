@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 .sp 搜索，直接发送链接自动下载。",
     "scope": "user",
