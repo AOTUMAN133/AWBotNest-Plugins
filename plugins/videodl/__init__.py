@@ -107,27 +107,41 @@ def _get_help_text() -> str:
     )
 
 
+async def _get_python_version(python_path: str) -> str:
+    """获取 Python 版本号"""
+    try:
+        loop = asyncio.get_running_loop()
+        cp = await loop.run_in_executor(None, lambda: subprocess.run(
+            [python_path, "--version"],
+            capture_output=True, text=True, timeout=5,
+        ))
+        return cp.stdout.strip() or cp.stderr.strip()
+    except Exception:
+        return ""
+
+
 async def _parse_via_bridge(url: str) -> dict | None:
     """通过 ParseHub 桥接脚本解析链接"""
     if not _BRIDGE_SCRIPT.exists():
         return {"error": f"桥接脚本不存在: {_BRIDGE_SCRIPT}"}
     import shutil
-    python = None
-    for candidate in [
-        _PH_VENV_PYTHON,
-        shutil.which("python3.12"),
-    ]:
-        if candidate and Path(candidate).exists():
-            python = candidate
-            break
+    python = shutil.which("python3.12") or shutil.which("python3")
     if not python:
         return {"error": "找不到 Python 3.12"}
+    # 如果找到的是 Hermes 的 Python 3.11，尝试找系统 Python 3.12
+    py_version = await _get_python_version(python)
+    if py_version and py_version.startswith("3.11"):
+        sys_python = "/usr/bin/python3.12"
+        if Path(sys_python).exists():
+            python = sys_python
+    # 设置 PYTHONPATH 指向 venv 的 site-packages（确保 parsehub 可导入）
+    sp = str(Path("/root/.hermes/plugins_env/ph_venv/lib/python3.12/site-packages"))
     try:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
             [python, str(_BRIDGE_SCRIPT), url],
             capture_output=True, text=True, timeout=30,
-            env={**os.environ, "PYTHONPATH": str(Path(_PH_VENV_PYTHON).parent.parent / "lib/python3.12/site-packages")},
+            env={**os.environ, "PYTHONPATH": sp},
         ))
         if cp.returncode != 0:
             err_msg = cp.stderr[:200] if cp.stderr else ""
