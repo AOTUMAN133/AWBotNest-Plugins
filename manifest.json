@@ -29,7 +29,7 @@
   },
   "mypmcaptcha": {
     "name": "私聊拦截",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "path": "plugins/mypmcaptcha/"
@@ -50,7 +50,7 @@
   },
   "myzjh": {
     "name": "炸金花监控",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "监控HDSky群炸金花结算，支持统计查询"
   },
@@ -62,13 +62,13 @@
   },
   "myskyanswer": {
     "name": "天空自动答题",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。"
   },
   "mysummary": {
     "name": "AI总结",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "群消息总结。发送 .sum [数量] 快速总结最近N条消息，支持定时总结任务。"
   },
@@ -86,7 +86,7 @@
   },
   "myname": {
     "name": "自动报时昵称",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。"
   },
@@ -99,7 +99,7 @@
   },
   "bili_search": {
     "name": "B站搜索",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "path": "plugins/bili_search/"
