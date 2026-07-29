@@ -134,6 +134,9 @@ async def _parse_via_bridge(url: str) -> dict | None:
         sys_python = "/usr/bin/python3.12"
         if Path(sys_python).exists():
             python = sys_python
+            py_version = await _get_python_version(python)
+    # 调试：确认使用的 Python
+    dbg = f"Python={python}, 版本={py_version}"
     try:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
@@ -148,17 +151,17 @@ async def _parse_via_bridge(url: str) -> dict | None:
                     err_msg = err_data.get("error", cp.stdout[:200])
                 except Exception:
                     err_msg = cp.stdout[:200]
-            return {"error": f"桥接脚本退出码={cp.returncode}, 错误={err_msg}"}
+            return {"error": f"桥接脚本退出码={cp.returncode}, 错误={err_msg} ({dbg})"}
         result = json.loads(cp.stdout)
         if "error" in result:
-            return {"error": f"桥接返回: {result['error']}"}
+            return {"error": f"桥接返回: {result['error']} ({dbg})"}
         return result
     except json.JSONDecodeError as e:
-        return {"error": f"JSON解析失败: {e}"}
+        return {"error": f"JSON解析失败: {e} ({dbg})"}
     except subprocess.TimeoutExpired:
-        return {"error": "桥接脚本执行超时"}
+        return {"error": f"桥接脚本执行超时 ({dbg})"}
     except Exception as e:
-        return {"error": f"桥接异常: {e}"}
+        return {"error": f"桥接异常: {e} ({dbg})"}
 
 
 async def setup(ctx):
