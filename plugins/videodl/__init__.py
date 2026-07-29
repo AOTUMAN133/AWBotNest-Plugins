@@ -131,7 +131,14 @@ async def _parse_via_bridge(url: str) -> dict | None:
             capture_output=True, text=True, timeout=30,
         ))
         if cp.returncode != 0:
-            return {"error": f"桥接脚本退出码={cp.returncode}, stderr={cp.stderr[:200]}"}
+            err_msg = cp.stderr[:200] if cp.stderr else ""
+            if not err_msg and cp.stdout:
+                try:
+                    err_data = json.loads(cp.stdout)
+                    err_msg = err_data.get("error", cp.stdout[:200])
+                except Exception:
+                    err_msg = cp.stdout[:200]
+            return {"error": f"桥接脚本退出码={cp.returncode}, 错误={err_msg}"}
         result = json.loads(cp.stdout)
         if "error" in result:
             return {"error": f"桥接返回: {result['error']}"}
