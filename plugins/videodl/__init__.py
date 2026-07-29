@@ -111,13 +111,11 @@ async def _parse_via_bridge(url: str) -> dict | None:
     """通过 ParseHub 桥接脚本解析链接"""
     if not _BRIDGE_SCRIPT.exists():
         return {"error": f"桥接脚本不存在: {_BRIDGE_SCRIPT}"}
-    # 查找 Python 3.12（带 parsehub 库）
     import shutil
     python = None
     for candidate in [
         _PH_VENV_PYTHON,
         shutil.which("python3.12"),
-        shutil.which("python3"),
     ]:
         if candidate and Path(candidate).exists():
             python = candidate
@@ -129,6 +127,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
             [python, str(_BRIDGE_SCRIPT), url],
             capture_output=True, text=True, timeout=30,
+            env={**os.environ, "PYTHONPATH": str(Path(_PH_VENV_PYTHON).parent.parent / "lib/python3.12/site-packages")},
         ))
         if cp.returncode != 0:
             err_msg = cp.stderr[:200] if cp.stderr else ""
