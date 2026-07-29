@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.1.1",
+    "version": "2.2.0",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
@@ -37,11 +37,6 @@ __plugin__ = {
                 {"value": "force", "label": "直接发送"},
                 {"value": "notify", "label": "提示用户"},
             ]
-        },
-        "auto_detect": {
-            "type": "boolean", "default": True, "label": "自动检测链接",
-            "section": "基本", "order": 1,
-            "help": "群内发送链接自动解析"
         },
         "view_logs": {
             "type": "action", "label": "📋 查看日志", "section": "调试",
@@ -99,8 +94,7 @@ def _get_help_text() -> str:
     return (
         "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
         "📌 <b>使用方法</b>\n"
-        "  /jx <链接或分享文本>  — 解析并下载\n"
-        "  直接发送链接 — 自动检测并解析\n\n"
+        "  /jx <链接或分享文本>  — 解析并下载\n\n"
         "📌 <b>支持平台</b>\n"
         "  🎬 抖音 · B站 · YouTube · TikTok · 快手\n"
         "  📷 小红书 · 微博 · Instagram · Twitter/X\n"
@@ -115,7 +109,7 @@ def _get_help_text() -> str:
 
 
 async def setup(ctx):
-    ctx.log.info("聚合解析插件已加载 (v2.0.0, ParseHub多平台)")
+    ctx.log.info("聚合解析插件已加载 (v2.1.1, ParseHub多平台)")
 
     async def _parse_via_bridge(url: str) -> dict | None:
         """通过 ParseHub 桥接脚本解析链接"""
@@ -153,18 +147,6 @@ async def setup(ctx):
         if text == "/jxsm":
             await message.reply(_get_help_text())
             return
-
-        # ── 自动检测链接 ──
-        if ctx.config.get("auto_detect", True):
-            multi_m = re.search(
-                r"(?:douyin\.com|v\.douyin|iesdouyin|youtube\.com|youtu\.be|"
-                r"xiaohongshu\.com|xhs\.cn|xhslink|weibo\.com|twitter\.com|x\.com|"
-                r"instagram\.com|b23\.tv|t\.co|kuaishou\.com|"
-                r"zhihu\.com|tieba\.baidu|facebook\.com|tiktok\.com)", text
-            )
-            if multi_m:
-                await _do_parse(ctx, client, message, text)
-                return
 
     # ── 统一解析 ──
     async def _do_parse(ctx, client, message, content):
