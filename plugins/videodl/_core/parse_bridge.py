@@ -5,14 +5,31 @@ import json
 import sys
 import os
 
-# 确保在 Python 3.12 的 venv 中运行
 os.environ.setdefault("PARSEHUB_DOUYIN_DEVICE_ID", "")
 os.environ.setdefault("PARSEHUB_DOUYIN_IID", "")
 
 async def parse_url(url: str) -> dict:
-    from parsehub import ParseHub
+    from parsehub import ParseHub, UnknownPlatform
     ph = ParseHub()
-    result = await ph.parse(url)
+    
+    # 先检查平台是否支持
+    platform = ph.get_platform(url)
+    if not platform:
+        return {"error": f"不支持的平台: {url}"}
+    
+    # 先解析短链，获取原始链接
+    try:
+        raw_url = await ph.get_raw_url(url, clean_all=False)
+        if raw_url and raw_url != url:
+            url = raw_url
+    except Exception:
+        pass
+    
+    # 解析
+    try:
+        result = await ph.parse(url)
+    except Exception as e:
+        return {"error": str(e)}
     
     out = {
         "platform": result.platform.id if result.platform else "unknown",

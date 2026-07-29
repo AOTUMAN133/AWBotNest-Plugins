@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
@@ -99,7 +99,6 @@ def _get_help_text() -> str:
         "  🎬 抖音 · B站 · YouTube · TikTok · 快手\n"
         "  📷 小红书 · 微博 · Instagram · Twitter/X\n"
         "  📝 知乎 · 贴吧 · 微信公众号 · 酷安\n"
-        "  🌐 Facebook · Threads · Snapchat · 皮皮虾\n"
         "  🎮 小黑盒 · 最右\n\n"
         "📌 <b>说明</b>\n"
         "  支持的媒体类型：视频、图文、音乐\n"
@@ -109,7 +108,7 @@ def _get_help_text() -> str:
 
 
 async def setup(ctx):
-    ctx.log.info("聚合解析插件已加载 (v2.1.1, ParseHub多平台)")
+    ctx.log.info("聚合解析插件已加载 (v2.2.1, ParseHub多平台)")
 
     async def _parse_via_bridge(url: str) -> dict | None:
         """通过 ParseHub 桥接脚本解析链接"""
