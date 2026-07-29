@@ -130,6 +130,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
         _PH_VENV_PYTHON,
         "/usr/bin/python3.12",
         shutil.which("python3.12"),
+        shutil.which("python3"),
     ]:
         if candidate and Path(candidate).exists():
             python = candidate
