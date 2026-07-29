@@ -150,7 +150,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
         loop = asyncio.get_running_loop()
         cp = await loop.run_in_executor(None, lambda: subprocess.run(
             [python, str(_BRIDGE_SCRIPT), url],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=120,
         ))
         if cp.returncode != 0:
             err_msg = cp.stderr[:200] if cp.stderr else ""
