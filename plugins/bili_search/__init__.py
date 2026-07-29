@@ -223,30 +223,13 @@ async def setup(ctx):
             title = r.get("title", "?")[:40]
             lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
         lines.append(f"\n回复序号选择下载（30秒内）")
-        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        buttons = []
         if len(results) >= count:
-            buttons.append(InlineKeyboardButton("下一页 ➡️", callback_data=f"bp:{keyword}:{page+1}"))
-        buttons.append(InlineKeyboardButton("❌ 取消", callback_data="bc"))
-        await msg.edit("\n".join(lines), reply_markup=InlineKeyboardMarkup([buttons]))
+            lines.append(f"回复 <b>0</b> 取消，<b>n</b> 下一页")
+        else:
+            lines.append(f"回复 <b>0</b> 取消")
+        await msg.edit("\n".join(lines))
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
-
-    # ── 处理回调查询 ──
-    @client.on_callback_query()
-    async def _callback_handler(client, callback_query):
-        data = callback_query.data
-        if data == "bc":
-            await callback_query.edit_message_text("已取消")
-            return
-        if data.startswith("bp:"):
-            parts = data.split(":", 2)
-            if len(parts) == 3:
-                keyword = parts[1]
-                page = int(parts[2])
-                msg = callback_query.message
-                await _do_search(ctx, client, msg, keyword, page=page)
-            await callback_query.answer()
 
     # ── 处理用户选择回复 ──
     @ctx.on_message(ctx.filters.text, group=1)
@@ -305,6 +288,14 @@ async def setup(ctx):
 
         if time.time() - pending.get("time", 0) > 30:
             ctx.kv.delete(pending_key)
+            return
+
+        if text == "n":
+            page = pending.get("page", 1) + 1
+            keyword = pending.get("keyword", "")
+            if keyword:
+                ctx.kv.delete(pending_key)
+                await _do_search(ctx, client, message, keyword, page=page)
             return
 
         if not text.isdigit():
