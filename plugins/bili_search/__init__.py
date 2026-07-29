@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -275,13 +275,27 @@ async def setup(ctx):
             bvid = pending.get("bvid", "")
             url = pending.get("url", "")
             title = pending.get("title", "视频")
+            msg_id = pending.get("msg_id")
+            # 删除选项消息和用户回复
+            try:
+                ids = [msg_id, message.id] if msg_id else [message.id]
+                await client.delete_messages(message.chat.id, ids)
+            except Exception:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
             if idx == 1:
-                await message.reply(f"⏳ 正在下载 {title[:30]}...")
+                dl_msg = await message.reply(f"⏳ 正在下载 {title[:30]}...")
                 dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
                 success = await _download_file(url, dl_path)
                 if success and dl_path.exists():
                     try:
                         await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
+                        try:
+                            await dl_msg.delete()
+                        except Exception:
+                            pass
                         dl_path.unlink(missing_ok=True)
                     except Exception as e:
                         await message.reply(f"❌ 发送失败: {e}")
@@ -337,7 +351,7 @@ async def setup(ctx):
                     f"0 - 取消"
                 )
                 pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
-                ctx.kv.set(pending_key, {"bvid": bvid, "url": urls[0]["url"], "title": title, "time": time.time()})
+                ctx.kv.set(pending_key, {"bvid": bvid, "url": urls[0]["url"], "title": title, "time": time.time(), "msg_id": msg.id})
                 return
         await msg.edit(f"⏳ 正在下载 {title}...")
         dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
