@@ -36,24 +36,42 @@ __plugin__ = {
 def _now() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
-
 async def _run_ytdlp(args: list, timeout: int = 120) -> tuple[str, str]:
+    """运行 yt-dlp 并返回 (stdout, stderr)"""
     yt_path = os.path.expanduser("~/.local/bin/yt-dlp")
     if not os.path.isfile(yt_path):
         yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
     if not os.path.isfile(yt_path):
         yt_path = "yt-dlp"
-    proc = await asyncio.create_subprocess_exec(
-        yt_path, *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    cmd = [yt_path] + args
     try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
     except asyncio.TimeoutError:
-        proc.kill()
+        try:
+            proc.kill()
+        except Exception:
+            pass
         return "", "timeout"
-    return stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        # yt-dlp not found, try with shell
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                f"{yt_path} {' '.join(args)}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
+        except Exception as e:
+            return "", f"shell error: {e}"
+    except Exception as e:
+        return "", f"error: {e}"
 
 
 async def _search_music(query: str, max_results: int = _SEARCH_COUNT) -> list[dict]:
@@ -103,9 +121,16 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
         url,
     ], timeout=300)
 
+    # 写日志
+    log_path = output_dir / "_ytdlp_log.txt"
+    try:
+        log_path.write_text(f"stdout({len(stdout)}): {stdout[:2000]}\n\nstderr({len(stderr)}): {stderr[:2000]}")
+    except Exception:
+        pass
+
     # 输出目录快照
     all_files = list(output_dir.iterdir())
-    mp3_files = [f for f in all_files if f.suffix == ".mp3"]
+    mp3_files = [f for f in all_files if f.suffix == ".mp3" and f.name != "_ytdlp_log.txt"]
     mp3_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
     if mp3_files:
@@ -118,10 +143,31 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
             p = Path(line)
             if p.exists():
                 return p
-            # 尝试改后缀为 .mp3
             p_mp3 = p.with_suffix(".mp3")
             if p_mp3.exists():
                 return p_mp3
+
+    # 如果 async 方式失败，尝试同步方式
+    try:
+        import subprocess
+        yt_path = os.path.expanduser("~/.local/bin/yt-dlp")
+        if not os.path.isfile(yt_path):
+            yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
+        if not os.path.isfile(yt_path):
+            yt_path = "yt-dlp"
+        cmd = [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
+               "-o", template, "--no-playlist", "--no-warnings", url]
+        result = await asyncio.to_thread(lambda: subprocess.run(cmd, capture_output=True, timeout=300, text=True))
+        log_path.write_text(log_path.read_text() + f"\n\n--- sync fallback ---\nstdout: {result.stdout[:1000]}\nstderr: {result.stderr[:1000]}")
+        mp3_files = [f for f in output_dir.iterdir() if f.suffix == ".mp3"]
+        mp3_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        if mp3_files:
+            return mp3_files[0]
+    except Exception as e:
+        try:
+            log_path.write_text(log_path.read_text() + f"\n\nsync fallback error: {e}")
+        except Exception:
+            pass
 
     return None
 
