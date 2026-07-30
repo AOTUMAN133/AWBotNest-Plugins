@@ -130,7 +130,7 @@ _QA_PROMPT = (
 __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
     "author": "凹凸曼",
     "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
@@ -207,7 +207,7 @@ async def setup(ctx):
             pass
 
     # ── 命令处理 ──
-    @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing, group=0)
+    @ctx.on_message(ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         if not ctx.config.get("enable_summary", True):
             return
@@ -218,40 +218,80 @@ async def setup(ctx):
         # 只在私聊或群聊中处理
         chat_id = str(message.chat.id)
 
-        # .sum [数量] — 快速总结
+        # .sumsm — 帮助
+        if text == ".sumsm":
+            help_text = (
+                "📊 <b>AI总结 v2.0</b>\n\n"
+                "📌 <b>总结</b>\n"
+                "  <code>.sum 50</code> — 总结最近50条\n"
+                "  <code>.sum h 24</code> — 总结最近24小时\n\n"
+                "🤔 <b>问答</b>\n"
+                "  <code>.ask 今天聊了什么</code> — 基于存储消息回答问题\n\n"
+                "🔍 <b>搜索</b>\n"
+                "  <code>.search 关键词</code> — 搜索存储的消息\n\n"
+                "⏰ <b>定时任务</b>\n"
+                "  <code>.sum add 群组 2h 100</code> — 添加定时总结\n"
+                "  <code>.sum list</code> — 查看任务\n"
+                "  <code>.sum run 1</code> — 立即执行\n"
+                "  <code>.sum del 1</code> — 删除任务\n\n"
+                "⚙️ 可在插件配置中开启自动存储和定时总结"
+            )
+            await message.reply(help_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        # .sum [数量] — 快速总结（自动清理）
         m = re.match(r"^\.sum\s*(\d+)?$", text)
         if m:
             count = int(m.group(1)) if m.group(1) else 50
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, count)
+            await wait.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
             if result["success"]:
-                await wait.edit_text(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
+                await client.send_message(chat_id, f"📊 {result['title']} · {_now()}\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
-        # .sum h 小时数 — 按时间总结
+        # .sum h 小时数 — 按时间总结（自动清理）
         m = re.match(r"^\.sum\s+h\s*(\d+)$", text)
         if m:
             hours = int(m.group(1))
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, 500, hours)
+            await wait.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
             if result["success"]:
-                await wait.edit_text(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
+                await client.send_message(chat_id, f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
-        # .ask 问题 — 基于存储的消息回答问题
+        # .ask 问题 — 基于存储的消息回答问题（自动清理）
         m = re.match(r"^\.ask\s+(.+)$", text)
         if m:
             question = m.group(1).strip()
             wait = await message.reply("⏳ 正在思考...")
             result = await _ask_question(ctx, client, chat_id, question)
+            await wait.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
             if result["success"]:
-                await wait.edit_text(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
+                await client.send_message(chat_id, f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
         # .search 关键词 — 搜索存储的消息
@@ -261,6 +301,10 @@ async def setup(ctx):
             results = _search_msgs(chat_id, keyword)
             if not results:
                 await message.reply(f"🔍 未找到包含「{keyword}」的消息")
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
                 return
             lines = [f"🔍 <b>搜索「{keyword}」</b> — 共{len(results)}条\n"]
             for r in results[:15]:
@@ -268,10 +312,14 @@ async def setup(ctx):
                 lines.append(f"[{_fmt_ts(r['ts'])}] {r['user']}: {r['text'][:80]}\n<a href=\"{link}\">🔗</a>")
             if len(results) > 15:
                 lines.append(f"\n...还有{len(results)-15}条")
-            await message.reply("\n".join(lines))
+            await client.send_message(chat_id, "\n".join(lines))
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
 
-        # .sum help — 帮助
+        # .sum help — 帮助（保留原命令兼容）
         if text == ".sum help":
             help_text = (
                 "📊 <b>AI总结 v2.0</b>\n\n"
