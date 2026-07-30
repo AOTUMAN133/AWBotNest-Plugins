@@ -246,9 +246,16 @@ async def setup(ctx):
             return
 
         if text == ".logs":
+            if not ctx.kv:
+                await message.reply("❌ KV不可用")
+                return
             logs = ctx.kv.get(_KV_LOGS, [])
             if not logs:
-                await message.reply("暂无日志")
+                # 尝试检查是否有日志被写入
+                test_key = f"{_KV_LOGS}_test"
+                ctx.kv.set(test_key, "ok")
+                test_val = ctx.kv.get(test_key, "")
+                await message.reply(f"暂无日志 (KV测试: {test_val})")
                 return
             lines = ["📋 <b>最近日志</b>\n"]
             for log in logs[-20:]:
