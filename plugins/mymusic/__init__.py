@@ -182,41 +182,47 @@ async def _do_download(ctx, client, chat_id, message, results, idx, page=None):
 async def setup(ctx):
     ctx.log.info("音乐搜索下载 v1.1.0 已加载")
 
+    # ── 独立处理器：回复搜索结果（优先级最高） ──
+    @ctx.on_message(ctx.filters.text, group=-100)
+    async def reply_handler(client, message):
+        text = (message.text or "").strip()
+        chat_id = str(message.chat.id)
+        if not message.reply_to_message_id:
+            return
+        search_data = ctx.kv.get(f"music_search_{chat_id}", {})
+        results = search_data.get("results", [])
+        if not results:
+            return
+        ctx.log.info(f"mymusic reply: text='{text}' reply_to={message.reply_to_message_id}")
+        if text.isdigit():
+            idx = int(text) - 1
+            ctx.log.info(f"mymusic download idx={idx}")
+            await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
+            return
+        if text.lower() in ("n", "next", "p", "prev"):
+            ctx.log.info(f"mymusic page: {text.lower()}")
+            page = search_data.get("page", 0)
+            if text.lower() in ("n", "next"):
+                page += 1
+            else:
+                page -= 1
+            total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
+            page = max(0, min(page, total_pages - 1))
+            search_data["page"] = page
+            ctx.kv.set(f"music_search_{chat_id}", search_data)
+            query = search_data.get("query", "")
+            result_text = _build_result_page(results, page, query)
+            await message.reply(result_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
     @ctx.on_message(ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
         chat_id = str(message.chat.id)
-
-        # ── 回复搜索结果消息：编号下载 / n/p翻页 ──
-        if message.reply_to_message_id:
-            search_data = ctx.kv.get(f"music_search_{chat_id}", {})
-            results = search_data.get("results", [])
-            if results:
-                ctx.log.info(f"mymusic reply: text='{text}' reply_to={message.reply_to_message_id}")
-                if text.isdigit():
-                    idx = int(text) - 1
-                    ctx.log.info(f"mymusic download idx={idx}")
-                    await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
-                    return
-                if text.lower() in ("n", "next", "p", "prev"):
-                    ctx.log.info(f"mymusic page: {text.lower()}")
-                    page = search_data.get("page", 0)
-                    if text.lower() in ("n", "next"):
-                        page += 1
-                    else:
-                        page -= 1
-                    total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
-                    page = max(0, min(page, total_pages - 1))
-                    search_data["page"] = page
-                    ctx.kv.set(f"music_search_{chat_id}", search_data)
-                    query = search_data.get("query", "")
-                    result_text = _build_result_page(results, page, query)
-                    await message.reply(result_text)
-                    try:
-                        await message.delete()
-                    except Exception:
-                        pass
-                    return
 
         if not text.startswith("."):
             return
