@@ -1,14 +1,37 @@
 # -*- coding: utf-8 -*-
 # videodl 原生引擎（纯Python，100+平台）
 # 使用 CharlesPikachu/videodl 的 VideoClient
+# 自动安装依赖，无需手动 pip
 
 import asyncio
+import subprocess
+import sys
 
-try:
-    from videodl.modules import VideoClientBuilder, BuildVideoClient
-    HAS_VIDEODL = True
-except ImportError:
-    HAS_VIDEODL = False
+
+def _auto_install() -> bool:
+    """自动安装 videofetch 依赖"""
+    try:
+        from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    # 尝试 pip 安装
+    python = sys.executable
+    for installer in [
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q"],
+        ["uv", "pip", "install", "videofetch==0.9.1"],
+    ]:
+        try:
+            subprocess.run(installer, capture_output=True, text=True, timeout=120)
+            from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
+            return True
+        except Exception:
+            continue
+    return False
+
+
+HAS_VIDEODL = _auto_install()
 
 
 # 平台名映射
@@ -63,6 +86,8 @@ async def parse_via_videodl(url: str) -> dict | None:
     if not HAS_VIDEODL:
         return {"error": "videodl 引擎未安装"}
 
+    from videodl.modules import VideoClientBuilder, BuildVideoClient
+
     loop = asyncio.get_running_loop()
 
     # 找出匹配的客户端
@@ -79,7 +104,7 @@ async def parse_via_videodl(url: str) -> dict | None:
 
     for vc_name in matched_clients:
         try:
-            result = await loop.run_in_executor(None, _try_parse, vc_name, url)
+            result = await loop.run_in_executor(None, _try_parse, vc_name, url, BuildVideoClient)
             if result:
                 return result
         except Exception:
@@ -88,7 +113,7 @@ async def parse_via_videodl(url: str) -> dict | None:
     return None
 
 
-def _try_parse(vc_name: str, url: str) -> dict | None:
+def _try_parse(vc_name: str, url: str, BuildVideoClient) -> dict | None:
     """尝试用指定客户端解析"""
     import time
     start = time.time()
