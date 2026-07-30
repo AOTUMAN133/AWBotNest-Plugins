@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 
 try:
     from ._videodl_engine import parse_via_videodl, HAS_VIDEODL
-except ImportError:
+except Exception:
     parse_via_videodl = None
     HAS_VIDEODL = False
 
