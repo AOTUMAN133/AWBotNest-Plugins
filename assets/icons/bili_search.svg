@@ -6,10 +6,13 @@
     </linearGradient>
   </defs>
   <rect width="128" height="128" rx="24" fill="url(#bg)"/>
-  <!-- B站Logo -->
-  <rect x="34" y="44" width="60" height="44" rx="8" fill="none" stroke="#22d3ee" stroke-width="2.5"/>
-  <circle cx="48" cy="62" r="6" fill="#22d3ee" opacity="0.8"/>
-  <circle cx="80" cy="62" r="6" fill="#22d3ee" opacity="0.8"/>
-  <path d="M42,50 L42,38 M86,50 L86,38" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round"/>
-  <text x="64" y="112" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">B站搜索</text>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="none" stroke="#fb7299" stroke-width="1" opacity="0.1"/>
+  
+  <g transform="translate(64,50)">
+    <rect x="-28" y="-22" width="56" height="40" rx="6" fill="none" stroke="#fb7299" stroke-width="2.5"/>
+    <circle cx="-12" cy="0" r="5" fill="#fb7299" opacity="0.8"/>
+    <circle cx="12" cy="0" r="5" fill="#fb7299" opacity="0.8"/>
+    <path d="M-20,-18 L-20,-28 M20,-18 L20,-28" stroke="#fb7299" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <text x="64" y="114" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">B站搜索</text>
 </svg>

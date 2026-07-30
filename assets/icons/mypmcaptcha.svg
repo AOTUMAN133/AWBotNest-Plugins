@@ -1,11 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#2a2a2a"/><stop offset="100%" stop-color="#1a1a2e"/></linearGradient></defs>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128">
+      <stop offset="0%" stop-color="#2a2a2a"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+  </defs>
   <rect width="128" height="128" rx="24" fill="url(#bg)"/>
-  <rect x="32" y="36" width="64" height="56" rx="8" fill="none" stroke="#f472b6" stroke-width="2.5"/>
-  <path d="M50,50 L78,50 M50,58 L70,58 M50,66 L74,66" stroke="#f472b6" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
-  <path d="M38,36 L38,28 L90,28 L90,36" fill="none" stroke="#f472b6" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="52" cy="78" r="10" fill="none" stroke="#f472b6" stroke-width="2"/>
-  <text x="52" y="82" text-anchor="middle" fill="#f472b6" font-size="12" font-weight="bold">✓</text>
-
-  <text x="64" y="112" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">私聊验证</text>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="none" stroke="#f472b6" stroke-width="1" opacity="0.1"/>
+  
+  <g transform="translate(64,50)">
+    <rect x="-22" y="-18" width="44" height="36" rx="6" fill="none" stroke="#f472b6" stroke-width="2.5"/>
+    <path d="M-12,-8 L12,-8 M-12,-2 L8,-2 M-12,4 L10,4" stroke="#f472b6" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="-8" cy="14" r="8" fill="none" stroke="#f472b6" stroke-width="2"/>
+    <path d="M-11,14 L-8,17 L-5,11" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="64" y="114" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">私聊验证</text>
 </svg>
