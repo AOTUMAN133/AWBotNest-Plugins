@@ -55,6 +55,7 @@ __plugin__ = {
 _KV_LOGS = "msg_relay_logs"
 _KV_STATUS = "msg_relay_status"
 _client_ref = None
+_client_info = {}
 _running = False
 
 
@@ -109,10 +110,26 @@ async def setup(ctx):
     # 获取 client 引用
     @ctx.on_message(ctx.filters.text, group=999)
     async def _store_client(client, message):
-        global _client_ref
+        global _client_ref, _client_info
         if _client_ref is None:
             _client_ref = client
             _log(ctx, "✅ 已获取客户端连接")
+            # 尝试获取账号信息
+            try:
+                me = await client.get_me()
+                if me:
+                    _client_info = {
+                        "id": me.id,
+                        "name": me.first_name or "",
+                        "phone": me.phone_number or "",
+                        "username": me.username or "",
+                    }
+                    _log(ctx, f"📋 当前账号: {me.first_name} ({me.phone_number or me.id})")
+                    # 更新状态显示
+                    info_text = f"账号: {me.first_name} | {me.phone_number or me.id}"
+                    ctx.update_config({"status_info": info_text})
+            except Exception as e:
+                _log(ctx, f"⚠️ 获取账号信息失败: {e}")
 
     # 账号信息 API
     @ctx.on_api("/get_accounts_info", methods=["GET"])
@@ -121,7 +138,6 @@ async def setup(ctx):
         result = []
         for i, app in enumerate(apps):
             info = {"index": i, "label": f"第{i+1}个账号"}
-            # 尝试获取账号信息
             try:
                 if hasattr(app, 'get_me'):
                     me = await app.get_me()
@@ -204,11 +220,42 @@ async def setup(ctx):
                 "  2. 正常打字，点发送\n"
                 "  3. 发不出去 → Telegram 自动保存为草稿\n"
                 "  4. 插件检测到草稿 → 用小号发到群里\n\n"
-                "📌 <b>查看状态：</b>\n"
-                "  插件配置 → 运行状态\n"
-                "  或 API: /get_logs, /get_accounts_info\n\n"
+                "📌 <b>命令：</b>\n"
+                "  .whoami  — 查看当前账号信息\n"
+                "  .logs    — 查看最近日志\n\n"
                 "⚙️ 可在插件配置中调整检测间隔和账号"
             )
+            return
+
+        if text == ".whoami":
+            global _client_info
+            apps = list(ctx.user_apps or [])
+            lines = ["📋 <b>账号信息</b>\n"]
+            for i, app in enumerate(apps):
+                info = f"第{i+1}个账号"
+                try:
+                    if hasattr(app, 'get_me'):
+                        me = await app.get_me()
+                        if me:
+                            info += f": {me.first_name or ''} ({me.phone_number or me.id})"
+                except Exception:
+                    pass
+                lines.append(f"  {info}")
+            if _client_info:
+                lines.append(f"\n当前连接: {_client_info.get('name','')}")
+            await message.reply("\n".join(lines))
+            return
+
+        if text == ".logs":
+            logs = ctx.kv.get(_KV_LOGS, [])
+            if not logs:
+                await message.reply("暂无日志")
+                return
+            lines = ["📋 <b>最近日志</b>\n"]
+            for log in logs[-20:]:
+                lines.append(f"[{log['t']}] {log['m']}")
+            await message.reply("\n".join(lines))
+            return
 
     ctx.log.info("代发助手已就绪")
 
