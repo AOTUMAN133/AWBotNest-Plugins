@@ -13,16 +13,22 @@ from pathlib import Path
 
 TZ = timezone(timedelta(hours=8))
 
+try:
+    from ._videodl_engine import parse_via_videodl, HAS_VIDEODL
+except ImportError:
+    parse_via_videodl = None
+    HAS_VIDEODL = False
+
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
-    "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/YouTube/小红书/Twitter/微博等1000+平台（ParseHub+yt-dlp双引擎）。",
+    "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["SignerPy>=0.12"],
+    "requirements": ["SignerPy>=0.12", "videodl==0.9.1"],
     "config_schema": {
         "max_size": {
             "type": "number", "default": 50, "label": "最大文件大小(MB)",
@@ -100,17 +106,21 @@ def _get_help_text() -> str:
         "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
         "📌 <b>使用方法</b>\n"
         "  /jx <链接或分享文本>  — 解析并下载\n\n"
-        "📌 <b>支持平台（双引擎）</b>\n"
-        "  🇨🇳 <b>ParseHub 引擎</b>（中文平台）\n"
-        "  🎬 抖音 · B站 · 快手 · 小红书\n"
-        "  📷 微博 · 知乎 · 贴吧 · 微信公众号\n"
-        "  🎮 小黑盒 · 最右 · 酷安\n\n"
-        "  🌍 <b>yt-dlp 引擎</b>（海外平台，1752个网站）\n"
+        "📌 <b>三引擎加持，智能选择</b>\n"
+        "  🔵 <b>引擎1: videodl 原生</b>（纯Python，优先）\n"
+        "  🇨🇳 抖音 · B站 · 快手 · 小红书 · 微博\n"
+        "  🎬 爱奇艺 · 腾讯视频 · 优酷 · 芒果TV\n"
+        "  📺 知乎 · 贴吧 · 虎牙 · A站 · 开眼\n"
+        "  🌍 YouTube · Dailymotion · Reddit · TED\n"
+        "  📌 共 100+ 平台（不依赖外部工具）\n\n"
+        "  🟢 <b>引擎2: ParseHub 桥接</b>（中文平台补强）\n"
+        "  🎯 公众号 · 小黑盒 · 酷安 · 更多中文站\n\n"
+        "  🟡 <b>引擎3: yt-dlp</b>（海外平台，1752个网站）\n"
         "  ▶️ YouTube · Twitter/X · Instagram · Facebook\n"
         "  🎵 TikTok · SoundCloud · Vimeo · Twitch\n"
         "  📌 Reddit · Pinterest · Imgur · Flickr\n\n"
         "📌 <b>说明</b>\n"
-        "  自动选择引擎：中文链接走 ParseHub，海外链接走 yt-dlp\n"
+        "  自动按引擎1→2→3顺序尝试，直到成功\n"
         "  支持的媒体类型：视频、图文、音乐\n"
         "  超过50MB自动提示处理方式\n"
         "  可在插件配置中调整大小限制"
@@ -227,7 +237,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
 
 
 async def setup(ctx):
-    ctx.log.info("聚合解析插件已加载 (v2.2.1, ParseHub多平台)")
+    ctx.log.info("聚合解析插件已加载 (v2.4.0, videodl原生+ParseHub+yt-dlp三引擎)")
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def _handler(client, message):
@@ -261,9 +271,16 @@ async def setup(ctx):
         except Exception:
             pass
         try:
-            # 先尝试 ParseHub
-            result = await _parse_via_bridge(url)
-            # 如果 ParseHub 失败，尝试 yt-dlp
+            result = None
+            # 引擎1: videodl 原生（纯Python，100+平台，优先）
+            if HAS_VIDEODL:
+                result = await parse_via_videodl(url)
+                if result and "error" in result:
+                    result = None  # 模块级错误不打断，继续走下一引擎
+            # 引擎2: ParseHub（中文平台）
+            if not result:
+                result = await _parse_via_bridge(url)
+            # 引擎3: yt-dlp（海外平台，1752个网站）
             if not result or "error" in result:
                 yt_result = await _parse_via_ytdlp(url)
                 if yt_result and "error" not in yt_result:
