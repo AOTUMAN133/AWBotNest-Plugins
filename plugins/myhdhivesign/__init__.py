@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.5.5",
+    "version": "3.5.6",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -350,7 +350,7 @@ async def setup(ctx):
             ctx.kv.set(sk, "")
 
     async def _sign_account(ctx, acc, base_url, action_hash):
-        """签到单个账号，返回结果"""
+        """签到单个账号，返回结果，失败自动重试"""
         name = acc.get("name", "未知")
         cookie = acc.get("cookie", "")
         if not cookie:
@@ -358,7 +358,30 @@ async def setup(ctx):
         gamble = acc.get("gamble", False)
         mode = "赌狗" if gamble else "普通"
         _log_debug(ctx, f"签到: {name}({mode})")
-        result = await _do_sign(cookie, base_url, action_hash, gamble)
+        # 失败自动重试，最多3次
+        max_retries = 3
+        last_result = None
+        for attempt in range(1, max_retries + 1):
+            result = await _do_sign(cookie, base_url, action_hash, gamble)
+            if result["success"]:
+                last_result = result
+                break
+            # 网络类错误才重试（server disconnected / timeout / connection error）
+            msg = result.get("message", "")
+            is_network_error = any(k in msg.lower() for k in (
+                "closed connection", "incomplete", "chunked", "timeout",
+                "connection", "reset", "eof", "read timed out",
+                "remote", "disconnect", "broken", "transport"
+            ))
+            if not is_network_error:
+                # 非网络错误（如Cookie失效、已签到）不重试
+                last_result = result
+                break
+            _log_debug(ctx, f"{name}: 第{attempt}次失败({msg})，{10 if attempt < max_retries else 0}秒后重试...")
+            last_result = result
+            if attempt < max_retries:
+                await asyncio.sleep(10)
+        result = last_result
         msg = result["message"]
         if result.get("user"):
             u = result["user"]
