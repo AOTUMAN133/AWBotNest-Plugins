@@ -75,10 +75,10 @@ async def setup(ctx):
             pass
 
         # 用 subprocess 同步方式运行 yt-dlp 搜索
-        import subprocess
-        yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
-        if not os.path.isfile(yt_path):
-            yt_path = "yt-dlp"
+        import subprocess, shutil
+        yt_path = shutil.which("yt-dlp")
+        if not yt_path:
+            yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
         search_query = f"ytsearch{_SEARCH_COUNT}:{keyword}"
         try:
             result = subprocess.run(
@@ -128,10 +128,10 @@ async def setup(ctx):
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         template = str(_DOWNLOAD_DIR / "%(title)s.%(ext)s")
 
-        import subprocess
-        yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
-        if not os.path.isfile(yt_path):
-            yt_path = "yt-dlp"
+        import subprocess, shutil
+        yt_path = shutil.which("yt-dlp")
+        if not yt_path:
+            yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
         try:
             subprocess.run(
                 [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
