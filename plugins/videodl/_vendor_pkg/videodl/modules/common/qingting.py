@@ -1,0 +1,68 @@
+'''
+Function:
+    Implementation of QingtingVideoClient: https://33tool.com/video_parse/
+Author:
+    Zhenchao Jin
+WeChat Official Account (微信公众号):
+    Charles的皮卡丘
+'''
+import os
+import copy
+import time
+import random
+import string
+import hashlib
+from ..sources import BaseVideoClient
+from ..utils.domains import platformfromurl
+from ..utils import VideoInfo, FileTypeSniffer, RandomIPGenerator, useparseheaderscookies, legalizestring, resp2json, yieldtimerelatedtitle, safeextractfromdict
+
+
+'''QingtingVideoClient'''
+class QingtingVideoClient(BaseVideoClient):
+    source = 'QingtingVideoClient'
+    def __init__(self, **kwargs):
+        super(QingtingVideoClient, self).__init__(**kwargs)
+        self.default_parse_headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36", "accept": "application/json, text/plain, */*", "origin": "https://33tool.com", "referer": "https://33tool.com/video_parse/"}
+        self.default_download_headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"}
+        self.default_headers = self.default_parse_headers
+        self._initsession()
+    '''_make33toolheaders'''
+    def _make33toolheaders(self):
+        timestamp = str(int(time.time())); nonce = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
+        app_key, app_version, app_secret = "MyXtNUmF", "1.0.0", "TVlzc5bm"
+        sign_data = {"AppKey": app_key, "AppVersion": app_version, "Nonce": nonce, "Timestamp": timestamp}
+        sign_raw = ''.join(k + sign_data[k] for k in sorted(sign_data, key=lambda x: x.lower())) + app_secret
+        sign = hashlib.md5(sign_raw.encode("utf-8")).hexdigest().upper()
+        return {"Timestamp": timestamp, "Nonce": nonce, "App-Version": app_version, "Sign": sign}
+    '''parsefromurl'''
+    @useparseheaderscookies
+    def parsefromurl(self, url: str, request_overrides: dict = None) -> list[VideoInfo]:
+        # prepare
+        request_overrides, null_backup_title, video_infos = request_overrides or {}, yieldtimerelatedtitle(self.source), []
+        video_info = VideoInfo(source=self.source, enable_nm3u8dlre=False, download_with_ffmpeg=True) if BaseVideoClient.belongto(url, {"ted.com", "xinpianchang.com", "ifeng.com"}) else VideoInfo(source=self.source, enable_nm3u8dlre=True)
+        if platformfromurl(url) in {'bilibili'}: video_info.update(dict(default_download_headers=self.BILIBILI_REFERENCE_HEADERS, default_audio_download_headers=self.BILIBILI_REFERENCE_HEADERS))
+        if platformfromurl(url) in {'weibo'}: video_info.update(dict(default_download_headers=self.WEIBO_REFERENCE_HEADERS, default_audio_download_headers=self.WEIBO_REFERENCE_HEADERS))
+        # try parse
+        try:
+            # --get request
+            headers = copy.deepcopy(self.default_headers); RandomIPGenerator().addrandomipv4toheaders(headers); headers.update(self._make33toolheaders())
+            if "douyin.com" in url: (resp := self.get('https://api.33tool.com/api/parse/douyin', params={"url": url}, headers=headers, **request_overrides)).raise_for_status()
+            elif "bilibili.com" in url or "b23.tv" in url: (resp := self.get('https://api.33tool.com/api/parse/bilibili', params={"url": url}, headers=headers, **request_overrides)).raise_for_status()
+            elif "xiaohongshu.com" in url or "xhslink.com" in url: (resp := self.get('https://api.33tool.com/api/parse/redbook', params={"url": url}, headers=headers, **request_overrides)).raise_for_status()
+            elif "kuaishou.com" in url: (resp := self.get('https://api.33tool.com/api/parse/kuaishou', params={"url": url}, headers=headers, **request_overrides)).raise_for_status()
+            else: raise NotImplementedError(f"{self.source} can only parse 'douyin', 'bilibili', 'xiaohongshu' and 'kuaishou'")
+            video_info.update(dict(raw_data=(raw_data := resp2json(resp=resp))))
+            if raw_data.get('code') != 0: raise ValueError(raw_data)
+            # --video title
+            video_title = legalizestring(safeextractfromdict(raw_data, ['data', 'title'], None) or null_backup_title, replace_null_string=null_backup_title).removesuffix('.')
+            # --download url
+            video_info.update(dict(download_url=(download_url := raw_data['data']['videoUrl'])))
+            # --other infos
+            guess_video_ext_result = FileTypeSniffer.getfileextensionfromurl(url=download_url, headers=self.default_download_headers, request_overrides=request_overrides, cookies=self.default_download_cookies)
+            if (ext := guess_video_ext_result['ext'] if guess_video_ext_result['ext'] and guess_video_ext_result['ext'] != 'NULL' else video_info['ext']) in {'xsl'}: ext = 'mp4'
+            video_info.update(dict(title=video_title, save_path=os.path.join(self.work_dir, self.source, f'{video_title}.{ext}'), ext=ext, guess_video_ext_result=guess_video_ext_result, identifier=video_title, cover_url=safeextractfromdict(raw_data, ['data', 'coverUrl'], None))); video_infos.append(video_info)
+        except Exception as err:
+            video_info.update(dict(err_msg=(err_msg := f'{self.source}.parsefromurl >>> {url} (Error: {err})'))); video_infos.append(video_info)
+            self.logger_handle.error(err_msg, disable_print=self.disable_print)
+        # return
+        return video_infos
