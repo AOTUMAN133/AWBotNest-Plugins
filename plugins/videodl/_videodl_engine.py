@@ -36,15 +36,15 @@ async def try_install():
     vendor_wheel = Path(__file__).parent / "_vendor" / "videofetch-0.9.1-py3-none-any.whl"
     proxy = "http://192.168.1.33:7890"
     for installer in [
-        [python, "-m", "pip", "install", str(vendor_wheel), "-q", "--no-deps"] if vendor_wheel.exists() else None,
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--proxy", proxy],
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
-        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
-        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120"],
-        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
-        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
-        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
-        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
+        [python, "-m", "pip", "install", str(vendor_wheel), "-q"] if vendor_wheel.exists() else None,
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--proxy", proxy, "--timeout", "30"],
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--timeout", "30"],
+        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
+        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "30"],
+        ["pip3", "install", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
+        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "30"],
+        ["pip", "install", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
+        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "30"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
         if installer is None:
@@ -52,7 +52,7 @@ async def try_install():
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, lambda: subprocess.run(
-                installer, capture_output=True, text=True, timeout=120
+                installer, capture_output=True, text=True, timeout=60
             ))
             # 尝试导入
             from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
