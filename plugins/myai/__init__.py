@@ -1120,7 +1120,7 @@ async def setup(ctx):
             return
 
     _log_debug(ctx, "注册重置监控API")
-    @ctx.on_api(".reset_monitor", methods=["POST"])
+    @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
         _log_debug(ctx, f"重置监控: req type={type(req).__name__}")
         data = {}
@@ -1148,7 +1148,7 @@ async def setup(ctx):
             return {"ok": True, "message": f"已重置 {user_id} 的状态"}
         return {"ok": False, "message": "未找到该用户状态"}
 
-    @ctx.on_api(".get_debug_logs", methods=["GET"])
+    @ctx.on_api("/get_debug_logs", methods=["GET"])
     async def _api_get_debug_logs(req):
         return {"logs": ctx.kv.get(_KV_DEBUG, [])}
 
@@ -1214,7 +1214,7 @@ async def setup(ctx):
         except Exception as e:
             await message.edit(f"❌ {e}")
 
-    @ctx.on_api(".auto_say_test", methods=["POST"])
+    @ctx.on_api("/auto_say_test", methods=["POST"])
     async def _api_auto_say_test(req):
         try:
             # 跳过定时器检查，强制触发一次
@@ -1225,7 +1225,7 @@ async def setup(ctx):
             return {"ok": False, "message": str(e)}
 
     # ── 前端(Config.vue)用的后端接口 ──
-    @ctx.on_api(".test", methods=["POST"])
+    @ctx.on_api("/test", methods=["POST"])
     async def _api_test(req):
         cfg = ctx.config
         if not cfg.get("api_key"):
@@ -1241,7 +1241,7 @@ async def setup(ctx):
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "message": classify_error(e)}
 
-    @ctx.on_api(".histories", methods=["GET"])
+    @ctx.on_api("/histories", methods=["GET"])
     async def _api_histories(req):
         items = []
         try:
@@ -1277,7 +1277,7 @@ async def setup(ctx):
                 proactive_next = ""
         return {"items": items, "proactive_next": proactive_next}
 
-    @ctx.on_api(".history", methods=["GET"])
+    @ctx.on_api("/history", methods=["GET"])
     async def _api_history(req):
         raw = (req.query.get("chat_id") if hasattr(req, "query") else None) or ""
         try:
@@ -1289,7 +1289,7 @@ async def setup(ctx):
                 for m in hist if isinstance(m, dict)]
         return {"chat_id": chat_id, "messages": msgs}
 
-    @ctx.on_api(".history/clear", methods=["POST"])
+    @ctx.on_api("/history/clear", methods=["POST"])
     async def _api_history_clear(req):
         data = req.json or {}
         if data.get("all"):

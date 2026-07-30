@@ -75,8 +75,8 @@ def _yt_path() -> str:
     # 常见 venv 路径
     for p in [
         os.path.expanduser("~/.local/bin/yt-dlp"),
-        ".usr/local/bin/yt-dlp",
-        ".usr/bin/yt-dlp",
+        "/usr/local/bin/yt-dlp",
+        "/usr/bin/yt-dlp",
     ]:
         if os.path.isfile(p):
             return p

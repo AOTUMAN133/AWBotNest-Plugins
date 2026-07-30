@@ -60,7 +60,7 @@ __plugin__ = {
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _KV_LOGS = "videodl_logs"
 _BRIDGE_SCRIPT = Path(__file__).parent / "_core" / "parse_bridge.py"
-_PH_VENV_PYTHON = ".root/.hermes/plugins_env/ph_venv3/bin/python3"
+_PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 
 def _log(ctx, msg: str):
@@ -202,7 +202,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
     python = None
     for candidate in [
         _PH_VENV_PYTHON,
-        ".usr/bin/python3.12",
+        "/usr/bin/python3.12",
         shutil.which("python3.12"),
         shutil.which("python3"),
     ]:
@@ -214,7 +214,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
     # 如果找到的是 Hermes 的 Python 3.11，尝试找系统 Python 3.12
     py_version = await _get_python_version(python)
     if py_version and py_version.startswith("3.11"):
-        sys_python = ".usr/bin/python3.12"
+        sys_python = "/usr/bin/python3.12"
         if Path(sys_python).exists():
             python = sys_python
             py_version = await _get_python_version(python)

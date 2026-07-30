@@ -479,7 +479,7 @@ async def setup(ctx):
         await _send_captcha(client, ctx.config, user_id, ctx)
         await _update_stats(ctx)
 
-    @ctx.on_api(".pass_user", methods=["POST"])
+    @ctx.on_api("/pass_user", methods=["POST"])
     async def _api_pass(req):
         import json
         data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
@@ -492,7 +492,7 @@ async def setup(ctx):
             await _update_stats(ctx)
         return {"ok": True, "message": "已通过"}
 
-    @ctx.on_api(".fail_user", methods=["POST"])
+    @ctx.on_api("/fail_user", methods=["POST"])
     async def _api_fail(req):
         import json
         data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
@@ -505,19 +505,19 @@ async def setup(ctx):
             await _update_stats(ctx)
         return {"ok": True, "message": "已执行失败操作"}
 
-    @ctx.on_api(".clear_verified", methods=["POST"])
+    @ctx.on_api("/clear_verified", methods=["POST"])
     async def _api_clear_verified(req):
         ctx.kv.set(_KV_VERIFIED, [])
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空通过记录"}
 
-    @ctx.on_api(".clear_failed", methods=["POST"])
+    @ctx.on_api("/clear_failed", methods=["POST"])
     async def _api_clear_failed(req):
         ctx.kv.set(_KV_FAILED, [])
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空失败记录"}
 
-    @ctx.on_api(".get_records", methods=["GET"])
+    @ctx.on_api("/get_records", methods=["GET"])
     async def _api_get_records(req):
         return {
             "verified": _get_records(ctx, _KV_VERIFIED),

@@ -412,7 +412,7 @@ async def _cmd_find(client, message, ctx):
 
 async def setup(ctx):
     # ───────── Vue 模式后端 API ─────────
-    @ctx.on_api(".status", methods=["GET"])
+    @ctx.on_api("/status", methods=["GET"])
     async def _api_status(req):
         cfg = _effective_cfg(ctx)
         tmdb_ok = bool(cfg.get("tmdb_api_key"))
@@ -432,7 +432,7 @@ async def setup(ctx):
             "emby_items": items,
         }
 
-    @ctx.on_api(".test", methods=["POST"])
+    @ctx.on_api("/test", methods=["POST"])
     async def _api_test(req):
         cfg = _effective_cfg(ctx)
         msgs = []
@@ -461,11 +461,11 @@ async def setup(ctx):
         ok = all("✅" in m for m in msgs)
         return {"ok": ok, "message": " | ".join(msgs)}
 
-    @ctx.on_api(".logs", methods=["GET"])
+    @ctx.on_api("/logs", methods=["GET"])
     async def _api_logs(req):
         return {"logs": list(_logs)}
 
-    @ctx.on_api(".update_config", methods=["POST"])
+    @ctx.on_api("/update_config", methods=["POST"])
     async def _api_update_config(req):
         body = await req.json()
         # shareswitch 从 enabled 推导

@@ -554,7 +554,7 @@ async def _cmd_find(client, message, ctx):
 
 async def setup(ctx):
     # ───────── Vue 模式后端 API ─────────
-    @ctx.on_api(".status", methods=["GET"])
+    @ctx.on_api("/status", methods=["GET"])
     async def _api_status(req):
         cfg = _effective_cfg(ctx)
         tmdb_ok = bool(cfg.get("tmdb_api_key"))
@@ -574,7 +574,7 @@ async def setup(ctx):
             "emby_items": items,
         }
 
-    @ctx.on_api(".test", methods=["POST"])
+    @ctx.on_api("/test", methods=["POST"])
     async def _api_test(req):
         cfg = _effective_cfg(ctx)
         msgs = []
@@ -603,11 +603,11 @@ async def setup(ctx):
         ok = all("✅" in m for m in msgs)
         return {"ok": ok, "message": " | ".join(msgs)}
 
-    @ctx.on_api(".logs", methods=["GET"])
+    @ctx.on_api("/logs", methods=["GET"])
     async def _api_logs(req):
         return {"logs": list(_logs)}
 
-    @ctx.on_api(".update_config", methods=["POST"])
+    @ctx.on_api("/update_config", methods=["POST"])
     async def _api_update_config(req):
         body = await req.json()
         # shareswitch 从 enabled 推导
@@ -678,7 +678,7 @@ async def setup(ctx):
     ctx.schedule(_scan_status_pusher, "interval", seconds=15, id="my115scan_status")
 
     # ───────── 扫描 API ─────────
-    @ctx.on_api(".start_scan", methods=["POST"])
+    @ctx.on_api("/start_scan", methods=["POST"])
     async def _api_start_scan(req):
         cfg = ctx.config
         src = int(cfg.get("source_chat", 0) or 0)
@@ -692,12 +692,12 @@ async def setup(ctx):
         asyncio.create_task(_do_scan(ctx, src))
         return {"ok": True, "message": "开始扫描"}
 
-    @ctx.on_api(".stop_scan", methods=["POST"])
+    @ctx.on_api("/stop_scan", methods=["POST"])
     async def _api_stop_scan(req):
         ctx.kv.set("my115scan_stop", True)
         return {"ok": True, "message": "已停止"}
 
-    @ctx.on_api(".reset_scan", methods=["POST"])
+    @ctx.on_api("/reset_scan", methods=["POST"])
     async def _api_reset_scan(req):
         ctx.kv.set("my115scan_stop", True)
         ctx.kv.set("my115scan_last_id", 0)
@@ -705,7 +705,7 @@ async def setup(ctx):
         ctx.kv.set("my115scan_forwarded", 0)
         return {"ok": True, "message": "已重置"}
 
-    @ctx.on_api(".scan_status", methods=["GET"])
+    @ctx.on_api("/scan_status", methods=["GET"])
     async def _api_scan_status(req):
         running = not ctx.kv.get("my115scan_stop", True)
         total = int(ctx.kv.get("my115scan_total", 0) or 0)
@@ -721,7 +721,7 @@ async def setup(ctx):
         return {"status": status, "running": running}
 
 
-    @ctx.on_api(".build_cache", methods=["POST"])
+    @ctx.on_api("/build_cache", methods=["POST"])
     async def _api_build_cache(req):
         cfg = ctx.config
         def upd(s):
@@ -748,7 +748,7 @@ async def setup(ctx):
             upd("缓存建立失败")
             return {"ok": False, "status": "缓存建立失败"}
 
-    @ctx.on_api(".cache_status", methods=["GET"])
+    @ctx.on_api("/cache_status", methods=["GET"])
     async def _api_cache_status(req):
         status = ctx.config.get("_cache_status", "")
         if not status:

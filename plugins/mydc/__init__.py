@@ -139,10 +139,10 @@ def _parse_list(raw: str) -> list[str]:
 async def setup(ctx):
     ctx.log.info("DC助手插件已加载")
 
-    @ctx.on_api(".containers", methods=["GET"])
+    @ctx.on_api("/containers", methods=["GET"])
     async def _api_containers(req):
         """获取容器列表"""
-        data = await _api_call(ctx, "GET", ".containers")
+        data = await _api_call(ctx, "GET", "/containers")
         if not data:
             return {"ok": False, "message": "获取失败"}
         containers = data.get("data") or data.get("containers") or []
@@ -161,7 +161,7 @@ async def setup(ctx):
             })
         return {"ok": True, "containers": result}
 
-    @ctx.on_api(".save_selection", methods=["POST"])
+    @ctx.on_api("/save_selection", methods=["POST"])
     async def _api_save(req):
         """保存容器选择"""
         body = req.json
@@ -172,7 +172,7 @@ async def setup(ctx):
         _log(ctx, f"容器选择已保存: {len(selected)}个选中, {len(immediate)}个立即更新")
         return {"ok": True, "message": "已保存"}
 
-    @ctx.on_api(".selection", methods=["GET"])
+    @ctx.on_api("/selection", methods=["GET"])
     async def _api_selection(req):
         """获取当前选择"""
         return {
@@ -182,7 +182,7 @@ async def setup(ctx):
 
     @ctx.action("list_containers")
     async def _list(req=None):
-        data = await _api_call(ctx, "GET", ".containers")
+        data = await _api_call(ctx, "GET", "/containers")
         if not data:
             return {"ok": False, "message": "获取容器列表失败。请检查连接信息是否正确"}
         containers = data.get("data") or data.get("containers") or []
@@ -198,7 +198,7 @@ async def setup(ctx):
 
     @ctx.action("check_updatable")
     async def _check(req=None):
-        data = await _api_call(ctx, "GET", ".containers")
+        data = await _api_call(ctx, "GET", "/containers")
         if not data:
             ctx.update_config({"_status": "❌ 无法连接 DockerCopilot"})
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
@@ -223,7 +223,7 @@ async def setup(ctx):
 
     @ctx.action("update_all")
     async def _update(req=None):
-        data = await _api_call(ctx, "GET", ".containers")
+        data = await _api_call(ctx, "GET", "/containers")
         if not data:
             return {"ok": False, "message": "获取容器列表失败"}
         containers = data.get("data") or data.get("containers") or []
@@ -237,7 +237,7 @@ async def setup(ctx):
             cid = c.get("id") or c.get("containerId") or c.get("name")
             if not cid:
                 continue
-            r = await _api_call(ctx, "POST", f".container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
+            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
             if r:
                 updated += 1
             await asyncio.sleep(2)
@@ -250,7 +250,7 @@ async def setup(ctx):
 
     @ctx.action("backup_now")
     async def _backup(req=None):
-        r = await _api_call(ctx, "POST", ".container/backup")
+        r = await _api_call(ctx, "POST", "/container/backup")
         if r:
             if ctx.config.get("backup_notify", True):
                 await ctx.notify("💾 Docker 容器配置备份完成")
@@ -262,7 +262,7 @@ async def setup(ctx):
         return await _clean_images(ctx, notify=True)
 
     async def _clean_images(ctx, notify=False):
-        data = await _api_call(ctx, "GET", ".images")
+        data = await _api_call(ctx, "GET", "/images")
         if not data:
             return {"ok": False, "message": "获取镜像列表失败"}
         images = data.get("data") or data.get("images") or []
@@ -272,7 +272,7 @@ async def setup(ctx):
             if not tag or tag == "<none>:<none>" or ":" not in tag:
                 sha = img.get("id") or img.get("sha")
                 if sha:
-                    r = await _api_call(ctx, "DELETE", f".image/{sha}?force=false")
+                    r = await _api_call(ctx, "DELETE", f"/image/{sha}?force=false")
                     if r:
                         removed += 1
         msg = f"已清理 {removed} 个未使用镜像"
@@ -284,7 +284,7 @@ async def setup(ctx):
     async def _auto_tick():
         if not ctx.config.get("secret_key"):
             return
-        data = await _api_call(ctx, "GET", ".containers")
+        data = await _api_call(ctx, "GET", "/containers")
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
@@ -298,7 +298,7 @@ async def setup(ctx):
             if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
-                    r = await _api_call(ctx, "POST", f".container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
+                    r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
                         imm_updated += 1
                         ctx.log.info(f"立即更新: {c.get('name', cid)}")
@@ -320,7 +320,7 @@ async def setup(ctx):
                     for c in scheduled:
                         cid = c.get("id") or c.get("containerId") or c.get("name")
                         if cid:
-                            r = await _api_call(ctx, "POST", f".container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
+                            r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                             if r:
                                 updated += 1
                             await asyncio.sleep(2)
@@ -332,7 +332,7 @@ async def setup(ctx):
                 pass
 
     async def _backup_tick():
-        r = await _api_call(ctx, "POST", ".container/backup")
+        r = await _api_call(ctx, "POST", "/container/backup")
         if r and ctx.config.get("backup_notify", True):
             await ctx.notify("💾 Docker 容器配置定时备份完成")
 

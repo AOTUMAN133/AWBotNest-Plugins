@@ -162,7 +162,7 @@ async def setup(ctx):
             ctx.kv.set(_KV_STATE, state)
             return
 
-    @ctx.on_api(".reset_monitor", methods=["POST"])
+    @ctx.on_api("/reset_monitor", methods=["POST"])
     async def _api_reset_monitor(req):
         body = req.json if hasattr(req, 'json') else {}
         if not body:
@@ -184,7 +184,7 @@ async def setup(ctx):
         ctx.kv.set(_KV_STATE, {})
         return {"ok": True, "message": "所有监控状态已重置"}
 
-    @ctx.on_api(".get_rules", methods=["GET"])
+    @ctx.on_api("/get_rules", methods=["GET"])
     async def _api_get_rules(req):
         raw = str(ctx.config.get("monitor_config", "[]") or "").strip()
         try:
@@ -193,7 +193,7 @@ async def setup(ctx):
             rules = []
         return {"ok": True, "rules": rules}
 
-    @ctx.on_api(".save_rules", methods=["POST"])
+    @ctx.on_api("/save_rules", methods=["POST"])
     async def _api_save_rules(req):
         try:
             body = req.json if hasattr(req, 'json') else {}

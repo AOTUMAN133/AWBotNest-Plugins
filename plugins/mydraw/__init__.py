@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
-_DOWNLOAD_DIR = Path(".tmp/mydraw_downloads")
+_DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 _POLLINATIONS_URL = "https://image.pollinations.ai/prompt/"
 
 __plugin__ = {
