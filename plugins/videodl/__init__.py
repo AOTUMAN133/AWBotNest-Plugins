@@ -23,7 +23,7 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.4.2",
+    "version": "2.4.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
@@ -116,7 +116,10 @@ def _get_help_text() -> str:
     return (
         "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
         "📌 <b>使用方法</b>\n"
-        "  /jx <链接或分享文本>  — 解析并下载\n\n"
+        "  .jx <链接或分享文本>  — 解析并下载\\n"
+        "  .jxsm  — 查看帮助\\n"
+        "  .jxstatus  — 查看引擎状态\\n"
+        "  💡 回复别人消息发送 .jx 也可解析\\n\\n"
         "📌 <b>三引擎加持，智能选择</b>\n"
         "  🔵 <b>引擎1: videodl 原生</b>（纯Python，优先）\n"
         "  🇨🇳 抖音 · B站 · 快手 · 小红书 · 微博\n"
@@ -299,9 +302,16 @@ async def setup(ctx):
                 await message.reply(_get_help_text())
                 return
 
-            # ── /jx 统一解析命令 ──
+            # ── .jx 统一解析命令 ──
             if text.startswith(".jx"):
                 content = text[3:].strip()
+                if not content:
+                    # 回复别人的消息时，从被回复的消息中提取链接
+                    reply_to = getattr(message, 'reply_to_message', None)
+                    if reply_to:
+                        reply_text = getattr(reply_to, 'text', '') or getattr(reply_to, 'caption', '') or ''
+                        if reply_text:
+                            content = reply_text
                 if not content:
                     await message.reply(_get_help_text())
                     return
@@ -318,7 +328,7 @@ async def setup(ctx):
         # 从文本中提取链接
         url = _extract_url(content)
         if not url:
-            await message.reply("❌ 未找到有效链接，请发送 /jx <链接>")
+            await message.reply("❌ 未找到有效链接，请发送 .jx <链接> 或回复消息发送 .jx")
             return
 
         # 解析短链接跳转
