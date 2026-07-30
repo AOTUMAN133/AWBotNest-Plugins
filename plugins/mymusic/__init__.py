@@ -198,10 +198,10 @@ async def setup(ctx):
                     capture_output=True, text=True, timeout=300,
                 )
             else:
-                # 无 ffmpeg，直接下载最佳音频
+                # 无 ffmpeg，下载 M4A 格式（Telegram 可直接播放）
                 subprocess.run(
-                    [yt_path, "-f", "bestaudio", "-o", template,
-                     "--no-playlist", "--no-warnings", url],
+                    [yt_path, "-f", "bestaudio[ext=m4a]/bestaudio",
+                     "-o", template, "--no-playlist", "--no-warnings", url],
                     capture_output=True, text=True, timeout=300,
                 )
         except Exception as e:
