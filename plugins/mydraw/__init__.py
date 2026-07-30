@@ -16,7 +16,7 @@ _POLLINATIONS_URL = "https://image.pollinations.ai/prompt/"
 __plugin__ = {
     "name": "AI 图片生成",
     "id": "mydraw",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "AI 图片生成。支持 .st 提示词 生成图片，免费免 Key",
