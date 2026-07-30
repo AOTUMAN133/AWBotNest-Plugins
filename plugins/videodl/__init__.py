@@ -303,6 +303,8 @@ async def setup(ctx):
                 if result and "error" in result:
                     errs.append(f"引擎1(videodl): {result['error']}")
                     result = None  # 模块级错误不打断，继续走下一引擎
+            else:
+                errs.append("引擎1(videodl): 未安装(自动安装videofetch失败)")
             # 引擎2: ParseHub（中文平台）
             if not result:
                 result = await _parse_via_bridge(url)

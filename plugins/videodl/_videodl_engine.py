@@ -19,11 +19,13 @@ def _auto_install() -> bool:
     python = sys.executable
     for installer in [
         [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q"],
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
+        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
+        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
         try:
-            subprocess.run(installer, capture_output=True, text=True, timeout=120)
+            subprocess.run(installer, capture_output=True, text=True, timeout=180)
             from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
             return True
         except Exception:
