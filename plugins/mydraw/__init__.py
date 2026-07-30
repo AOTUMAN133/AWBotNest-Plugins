@@ -134,7 +134,7 @@ async def setup(ctx):
             return
 
         cmd = text[len(".st"):].strip()
-        chat_id = str(message.chat.id)
+        chat_id = message.chat.id
 
         if not cmd:
             await message.reply("🎨 用法: <code>.st 提示词</code> 生成图片，或 <code>.st help</code> 查看帮助")
