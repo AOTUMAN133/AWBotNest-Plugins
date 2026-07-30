@@ -113,6 +113,23 @@ async def setup(ctx):
     if not yt_available:
         ctx.log.warning("yt-dlp 不可用，搜索下载功能将无法使用")
 
+    # 检查 ffmpeg
+    ffmpeg_available = shutil.which("ffmpeg") is not None
+    if not ffmpeg_available:
+        ctx.log.info("ffmpeg 未找到，尝试安装...")
+        try:
+            subprocess.run(
+                ["apt-get", "install", "-y", "ffmpeg"],
+                capture_output=True, text=True, timeout=120,
+            )
+            ffmpeg_available = shutil.which("ffmpeg") is not None
+            if ffmpeg_available:
+                ctx.log.info("ffmpeg 安装成功")
+        except Exception as e:
+            ctx.log.warning(f"ffmpeg 自动安装失败: {e}")
+    else:
+        ctx.log.info("ffmpeg 已可用")
+
     # ── 搜索 ──
     async def _do_search(ctx, client, message, keyword, page=1):
         msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
@@ -173,22 +190,32 @@ async def setup(ctx):
 
         yt_path = _yt_path()
         try:
-            subprocess.run(
-                [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
-                 "-o", template, "--no-playlist", "--no-warnings", url],
-                capture_output=True, text=True, timeout=300,
-            )
+            if shutil.which("ffmpeg"):
+                # 有 ffmpeg，转 mp3
+                subprocess.run(
+                    [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                     "-o", template, "--no-playlist", "--no-warnings", url],
+                    capture_output=True, text=True, timeout=300,
+                )
+            else:
+                # 无 ffmpeg，直接下载最佳音频
+                subprocess.run(
+                    [yt_path, "-f", "bestaudio", "-o", template,
+                     "--no-playlist", "--no-warnings", url],
+                    capture_output=True, text=True, timeout=300,
+                )
         except Exception as e:
             await wait.edit_text(f"❌ 下载异常: {e}")
             return
 
-        # 找 mp3
-        mp3s = sorted(_DOWNLOAD_DIR.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not mp3s:
-            await wait.edit_text("❌ 下载失败，可能缺少 ffmpeg")
+        # 找音频文件（mp3 或 webm/m4a）
+        audio_files = sorted(_DOWNLOAD_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        audio_files = [f for f in audio_files if f.suffix in (".mp3", ".webm", ".m4a", ".opus")]
+        if not audio_files:
+            await wait.edit_text("❌ 下载失败，未找到音频文件")
             return
 
-        path = mp3s[0]
+        path = audio_files[0]
         await wait.edit_text(f"⏳ 正在发送: {title}")
         try:
             with open(path, "rb") as f:
