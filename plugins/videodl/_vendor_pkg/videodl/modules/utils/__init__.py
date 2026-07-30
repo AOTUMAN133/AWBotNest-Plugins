@@ -6,7 +6,10 @@ from .smuggler import BrightcoveSmuggler
 from .modulebuilder import BaseModuleBuilder
 from .progress import taskprogress, progresslog
 from .hls import CCTVHLSBestParser, TencentHLSHelper
-from .cdm import initcdm, closecdm, SearchPsshValueUtils
+try:
+    from .cdm import initcdm, closecdm, SearchPsshValueUtils
+except Exception:
+    initcdm = closecdm = SearchPsshValueUtils = None
 from .importutils import optionalimport, optionalimportfrom
 try:
     from .chromium import ChromiumDownloaderUtils, DrissionPageUtils
