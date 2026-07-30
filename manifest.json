@@ -125,5 +125,13 @@
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "path": "plugins/bili_search/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg"
+  },
+  "msg_relay": {
+    "name": "代发助手",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "主号被限制群组发言时，自动用小号代发",
+    "path": "plugins/msg_relay/",
+    "icon": ""
   }
 }
