@@ -21,7 +21,7 @@ _SEARCH_COUNT = 10
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、输入编号下载、翻页",

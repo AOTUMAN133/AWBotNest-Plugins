@@ -10,7 +10,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.7.1",
+    "version": "0.7.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mybet_v2.svg",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",

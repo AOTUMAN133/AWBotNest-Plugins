@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 __plugin__ = {
     "name": "自动报时昵称",
     "id": "myname",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "scope": "user",

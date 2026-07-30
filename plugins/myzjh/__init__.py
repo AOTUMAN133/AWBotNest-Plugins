@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "炸金花监控",
     "id": "myzjh",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzjh_v2.svg",
     "author": "凹凸曼",
     "description": "监控 HDSky 群天空小秘的炸金花结算信息，记录每局数据，支持统计查询。",
