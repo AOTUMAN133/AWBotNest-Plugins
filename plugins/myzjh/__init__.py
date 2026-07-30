@@ -12,6 +12,7 @@ __plugin__ = {
     "name": "炸金花监控",
     "id": "myzjh",
     "version": "1.0.0",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzjh.svg",
     "author": "凹凸曼",
     "description": "监控 HDSky 群天空小秘的炸金花结算信息，记录每局数据，支持统计查询。",
     "scope": "user",

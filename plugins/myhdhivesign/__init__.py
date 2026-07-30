@@ -16,6 +16,7 @@ __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
     "version": "3.4.2",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",

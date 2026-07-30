@@ -11,6 +11,7 @@ __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
     "version": "1.0.1",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary.svg",
     "author": "凹凸曼",
     "description": "群消息总结。发送 .sum [数量] 快速总结最近N条消息，支持定时总结任务。",
     "scope": "user",
