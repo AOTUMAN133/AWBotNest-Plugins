@@ -265,6 +265,23 @@ async def setup(ctx):
                 await message.reply(_get_help_text())
                 return
 
+            # ── 引擎状态命令 ──
+            if text == "/jxstatus":
+                v_status = "✅ 可用" if is_available() else "⏳ 后台安装中..."
+                status = (
+                    f"📊 <b>引擎状态</b>\n\n"
+                    f"🔵 引擎1 videodl: {v_status}\n"
+                    f"🟢 引擎2 ParseHub: ✅ 工作中\n"
+                    f"🟡 引擎3 yt-dlp: ✅ 可用\n"
+                )
+                await message.reply(status)
+                return
+
+            # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
+            if text == "/jxsm":
+                await message.reply(_get_help_text())
+                return
+
             # ── /jx 统一解析命令 ──
             if text.startswith("/jx"):
                 content = text[3:].strip()
