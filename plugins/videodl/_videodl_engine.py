@@ -98,6 +98,9 @@ def _try_parse(vc_name: str, url: str, BuildVideoClient) -> dict | None:
     download_url = getattr(video_info, 'download_url', '') or ''
     if not download_url:
         return None
+    # 某些客户端（如 YouTube）返回 Stream 对象而非字符串
+    if hasattr(download_url, 'url'):
+        download_url = download_url.url
 
     title = getattr(video_info, 'title', '') or '视频'
     cover_url = getattr(video_info, 'cover_url', '') or ''
