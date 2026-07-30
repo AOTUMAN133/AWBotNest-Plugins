@@ -15,13 +15,14 @@ def _auto_install() -> bool:
         return True
     except ImportError:
         pass
-    # 尝试 pip 安装
+    # 尝试 pip 安装（先装全量，再试 --no-deps）
     python = sys.executable
     for installer in [
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
-        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
-        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "60"],
+        [python, "-m", "pip", "install", "--force-reinstall", "--no-deps", "videofetch==0.9.1", "-q"],
+        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
+        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
         try:
