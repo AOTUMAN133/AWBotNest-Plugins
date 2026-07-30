@@ -241,23 +241,29 @@ async def setup(ctx):
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def _handler(client, message):
-        text = (message.text or "").strip()
-        if not text:
-            return
+        try:
+            text = (message.text or "").strip()
+            if not text:
+                return
 
-        # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
-        if text == "/jxsm":
-            await message.reply(_get_help_text())
-            return
-
-        # ── /jx 统一解析命令 ──
-        if text.startswith("/jx"):
-            content = text[3:].strip()
-            if not content:
+            # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
+            if text == "/jxsm":
                 await message.reply(_get_help_text())
                 return
-            await _do_parse(ctx, client, message, content)
-            return
+
+            # ── /jx 统一解析命令 ──
+            if text.startswith("/jx"):
+                content = text[3:].strip()
+                if not content:
+                    await message.reply(_get_help_text())
+                    return
+                await _do_parse(ctx, client, message, content)
+                return
+        except Exception as e:
+            try:
+                await message.reply(f"❌ 处理异常: {e}")
+            except Exception:
+                pass
 
     # ── 统一解析 ──
     async def _do_parse(ctx, client, message, content):
