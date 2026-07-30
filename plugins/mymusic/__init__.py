@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：音乐搜索下载 (mymusic) v1.0.0
-# 搜索 YouTube 下载 MP3 音频
+# AWBotNest 插件：音乐搜索下载 (mymusic) v1.1.0
+# 搜索 YouTube 下载 MP3 音频，支持翻页、回复编号下载
 
 import os
 import re
@@ -11,22 +11,19 @@ from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
+_PAGE_SIZE = 5
+_SEARCH_COUNT = 10
 
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
-    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、.yy URL 直接下载",
+    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、直接回复编号下载、翻页",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
-        "max_results": {
-            "type": "number", "default": 5, "label": "搜索结果数量",
-            "section": "搜索", "min": 1, "max": 10,
-            "help": "搜索时显示的最大结果数"
-        },
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
             "section": "下载",
@@ -64,7 +61,7 @@ async def _run_ytdlp(args: list, timeout: int = 120) -> tuple[str, str]:
     return stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
 
 
-async def _search_music(query: str, max_results: int = 5) -> list[dict]:
+async def _search_music(query: str, max_results: int = _SEARCH_COUNT) -> list[dict]:
     """搜索 YouTube 音乐，返回结果列表"""
     search_query = f"ytsearch{max_results}:{query}"
     stdout, _ = await _run_ytdlp([
@@ -121,59 +118,130 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
     if not stdout.strip():
         return None
 
-    # 解析输出的文件名
     filepath = stdout.strip().split("\n")[0]
     path = Path(filepath)
     if path.exists():
         return path
-    # 尝试在输出目录找 mp3 文件
     for f in output_dir.iterdir():
         if f.suffix == ".mp3":
             return f
     return None
 
 
+def _build_result_page(results: list, page: int, query: str) -> str:
+    """构建搜索结果分页文本"""
+    total = len(results)
+    total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * _PAGE_SIZE
+    end = min(start + _PAGE_SIZE, total)
+
+    lines = [f"🎵 <b>搜索结果: {query}</b>  ({page + 1}/{total_pages})\n"]
+    for i in range(start, end):
+        r = results[i]
+        dur = _format_duration(r["duration"]) if r["duration"] else "未知"
+        lines.append(f"<b>{i + 1}.</b> {r['title']}")
+        lines.append(f"    👤 {r['uploader']}  ⏱ {dur}\n")
+    lines.append(f"💡 回复编号下载，或 <code>.yy n</code>/<code>.yy p</code> 翻页")
+    return "\n".join(lines)
+
+
+async def _do_download(ctx, client, chat_id, message, results, idx, page=None):
+    """执行下载并发送"""
+    if idx < 0 or idx >= len(results):
+        await message.reply("❌ 编号无效")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    selected = results[idx]
+    wait = await message.reply(f"⏳ 正在下载: {selected['title']}")
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
+    if not path:
+        await wait.edit_text("❌ 下载失败")
+        return
+
+    await wait.edit_text(f"⏳ 正在发送: {selected['title']}")
+    try:
+        with open(path, "rb") as f:
+            await client.send_audio(chat_id, f, title=selected["title"], performer=selected.get("uploader", ""))
+        if not ctx.config.get("keep_local", False):
+            path.unlink(missing_ok=True)
+        await wait.delete()
+    except Exception as e:
+        await wait.edit_text(f"❌ 发送失败: {e}")
+
+
 async def setup(ctx):
-    ctx.log.info("音乐搜索下载 v1.0.0 已加载")
+    ctx.log.info("音乐搜索下载 v1.1.0 已加载")
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
+        chat_id = str(message.chat.id)
+
+        # ── 回复编号下载 ──
+        if message.reply_to_message_id and text.isdigit():
+            search_data = ctx.kv.get(f"music_search_{chat_id}", {})
+            if search_data.get("msg_id") == message.reply_to_message_id:
+                idx = int(text) - 1
+                await _do_download(ctx, client, chat_id, message, search_data.get("results", []), idx, search_data.get("page", 0))
+                return
+
         if not text.startswith("."):
             return
 
-        # .yysm — 帮助
+        # ── .yysm 帮助（30秒自毁） ──
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.0.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.1.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
-                "  <code>.yy dl 编号</code> — 下载指定编号的音乐\n\n"
+                "  <code>.yy n</code> / <code>.yy p</code> — 翻页\n"
+                "  <code>.yy dl 编号</code> — 下载指定编号\n\n"
                 "🔗 <b>直接下载</b>\n"
                 "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
-                "⚙️ 可在插件配置中调整搜索结果数量"
+                "💡 搜索后直接回复编号即可下载"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
             try:
                 await message.delete()
             except Exception:
                 pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
+            except Exception:
+                pass
             return
 
-        # .yy help — 帮助
+        # ── .yy help 帮助（30秒自毁） ──
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.0.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.1.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
-                "  <code>.yy dl 编号</code> — 下载指定编号的音乐\n\n"
+                "  <code>.yy n</code> / <code>.yy p</code> — 翻页\n"
+                "  <code>.yy dl 编号</code> — 下载指定编号\n\n"
                 "🔗 <b>直接下载</b>\n"
                 "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
-                "⚙️ 可在插件配置中调整搜索结果数量"
+                "💡 搜索后直接回复编号即可下载"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
             try:
                 await message.delete()
+            except Exception:
+                pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
             except Exception:
                 pass
             return
@@ -181,45 +249,49 @@ async def setup(ctx):
         if not text.startswith(".yy"):
             return
 
-        chat_id = str(message.chat.id)
         cmd = text[len(".yy"):].strip()
 
-        # .yy dl 编号 — 下载选中的结果
-        m = re.match(r"^dl\s+(\d+)$", cmd)
-        if m:
-            # 从 KV 获取搜索结果
+        # ── .yy n / .yy p 翻页 ──
+        if cmd in ("n", "next", "p", "prev"):
             search_data = ctx.kv.get(f"music_search_{chat_id}", {})
             results = search_data.get("results", [])
-            idx = int(m.group(1)) - 1
-            if idx < 0 or idx >= len(results):
-                await message.reply("❌ 编号无效，请重新搜索")
+            if not results:
+                await message.reply("❌ 暂无搜索结果，请先搜索")
                 try:
                     await message.delete()
                 except Exception:
                     pass
                 return
-            selected = results[idx]
-            wait = await message.reply(f"⏳ 正在下载: {selected['title']}")
+            page = search_data.get("page", 0)
+            if cmd in ("n", "next"):
+                page += 1
+            else:
+                page -= 1
+            total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
+            page = max(0, min(page, total_pages - 1))
+            search_data["page"] = page
+            ctx.kv.set(f"music_search_{chat_id}", search_data)
+
+            # 发送翻页结果，然后删除原消息
+            query = search_data.get("query", "")
+            result_text = _build_result_page(results, page, query)
+            await message.reply(result_text)
             try:
                 await message.delete()
             except Exception:
                 pass
-            path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
-            if not path:
-                await wait.edit_text("❌ 下载失败")
-                return
-            await wait.edit_text(f"⏳ 正在发送: {selected['title']}")
-            try:
-                with open(path, "rb") as f:
-                    await client.send_audio(chat_id, f, title=selected["title"], performer=selected.get("uploader", ""))
-                if not ctx.config.get("keep_local", False):
-                    path.unlink(missing_ok=True)
-                await wait.delete()
-            except Exception as e:
-                await wait.edit_text(f"❌ 发送失败: {e}")
             return
 
-        # .yy URL — 直接下载链接
+        # ── .yy dl 编号 下载 ──
+        m = re.match(r"^dl\s+(\d+)$", cmd)
+        if m:
+            search_data = ctx.kv.get(f"music_search_{chat_id}", {})
+            results = search_data.get("results", [])
+            idx = int(m.group(1)) - 1
+            await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
+            return
+
+        # ── .yy URL 直接下载 ──
         url_match = re.match(r"^https?://", cmd)
         if url_match:
             url = cmd.strip()
@@ -235,41 +307,56 @@ async def setup(ctx):
                 if not ctx.config.get("keep_local", False):
                     path.unlink(missing_ok=True)
                 await wait.delete()
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
             except Exception as e:
                 await wait.edit_text(f"❌ 发送失败: {e}")
             return
 
-        # .yy 搜索词 — 搜索音乐
+        # ── .yy 搜索词 ──
         if cmd:
             query = cmd.strip()
-            max_results = int(ctx.config.get("max_results", 5))
             wait = await message.reply("🔍 正在搜索...")
-            results = await _search_music(query, max_results)
+            results = await _search_music(query, _SEARCH_COUNT)
             if not results:
                 await wait.edit_text("❌ 未找到相关结果")
                 return
 
-            # 保存到 KV 供后续下载
-            ctx.kv.set(f"music_search_{chat_id}", {"results": results, "time": _now()})
+            # 保存到 KV
+            search_data = {
+                "results": results,
+                "page": 0,
+                "query": query,
+                "time": _now(),
+                "msg_id": wait.id,
+            }
+            ctx.kv.set(f"music_search_{chat_id}", search_data)
 
-            lines = [f"🎵 <b>搜索结果: {query}</b>\n"]
-            for i, r in enumerate(results, 1):
-                dur = _format_duration(r["duration"]) if r["duration"] else "未知"
-                lines.append(f"<b>{i}.</b> {r['title']}")
-                lines.append(f"    👤 {r['uploader']}  ⏱ {dur}")
-                lines.append(f"    <code>.yy dl {i}</code>\n")
-            lines.append("💡 回复编号下载: <code>.yy dl 1</code>")
-            await wait.edit_text("\n".join(lines))
+            result_text = _build_result_page(results, 0, query)
+            await wait.edit_text(result_text)
+
+            # 删除原始命令
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
 
-        # 只有一个 .yy 没有参数
-        await message.reply("🎵 用法: <code>.yy 歌名</code> 搜索音乐，或 <code>.yy help</code> 查看帮助")
+        # ── 空参数 ──
+        msg = await message.reply("🎵 用法: <code>.yy 歌名</code> 搜索音乐，或 <code>.yysm</code> 查看帮助")
         try:
             await message.delete()
         except Exception:
             pass
+        await asyncio.sleep(30)
+        try:
+            await msg.delete()
+        except Exception:
+            pass
 
-    ctx.log.info("音乐搜索下载 v1.0.0 已就绪")
+    ctx.log.info("音乐搜索下载 v1.1.0 已就绪")
 
 
 async def teardown(ctx):

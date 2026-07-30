@@ -4,6 +4,7 @@
 
 import os
 import re
+import asyncio
 import httpx
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -85,7 +86,7 @@ async def setup(ctx):
         if not text.startswith("."):
             return
 
-        # .stsm — 帮助
+        # .stsm — 帮助（30秒自毁）
         if text == ".stsm":
             help_text = (
                 "🎨 <b>AI 图片生成 v1.0.0</b>\n\n"
@@ -95,14 +96,19 @@ async def setup(ctx):
                 "⚙️ 可在插件配置中调整默认尺寸和随机种子\n"
                 "🔗 基于 pollinations.ai，免费免 Key"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
             try:
                 await message.delete()
             except Exception:
                 pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
+            except Exception:
+                pass
             return
 
-        # .st help — 帮助
+        # .st help — 帮助（30秒自毁）
         if text == ".st help":
             help_text = (
                 "🎨 <b>AI 图片生成 v1.0.0</b>\n\n"
@@ -112,9 +118,14 @@ async def setup(ctx):
                 "⚙️ 可在插件配置中调整默认尺寸和随机种子\n"
                 "🔗 基于 pollinations.ai，免费免 Key"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
             try:
                 await message.delete()
+            except Exception:
+                pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
             except Exception:
                 pass
             return

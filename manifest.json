@@ -128,7 +128,7 @@
   },
   "mymusic": {
     "name": "音乐搜索下载",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、.yy URL 直接下载",
     "path": "plugins/mymusic/",
