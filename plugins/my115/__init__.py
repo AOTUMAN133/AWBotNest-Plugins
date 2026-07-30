@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -385,7 +385,7 @@ async def _cmd_getmedia(client, message, ctx):
 
 async def _cmd_find(client, message, ctx):
     text = message.text or ""
-    m = re.search(r"/find\s+(\d+)", text, re.IGNORECASE)
+    m = re.search(r".find\s+(\d+)", text, re.IGNORECASE)
     if not m:
         return
     tmdb_id = int(m.group(1))
@@ -412,7 +412,7 @@ async def _cmd_find(client, message, ctx):
 
 async def setup(ctx):
     # ───────── Vue 模式后端 API ─────────
-    @ctx.on_api("/status", methods=["GET"])
+    @ctx.on_api(".status", methods=["GET"])
     async def _api_status(req):
         cfg = _effective_cfg(ctx)
         tmdb_ok = bool(cfg.get("tmdb_api_key"))
@@ -432,7 +432,7 @@ async def setup(ctx):
             "emby_items": items,
         }
 
-    @ctx.on_api("/test", methods=["POST"])
+    @ctx.on_api(".test", methods=["POST"])
     async def _api_test(req):
         cfg = _effective_cfg(ctx)
         msgs = []
@@ -461,11 +461,11 @@ async def setup(ctx):
         ok = all("✅" in m for m in msgs)
         return {"ok": ok, "message": " | ".join(msgs)}
 
-    @ctx.on_api("/logs", methods=["GET"])
+    @ctx.on_api(".logs", methods=["GET"])
     async def _api_logs(req):
         return {"logs": list(_logs)}
 
-    @ctx.on_api("/update_config", methods=["POST"])
+    @ctx.on_api(".update_config", methods=["POST"])
     async def _api_update_config(req):
         body = await req.json()
         # shareswitch 从 enabled 推导

@@ -6,7 +6,7 @@ import random
 __plugin__ = {
     "name": "掷筊",
     "id": "myzhijiao",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao_v2.svg",
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
@@ -28,7 +28,7 @@ async def setup(ctx):
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-18)
     async def _zj_handler(client, message):
         text = (message.text or "").strip()
-        if text not in ("/zj", "/zhijiao"):
+        if text not in (".zj", ".zhijiao"):
             return
 
         results = [random.choice(TOSS_OPTIONS)]

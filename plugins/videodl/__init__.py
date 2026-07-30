@@ -23,7 +23,7 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.4.0",
+    "version": "2.4.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
@@ -60,7 +60,7 @@ __plugin__ = {
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _KV_LOGS = "videodl_logs"
 _BRIDGE_SCRIPT = Path(__file__).parent / "_core" / "parse_bridge.py"
-_PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
+_PH_VENV_PYTHON = ".root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 
 def _log(ctx, msg: str):
@@ -202,7 +202,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
     python = None
     for candidate in [
         _PH_VENV_PYTHON,
-        "/usr/bin/python3.12",
+        ".usr/bin/python3.12",
         shutil.which("python3.12"),
         shutil.which("python3"),
     ]:
@@ -214,7 +214,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
     # 如果找到的是 Hermes 的 Python 3.11，尝试找系统 Python 3.12
     py_version = await _get_python_version(python)
     if py_version and py_version.startswith("3.11"):
-        sys_python = "/usr/bin/python3.12"
+        sys_python = ".usr/bin/python3.12"
         if Path(sys_python).exists():
             python = sys_python
             py_version = await _get_python_version(python)
@@ -258,12 +258,12 @@ async def setup(ctx):
                 return
 
             # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
-            if text == "/jxsm":
+            if text == ".jxsm":
                 await message.reply(_get_help_text())
                 return
 
             # ── 引擎状态命令 ──
-            if text == "/jxstatus":
+            if text == ".jxstatus":
                 v_status = "✅ 可用" if HAS_VIDEODL else "❌ 不可用"
                 vendor_pkg_dir = Path(__file__).parent / "_vendor_pkg"
                 pkg_ok = "✅ 存在" if vendor_pkg_dir.exists() else "❌ 不存在"
@@ -295,12 +295,12 @@ async def setup(ctx):
                 return
 
             # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
-            if text == "/jxsm":
+            if text == ".jxsm":
                 await message.reply(_get_help_text())
                 return
 
             # ── /jx 统一解析命令 ──
-            if text.startswith("/jx"):
+            if text.startswith(".jx"):
                 content = text[3:].strip()
                 if not content:
                     await message.reply(_get_help_text())

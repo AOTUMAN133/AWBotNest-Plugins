@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "炸金花监控",
     "id": "myzjh",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzjh_v2.svg",
     "author": "凹凸曼",
     "description": "监控 HDSky 群天空小秘的炸金花结算信息，记录每局数据，支持统计查询。",
@@ -172,7 +172,7 @@ async def setup(ctx):
     async def cmd_stats(client, message):
         """命令：/zj 查看统计"""
         text = (message.text or "").strip()
-        if text not in ("/jh", ".jh", "/jhd", ".jhd", "/jht", ".jht"):
+        if text not in (".jh", ".jh", ".jhd", ".jhd", ".jht", ".jht"):
             return
         
         records = ctx.kv.get(_KV_DATA, [])
@@ -181,7 +181,7 @@ async def setup(ctx):
             return
         
         # 今日统计过滤
-        if text in ("/jht", ".jht"):
+        if text in (".jht", ".jht"):
             today = datetime.now(TZ).strftime("%Y-%m-%d")
             records = [r for r in records if r.get("time", "").startswith(today)]
             if not records:
@@ -203,7 +203,7 @@ async def setup(ctx):
         if cleaned:
             ctx.kv.set(_KV_DATA, records)
         
-        if text in ("/jhd", ".jhd"):
+        if text in (".jhd", ".jhd"):
             # 显示最近5局详情（太多会被Telegram截断）
             recent = records[-5:]
             lines = [f"📊 **炸金花最近{len(recent)}局**\n"]

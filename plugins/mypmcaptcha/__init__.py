@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -479,7 +479,7 @@ async def setup(ctx):
         await _send_captcha(client, ctx.config, user_id, ctx)
         await _update_stats(ctx)
 
-    @ctx.on_api("/pass_user", methods=["POST"])
+    @ctx.on_api(".pass_user", methods=["POST"])
     async def _api_pass(req):
         import json
         data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
@@ -492,7 +492,7 @@ async def setup(ctx):
             await _update_stats(ctx)
         return {"ok": True, "message": "已通过"}
 
-    @ctx.on_api("/fail_user", methods=["POST"])
+    @ctx.on_api(".fail_user", methods=["POST"])
     async def _api_fail(req):
         import json
         data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
@@ -505,19 +505,19 @@ async def setup(ctx):
             await _update_stats(ctx)
         return {"ok": True, "message": "已执行失败操作"}
 
-    @ctx.on_api("/clear_verified", methods=["POST"])
+    @ctx.on_api(".clear_verified", methods=["POST"])
     async def _api_clear_verified(req):
         ctx.kv.set(_KV_VERIFIED, [])
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空通过记录"}
 
-    @ctx.on_api("/clear_failed", methods=["POST"])
+    @ctx.on_api(".clear_failed", methods=["POST"])
     async def _api_clear_failed(req):
         ctx.kv.set(_KV_FAILED, [])
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空失败记录"}
 
-    @ctx.on_api("/get_records", methods=["GET"])
+    @ctx.on_api(".get_records", methods=["GET"])
     async def _api_get_records(req):
         return {
             "verified": _get_records(ctx, _KV_VERIFIED),

@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.5.1",
+    "version": "3.5.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -50,7 +50,7 @@ _KV_LOGS = "hdhive_logs"
 _KV_HASH = "hdhive_action_hash"
 _KV_DEBUG = "hdhive_debug_logs"
 
-_LOG_FILE = "/tmp/hdhive_sign.log"
+_LOG_FILE = ".tmp/hdhive_sign.log"
 
 def _log_debug(ctx, msg: str):
     logs = ctx.kv.get(_KV_DEBUG, [])
@@ -199,7 +199,7 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
         return None
 
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
-    apis = ["/api/customer/user/login", "/api/customer/auth/login"]
+    apis = [".api/customer/user/login", ".api/customer/auth/login"]
     headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
     for api in apis:
         try:
@@ -506,11 +506,11 @@ async def setup(ctx):
     async def _api_sign_now(req=None):
         return await _do_sign_all()
 
-    @ctx.on_api("/sign_now", methods=["POST"])
+    @ctx.on_api(".sign_now", methods=["POST"])
     async def _api_sign_now_api(req):
         return await _do_sign_all()
 
-    @ctx.on_api("/get_accounts", methods=["GET"])
+    @ctx.on_api(".get_accounts", methods=["GET"])
     async def _api_get_accounts(req):
         accounts = _get_accounts(ctx)
         for acc in accounts:
@@ -520,7 +520,7 @@ async def setup(ctx):
                     acc["cookie"] = saved
         return {"accounts": accounts}
 
-    @ctx.on_api("/get_account_status", methods=["POST"])
+    @ctx.on_api(".get_account_status", methods=["POST"])
     async def _api_get_account_status(req):
         _log_debug(ctx, "获取账号状态")
         accounts = _get_accounts(ctx)
@@ -572,15 +572,15 @@ async def setup(ctx):
             for r in results))
         return {"results": results}
 
-    @ctx.on_api("/get_logs", methods=["GET"])
+    @ctx.on_api(".get_logs", methods=["GET"])
     async def _api_get_logs(req):
         return {"logs": ctx.kv.get(_KV_LOGS, [])}
 
-    @ctx.on_api("/get_debug_logs", methods=["GET"])
+    @ctx.on_api(".get_debug_logs", methods=["GET"])
     async def _api_get_debug_logs(req):
         return {"logs": ctx.kv.get(_KV_DEBUG, [])}
 
-    @ctx.on_api("/save_accounts", methods=["POST"])
+    @ctx.on_api(".save_accounts", methods=["POST"])
     async def _api_save_accounts(req):
         try:
             body = req.json if hasattr(req, 'json') else {}
