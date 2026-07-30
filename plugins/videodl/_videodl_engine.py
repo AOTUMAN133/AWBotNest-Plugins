@@ -14,6 +14,12 @@ if _vendor_pkg.exists():
     if _vendor_pkg_str not in sys.path:
         sys.path.insert(0, _vendor_pkg_str)
 
+# 设置代理环境变量（供 requests 库使用）
+import os
+for k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+    if k not in os.environ:
+        os.environ[k] = 'http://192.168.1.33:7890'
+
 HAS_VIDEODL = False
 _import_error = ""
 try:
