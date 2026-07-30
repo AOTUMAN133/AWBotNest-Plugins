@@ -12,7 +12,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "代发助手",
     "id": "msg_relay",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "author": "凹凸曼",
     "description": "检测主号在群组的未发送草稿，自动用小号代发。你在群里打字就能发。",
     "scope": "user",
@@ -46,19 +46,24 @@ __plugin__ = {
             "section": "基本",
             "help": "发送成功或失败时通知"
         },
+        "status_info": {
+            "type": "info", "label": "运行状态", "section": "状态"
+        },
     },
 }
 
 _KV_LOGS = "msg_relay_logs"
+_KV_STATUS = "msg_relay_status"
 _client_ref = None
-_group_cache = []
-_group_cache_time = 0
+_running = False
 
 
 def _log(ctx, msg: str):
+    ts = datetime.now(TZ).strftime("%H:%M:%S")
     logs = ctx.kv.get(_KV_LOGS, [])
-    logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
-    ctx.kv.set(_KV_LOGS, logs[-30:])
+    logs.append({"t": ts, "m": msg})
+    ctx.kv.set(_KV_LOGS, logs[-50:])
+    ctx.update_config({"status_info": f"最后: {msg[:30]}"})
 
 
 async def _get_accounts(ctx):
@@ -98,74 +103,105 @@ async def _send_with_fallback(ctx, chat_id, content):
 
 
 async def setup(ctx):
-    global _client_ref
-    ctx.log.info("代发助手已加载 (草稿模式)")
+    global _client_ref, _running
+    ctx.log.info("代发助手已加载")
 
+    # 获取 client 引用
     @ctx.on_message(ctx.filters.text, group=999)
     async def _store_client(client, message):
         global _client_ref
-        _client_ref = client
+        if _client_ref is None:
+            _client_ref = client
+            _log(ctx, "✅ 已获取客户端连接")
 
+    # 账号信息 API
+    @ctx.on_api("/get_accounts_info", methods=["GET"])
+    async def _api_accounts_info(req):
+        apps = list(ctx.user_apps or [])
+        result = []
+        for i, app in enumerate(apps):
+            info = {"index": i, "label": f"第{i+1}个账号"}
+            # 尝试获取账号信息
+            try:
+                if hasattr(app, 'get_me'):
+                    me = await app.get_me()
+                    if me:
+                        info["name"] = me.first_name or ""
+                        info["phone"] = me.phone_number or ""
+                        info["id"] = me.id
+            except Exception:
+                pass
+            result.append(info)
+        return {"accounts": result}
+
+    # 日志 API
+    @ctx.on_api("/get_logs", methods=["GET"])
+    async def _api_get_logs(req):
+        return {"logs": ctx.kv.get(_KV_LOGS, [])}
+
+    # 定时检测草稿
     async def _draft_check():
-        global _client_ref, _group_cache, _group_cache_time
-        cli = _client_ref
-        if not cli:
+        global _client_ref, _running
+        if _running:
             return
-
+        _running = True
         try:
-            # 获取所有群组对话框（带草稿信息）
-            groups = []
-            async for d in cli.get_dialogs(limit=200):
-                if d.chat.type in ("group", "supergroup", "channel"):
-                    chat_id = d.chat.id
-                    title = d.chat.title or "未知"
-                    # 检查是否有草稿
-                    draft = None
-                    if hasattr(d.raw, 'draft') and d.raw.draft:
-                        if hasattr(d.raw.draft, 'message') and d.raw.draft.message:
-                            draft = d.raw.draft.message
-                    groups.append({"id": chat_id, "title": title, "draft": draft})
-
-            if not groups:
+            cli = _client_ref
+            if not cli:
+                _log(ctx, "⏳ 等待客户端连接...")
                 return
 
-            sent = 0
-            for g in groups:
-                if not g["draft"]:
+            _log(ctx, "🔍 扫描群组草稿...")
+            count = 0
+            drafts_found = 0
+
+            async for d in cli.get_dialogs(limit=200):
+                if d.chat.type not in ("group", "supergroup", "channel"):
                     continue
-                chat_id = g["id"]
-                title = g["title"]
-                content = g["draft"]
+                count += 1
+                # 检查草稿
+                try:
+                    if hasattr(d.raw, 'draft') and d.raw.draft:
+                        if hasattr(d.raw.draft, 'message') and d.raw.draft.message:
+                            content = d.raw.draft.message
+                            title = d.chat.title or "未知"
+                            _log(ctx, f"📝 发现草稿: {title}: {content[:30]}...")
 
-                _log(ctx, f"草稿: {title}: {content[:30]}...")
+                            # 发送
+                            result = await _send_with_fallback(ctx, d.chat.id, content)
+                            if result["ok"]:
+                                who = result.get("account", "小号")
+                                # 清除草稿
+                                try:
+                                    from pyrogram.raw.functions.messages import SaveDraft
+                                    peer = await cli.resolve_peer(d.chat.id)
+                                    await cli.invoke(SaveDraft(peer=peer, message=''))
+                                    _log(ctx, f"✅ {title}: 已通过{who}发送，草稿已清除")
+                                except Exception as e:
+                                    _log(ctx, f"⚠️ {title}: 已发送但草稿清除失败: {e}")
 
-                # 发送
-                result = await _send_with_fallback(ctx, chat_id, content)
-                if result["ok"]:
-                    who = result.get("account", "小号")
-                    # 清除草稿
-                    try:
-                        peer = await cli.resolve_peer(chat_id)
-                        from pyrogram.raw.functions.messages import SaveDraft
-                        await cli.invoke(SaveDraft(peer=peer, message=''))
-                    except Exception:
-                        pass
-                    _log(ctx, f"✅ {title}: 已通过{who}发送")
-                    if ctx.config.get("notify_result", True):
-                        await ctx.notify(f"📨 代发: {title}\n✅ 已通过{who}发送\n📝 {content[:80]}")
-                    sent += 1
-                else:
-                    _log(ctx, f"❌ {title}: {result.get('error','')}")
+                                if ctx.config.get("notify_result", True):
+                                    await ctx.notify(f"📨 代发: {title}\n✅ 已通过{who}发送\n📝 {content[:80]}")
+                                drafts_found += 1
+                            else:
+                                _log(ctx, f"❌ {title}: 发送失败: {result.get('error','')}")
 
-                if sent >= 3:
-                    break
+                            if drafts_found >= 3:
+                                break
+                except Exception as e:
+                    _log(ctx, f"⚠️ 检查草稿异常: {e}")
+
+            if drafts_found == 0:
+                _log(ctx, f"📭 扫描{count}个群组，无草稿")
 
         except Exception as e:
-            _log(ctx, f"检测异常: {e}")
+            _log(ctx, f"❌ 扫描异常: {e}")
+        finally:
+            _running = False
 
     interval = int(ctx.config.get("check_interval", 5) or 5)
     ctx.schedule(_draft_check, "interval", seconds=interval, id="代发助手-草稿检测")
-    _log(ctx, f"草稿检测已启动，间隔{interval}秒")
+    _log(ctx, f"🚀 启动完成，间隔{interval}秒")
 
     @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing & ctx.filters.private, group=0)
     async def _help_handler(client, message):
@@ -178,8 +214,10 @@ async def setup(ctx):
                 "  1. 打开任意群组\n"
                 "  2. 正常打字，点发送\n"
                 "  3. 发不出去 → Telegram 自动保存为草稿\n"
-                "  4. 插件检测到草稿 → 用小号发到群里\n"
-                "  5. 群友看到消息，你看到通知\n\n"
+                "  4. 插件检测到草稿 → 用小号发到群里\n\n"
+                "📌 <b>查看状态：</b>\n"
+                "  插件配置 → 运行状态\n"
+                "  或 API: /get_logs, /get_accounts_info\n\n"
                 "⚙️ 可在插件配置中调整检测间隔和账号"
             )
 
@@ -187,4 +225,6 @@ async def setup(ctx):
 
 
 async def teardown(ctx):
-    pass
+    global _client_ref, _running
+    _client_ref = None
+    _running = False
