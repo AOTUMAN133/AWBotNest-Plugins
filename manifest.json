@@ -5,7 +5,7 @@
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持跟随模式、群组黑名单、定时自动发言（自定义词条+随机歌词）。自带 Vue 配置界面 + 对话记忆管理。",
     "path": "plugins/myai/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myai.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myai_v2.svg"
   },
   "my115": {
     "name": "115频道监控",
@@ -13,7 +13,7 @@
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "path": "plugins/my115/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg"
   },
   "mybet": {
     "name": "自动下注",
@@ -21,7 +21,7 @@
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，按追龙/斩龙/斐波那契等策略自动押大押小。",
     "path": "plugins/mybet/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mybet.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mybet_v2.svg"
   },
   "my115scan": {
     "name": "115历史扫描",
@@ -29,7 +29,7 @@
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "path": "plugins/my115scan/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan_v2.svg"
   },
   "mypmcaptcha": {
     "name": "私聊拦截",
@@ -37,7 +37,7 @@
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "path": "plugins/mypmcaptcha/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg"
   },
   "myzhijiao": {
     "name": "掷筊",
@@ -45,7 +45,7 @@
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "path": "plugins/myzhijiao/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao_v2.svg"
   },
   "myhdhivesign": {
     "name": "影巢签到",
@@ -53,7 +53,7 @@
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "path": "plugins/myhdhivesign/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg"
   },
   "myzjh": {
     "name": "炸金花监控",
@@ -61,7 +61,7 @@
     "author": "凹凸曼",
     "description": "监控HDSky群炸金花结算，支持统计查询",
     "path": "plugins/myzjh/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzjh.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzjh_v2.svg"
   },
   "mydc": {
     "name": "DC助手",
@@ -69,7 +69,7 @@
     "author": "凹凸曼",
     "description": "配合DockerCopilot实现容器自动更新、清理、备份",
     "path": "plugins/mydc/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydc.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydc_v2.svg"
   },
   "myskyanswer": {
     "name": "天空自动答题",
@@ -77,7 +77,7 @@
     "author": "凹凸曼",
     "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。",
     "path": "plugins/myskyanswer/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myskyanswer.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myskyanswer_v2.svg"
   },
   "mysummary": {
     "name": "AI总结",
@@ -85,7 +85,7 @@
     "author": "凹凸曼",
     "description": "群消息总结。发送 .sum [数量] 快速总结最近N条消息，支持定时总结任务。",
     "path": "plugins/mysummary/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg"
   },
   "usermonitor": {
     "name": "用户监控",
@@ -93,7 +93,7 @@
     "author": "凹凸曼",
     "description": "监控指定用户在指定群组的发言，自动回复。支持AI智能回复或固定回复。",
     "path": "plugins/usermonitor/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/usermonitor.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/usermonitor_v2.svg"
   },
   "auto_changename": {
     "name": "自动报时昵称",
@@ -108,7 +108,7 @@
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "path": "plugins/myname/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myname.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myname_v2.svg"
   },
   "videodl": {
     "name": "聚合解析",
@@ -116,7 +116,7 @@
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "path": "plugins/videodl/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg"
   },
   "bili_search": {
     "name": "B站搜索",
@@ -124,6 +124,6 @@
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "path": "plugins/bili_search/",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search.svg?v=2"
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg"
   }
 }
