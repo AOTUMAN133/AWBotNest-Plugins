@@ -148,54 +148,43 @@ async def setup(ctx):
         try:
             cli = _client_ref
             if not cli:
-                _log(ctx, "⏳ 等待客户端连接...")
                 return
 
-            _log(ctx, "🔍 扫描群组草稿...")
-            count = 0
             drafts_found = 0
-
-            async for d in cli.get_dialogs(limit=200):
+            async for d in cli.get_dialogs(limit=50):
                 if d.chat.type not in ("group", "supergroup", "channel"):
                     continue
-                count += 1
-                # 检查草稿
                 try:
-                    if hasattr(d.raw, 'draft') and d.raw.draft:
-                        if hasattr(d.raw.draft, 'message') and d.raw.draft.message:
-                            content = d.raw.draft.message
-                            title = d.chat.title or "未知"
-                            _log(ctx, f"📝 发现草稿: {title}: {content[:30]}...")
+                    if not (hasattr(d.raw, 'draft') and d.raw.draft):
+                        continue
+                    if not (hasattr(d.raw.draft, 'message') and d.raw.draft.message):
+                        continue
+                    content = d.raw.draft.message
+                    title = d.chat.title or "未知"
+                    _log(ctx, f"📝 {title}: {content[:30]}...")
 
-                            # 发送
-                            result = await _send_with_fallback(ctx, d.chat.id, content)
-                            if result["ok"]:
-                                who = result.get("account", "小号")
-                                # 清除草稿
-                                try:
-                                    from pyrogram.raw.functions.messages import SaveDraft
-                                    peer = await cli.resolve_peer(d.chat.id)
-                                    await cli.invoke(SaveDraft(peer=peer, message=''))
-                                    _log(ctx, f"✅ {title}: 已通过{who}发送，草稿已清除")
-                                except Exception as e:
-                                    _log(ctx, f"⚠️ {title}: 已发送但草稿清除失败: {e}")
-
-                                if ctx.config.get("notify_result", True):
-                                    await ctx.notify(f"📨 代发: {title}\n✅ 已通过{who}发送\n📝 {content[:80]}")
-                                drafts_found += 1
-                            else:
-                                _log(ctx, f"❌ {title}: 发送失败: {result.get('error','')}")
-
-                            if drafts_found >= 3:
-                                break
-                except Exception as e:
-                    _log(ctx, f"⚠️ 检查草稿异常: {e}")
-
-            if drafts_found == 0:
-                _log(ctx, f"📭 扫描{count}个群组，无草稿")
+                    result = await _send_with_fallback(ctx, d.chat.id, content)
+                    if result["ok"]:
+                        who = result.get("account", "小号")
+                        try:
+                            from pyrogram.raw.functions.messages import SaveDraft
+                            peer = await cli.resolve_peer(d.chat.id)
+                            await cli.invoke(SaveDraft(peer=peer, message=''))
+                        except Exception:
+                            pass
+                        _log(ctx, f"✅ {title}: 已通过{who}发送")
+                        if ctx.config.get("notify_result", True):
+                            await ctx.notify(f"📨 {title}\n✅ 已通过{who}发送\n📝 {content[:80]}")
+                        drafts_found += 1
+                    else:
+                        _log(ctx, f"❌ {title}: {result.get('error','')}")
+                    if drafts_found >= 3:
+                        break
+                except Exception:
+                    pass
 
         except Exception as e:
-            _log(ctx, f"❌ 扫描异常: {e}")
+            _log(ctx, f"❌ {e}")
         finally:
             _running = False
 
