@@ -7,6 +7,7 @@ __plugin__ = {
     "name": "掷筊",
     "id": "myzhijiao",
     "version": "1.1.2",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/assets/icons/myzhijiao.svg",
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "scope": "user",

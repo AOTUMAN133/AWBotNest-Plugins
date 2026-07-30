@@ -12,6 +12,7 @@ __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
     "version": "1.2.3",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/assets/icons/mydc.svg",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
     "scope": "user",
