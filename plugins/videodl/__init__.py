@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.2.5",
+    "version": "2.2.6",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
