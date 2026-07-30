@@ -191,7 +191,7 @@ async def setup(ctx):
         if message.reply_to_message_id:
             search_data = ctx.kv.get(f"music_search_{chat_id}", {})
             results = search_data.get("results", [])
-            if results and search_data.get("msg_id") == message.reply_to_message_id:
+            if results:
                 if text.isdigit():
                     idx = int(text) - 1
                     await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
