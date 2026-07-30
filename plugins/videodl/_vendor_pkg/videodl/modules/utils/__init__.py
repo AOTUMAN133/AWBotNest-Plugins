@@ -8,7 +8,10 @@ from .progress import taskprogress, progresslog
 from .hls import CCTVHLSBestParser, TencentHLSHelper
 from .cdm import initcdm, closecdm, SearchPsshValueUtils
 from .importutils import optionalimport, optionalimportfrom
-from .chromium import ChromiumDownloaderUtils, DrissionPageUtils
+try:
+    from .chromium import ChromiumDownloaderUtils, DrissionPageUtils
+except Exception:
+    ChromiumDownloaderUtils = DrissionPageUtils = None
 from .logger import printtable, colorize, printfullline, LoggerHandle
 from .io import touchdir, generateuniquetmppath, safeunlinkpathobj, FileLock
 from .cmd import CommandBuilder, CommandModsApplier, FFmpegCommandFactory, NM3U8DLRECommandFactory, Aria2cCommandFactory, CmdArg, CmdOp
