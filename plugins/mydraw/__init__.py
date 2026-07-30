@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
-_DOWNLOAD_DIR = Path(__file__).parent / "downloads"
+_DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 _POLLINATIONS_URL = "https://image.pollinations.ai/prompt/"
 
 __plugin__ = {
@@ -134,6 +134,7 @@ async def setup(ctx):
             return
 
         cmd = text[len(".st"):].strip()
+        chat_id = str(message.chat.id)
 
         if not cmd:
             await message.reply("🎨 用法: <code>.st 提示词</code> 生成图片，或 <code>.st help</code> 查看帮助")
