@@ -555,10 +555,14 @@ async def setup(ctx):
                     m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text)
                     if m:
                         days = int(m.group(1))
-                    # 用 signed_today 记录判断今日是否已签到
+                    # 检查签到状态：比较当前signin_days_total与上次记录
                     today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
+                    signed = days > last_days if last_days > 0 else False
+                    # 如果signed_today记录存在也作为辅助判断
                     signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
-                    signed = signed_today == today_str
+                    if signed_today == today_str:
+                        signed = True
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
