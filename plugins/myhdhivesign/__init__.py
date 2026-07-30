@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.4.2",
+    "version": "3.5.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -35,17 +35,9 @@ __plugin__ = {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
             "action": "sign_now", "danger": False
         },
-        "sign_hour": {
-            "type": "number", "default": 9, "label": "签到开始时间(时)",
-            "section": "定时", "help": "定时签到开始的小时"
-        },
-        "sign_window": {
-            "type": "number", "default": 2, "label": "签到时间窗口(小时)",
-            "section": "定时", "help": "在开始时间后的窗口内随机签到，每个账号独立随机"
-        },
-        "sign_minute": {
-            "type": "number", "default": 0, "label": "签到分钟",
-            "section": "定时", "help": "当窗口为0时固定使用此分钟"
+        "notify_on_sign": {
+            "type": "boolean", "default": True, "label": "推送签到结果",
+            "section": "通知", "help": "定时签到和手动签到后推送结果通知"
         },
         "_logs": {
             "type": "info", "label": "运行日志", "section": "日志"
@@ -58,17 +50,13 @@ _KV_LOGS = "hdhive_logs"
 _KV_HASH = "hdhive_action_hash"
 _KV_DEBUG = "hdhive_debug_logs"
 
-
 _LOG_FILE = "/tmp/hdhive_sign.log"
-
 
 def _log_debug(ctx, msg: str):
     logs = ctx.kv.get(_KV_DEBUG, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
-    # 同时写入文件，方便调试
     _log_file(msg)
-
 
 def _log_file(msg: str):
     try:
@@ -77,13 +65,18 @@ def _log_file(msg: str):
     except Exception:
         pass
 
-
 def _now() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
+def _get_accounts(ctx) -> list:
+    acc_json = ctx.config.get("accounts", "[]")
+    try:
+        accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
+    except Exception:
+        accounts = []
+    return accounts
 
 async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
-    """从 Next.js chunk 中提取签到 action hash"""
     if ctx:
         _log_debug(ctx, "获取action hash...")
     from urllib.parse import quote
@@ -97,8 +90,6 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
             chunk_urls = set()
             for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
                 chunk_urls.add(m.group(1))
-
-            # 也从 RSC payload 中获取 chunk
             try:
                 rsc = await cli.get(base_url, headers={"User-Agent": headers["User-Agent"], "Accept": "text/x-component"})
                 if rsc.status_code == 200:
@@ -107,12 +98,9 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
                         chunk_urls.add(chunk_rel)
             except Exception:
                 pass
-
             for chunk_rel in sorted(chunk_urls):
-                # 优先检查 layout chunk（包含 checkIn 的可能性最大）
                 if "layout" not in chunk_rel:
                     continue
-                # URL 编码括号等特殊字符
                 encoded = quote(chunk_rel, safe='/:')
                 chunk_url = f"{base_url}{encoded}"
                 try:
@@ -120,16 +108,12 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
                     if cr.status_code != 200:
                         continue
                     text = cr.text
-                    # 查找 createServerReference)("hash"... "checkIn")
                     m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
                     if m:
                         _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
                         return m.group(1)
-                except Exception as e:
-                    _log_debug(ctx, f"layout chunk 请求失败: {e}")
+                except Exception:
                     continue
-
-            # 第二步：所有 chunk 中搜索
             for chunk_rel in chunk_urls:
                 encoded = quote(chunk_rel, safe='/:')
                 chunk_url = f"{base_url}{encoded}"
@@ -144,32 +128,24 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
                         return m.group(1)
                 except Exception:
                     continue
-
-            # 第三步：兜底
             _log_debug(ctx, "使用已知 fallback hash")
             return "40ca031f4e08ca31564fb6889587933a9bb5bdea39"
     except Exception:
         return None
 
-
 async def _login_with_playwright(base_url: str, username: str, password: str) -> str | None:
-    """用 Playwright + CloakBrowser 模拟登录，返回 cookie 字符串"""
     try:
         from playwright.async_api import async_playwright
     except ImportError:
         return None
-
-    # 检测是否有 cloakbrowser
     try:
         import cloakbrowser
         has_cloak = True
     except ImportError:
         has_cloak = False
-
     try:
         async with async_playwright() as p:
             if has_cloak:
-                # 使用 CloakBrowser 伪装指纹（和AWPulse一样）
                 browser = await cloakbrowser.launch_async(
                     headless=True,
                     args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
@@ -181,7 +157,6 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                     headless=True,
                     args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
                 )
-
             ctx = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                 viewport={"width": 1920, "height": 1080},
@@ -190,18 +165,13 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
             )
             page = await ctx.new_page()
             page.set_default_timeout(60000)
-
-            # 访问登录页
             await page.goto(f"{base_url}/login", wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(3)
-
-            # 等待 Cloudflare 验证通过（最多60秒）
             max_wait = 60
             start = time.time()
             while time.time() - start < max_wait:
                 content = await page.content()
                 if "Checking your browser" in content or "Just a moment" in content:
-                    elapsed = int(time.time() - start)
                     await asyncio.sleep(3)
                     continue
                 try:
@@ -210,8 +180,6 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                 except Exception:
                     pass
                 await asyncio.sleep(3)
-
-            # 填表单
             try:
                 await page.fill('input[name="username"]', username, timeout=30000)
                 await asyncio.sleep(1)
@@ -221,19 +189,16 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                 await asyncio.sleep(5)
             except Exception:
                 pass
-
-            # 提取 cookie
             cookies = await ctx.cookies()
             cookie_parts = []
             for c in cookies:
                 cookie_parts.append(f"{c['name']}={c['value']}")
-
             await browser.close()
             return "; ".join(cookie_parts) if "token" in "; ".join(cookie_parts) else None
     except Exception:
         return None
+
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
-    """用用户名密码登录，返回完整 cookie 字符串"""
     apis = ["/api/customer/user/login", "/api/customer/auth/login"]
     headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
     for api in apis:
@@ -246,13 +211,11 @@ async def _login_get_token(base_url: str, username: str, password: str) -> str |
                     token = data.get("data", {}).get("token") or data.get("token", "")
                     if token:
                         return f"token={token}"
-        except Exception as e:
+        except Exception:
             continue
     return None
 
-
 async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: bool) -> dict:
-    """执行签到，自动获取 CSRF token，返回签到结果和用户信息"""
     token = ""
     cookies = {}
     for item in cookie_str.split(";"):
@@ -263,19 +226,13 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 token = v
     if not token:
         return {"success": False, "message": "Cookie 缺少 token"}
-
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     body = json.dumps([gamble])
-
-    # 解析用户信息
     user_info = {"points": 0, "signin_days": 0, "nickname": "", "signed_in_today": False}
-
     try:
         async with httpx.AsyncClient(timeout=30, verify=False) as cli:
-            # 先请求首页获取 CSRF token（不传 hdh_sa_token，让服务器下发新的）
             get_cookies = {k: v for k, v in cookies.items() if k != "hdh_sa_token"}
             hr = await cli.get(base_url, headers={"User-Agent": ua}, cookies=get_cookies)
-            # 从响应头中提取 hdh_sa_token
             csrf = ""
             for k, v in hr.headers.items():
                 if k.lower() == "set-cookie" and "hdh_sa_token" in v:
@@ -283,17 +240,13 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                     if m:
                         csrf = m.group(1)
                         break
-            # 如果从 headers 没找到，从 cli.cookies 获取
             if not csrf:
                 for c in cli.cookies:
                     if c.name == "hdh_sa_token":
                         csrf = c.value
                         break
-            # 合并 CSRF 到 cookies
             if csrf:
                 cookies["hdh_sa_token"] = csrf
-
-            # 从 RSC 响应中解析用户信息（RSC 格式中 JSON 是转义的）
             text_raw = hr.text
             m = re.search(r'\\"nickname\\"\s*:\s*\\"([^"]+)\\"', text_raw)
             if m:
@@ -307,7 +260,6 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             m = re.search(r'\\"signin_days_total\\"\s*:\s*(\d+)', text_raw)
             if m:
                 user_info["signin_days"] = int(m.group(1))
-
             headers = {
                 "User-Agent": ua,
                 "Accept": "text/x-component",
@@ -318,7 +270,6 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 "Authorization": f"Bearer {token}",
             }
             resp = await cli.post(base_url, headers=headers, cookies=cookies, content=body)
-        # 签到成功后重新获取用户信息
         if resp.status_code == 200:
             try:
                 hr2 = await cli.get(base_url, headers={"User-Agent": ua}, cookies=cookies)
@@ -332,7 +283,6 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             except Exception:
                 pass
         text = resp.text
-        # 解析 RSC 响应（参考原插件 _checkin_parse_rsc_result）
         redirected = False
         for line in text.splitlines():
             m = re.match(r"^\d+:(\{.*\})\s*$", line)
@@ -345,7 +295,6 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
             if not isinstance(obj, dict):
                 continue
             keys = set(obj.keys())
-            # 跳过 RSC 元数据行
             if keys <= {"a", "f", "b", "q", "i", "S"}:
                 if "login" in str(obj):
                     redirected = True
@@ -356,22 +305,23 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
                 continue
             if "error" in obj and isinstance(obj["error"], dict):
                 err = obj["error"]
-                return {"success": False, "message": str(err.get("message") or err.get("description") or "签到失败")}
-            # 找到有效响应
+                return {"success": False, "message": str(err.get("message") or err.get("description") or "签到失败"), "user": user_info}
             payload = obj.get("response") or obj
             msg = str(payload.get("message") or payload.get("description") or "")
             already = any(k in msg for k in ("已经签到", "签到过", "明天再来"))
             if already:
+                user_info["signed_in_today"] = True
                 return {"success": True, "message": "今日已签到", "user": user_info}
             if bool(payload.get("success")):
+                user_info["signed_in_today"] = True
                 return {"success": True, "message": msg or "签到成功", "user": user_info}
             return {"success": False, "message": msg or "签到失败", "user": user_info, "raw": text[:200]}
         if redirected:
             return {"success": False, "message": "Cookie 失效，请重新登录", "user": user_info}
         if resp.status_code == 200:
+            user_info["signed_in_today"] = True
             return {"success": True, "message": "签到请求已发送", "user": user_info}
         elif resp.status_code == 409:
-            # 409 Conflict - 可能已签到或请求冲突
             try:
                 body = resp.json()
                 msg = body.get("message") or body.get("error") or str(body)
@@ -386,60 +336,35 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
 async def setup(ctx):
     _log_debug(ctx, "插件加载完成")
 
-    async def _sign_tick():
-        """每分钟检查，在签到窗口内逐个账号签到"""
-        base_url = ctx.config.get("base_url", "https://hdhive.com")
-        cfg = ctx.config
-        acc_json = cfg.get("accounts", "[]")
-        try:
-            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
-        except Exception:
-            accounts = []
-        if not accounts:
-            return
-        sign_hour = int(ctx.kv.get("custom_sign_hour") or cfg.get("sign_hour", 9) or 9)
-        sign_window = float(ctx.kv.get("custom_sign_window") or cfg.get("sign_window", 2) or 2)
-        sign_minute = int(ctx.kv.get("custom_sign_minute") or cfg.get("sign_minute", 0) or 0)
-        now = datetime.now(TZ)
-        _log_debug(ctx, f"定时检查: hour={now.hour} min={now.minute} cfg_hour={sign_hour} cfg_window={sign_window} cfg_min={sign_minute}")
-        # 窗口为0时，固定到指定分钟签到
-        if sign_window <= 0:
-            if now.hour != sign_hour or now.minute != sign_minute:
-                return
-            total_minutes = 1
-            current_offset = 0
-            need_check_minute = False
-        else:
-            window_end = sign_hour + sign_window
-            if now.hour < sign_hour or now.hour >= window_end:
-                return
-            total_minutes = int(sign_window * 60)
-            current_offset = (now.hour - sign_hour) * 60 + now.minute
-            need_check_minute = True
-        # 先检查有没有账号在本分钟需要签到，没有就不浪费时间
-        today_str = now.strftime("%Y-%m-%d")
-        seed_base = int(hashlib.md5(today_str.encode()).hexdigest()[:12], 16)
-        need_sign = False
-        for i, acc in enumerate(accounts):
-            seed = seed_base + i
-            rng = random.Random(seed)
-            offset = rng.randint(0, total_minutes - 1)
-            if offset != current_offset:
-                continue
-            cookie = acc.get("cookie", "")
-            if not cookie:
-                continue
-            name = acc.get("name", f"账号{i+1}")
-            # 检查今日是否已签到
-            signed_key = f"signed_today:{cookie[:20]}"
-            signed_today = ctx.kv.get(signed_key, "")
-            if signed_today == today_str:
-                continue
-            need_sign = True
-            break
-        if not need_sign:
-            return
-        # 有账号需要签到，获取 hash
+    async def _sign_account(ctx, acc, base_url, action_hash):
+        """签到单个账号，返回结果"""
+        name = acc.get("name", "未知")
+        cookie = acc.get("cookie", "")
+        if not cookie:
+            return {"name": name, "success": False, "message": "缺少Cookie"}
+        gamble = acc.get("gamble", False)
+        mode = "赌狗" if gamble else "普通"
+        _log_debug(ctx, f"签到: {name}({mode})")
+        result = await _do_sign(cookie, base_url, action_hash, gamble)
+        msg = result["message"]
+        if result.get("user"):
+            u = result["user"]
+            pts = u.get("points", 0)
+            days = u.get("signin_days", 0)
+            nick = u.get("nickname", "")
+            if nick:
+                msg += f" | {nick} 积分={pts} 已签{days}天"
+            if days > 0:
+                ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
+            ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
+        _log_debug(ctx, f"{name}: {msg}")
+        if result.get("user"):
+            u = result["user"]
+            _log_debug(ctx, f"{name}: {u.get('nickname','')} 积分={u.get('points',0)} 签到天数={u.get('signin_days',0)}")
+        return {"name": name, "mode": mode, "success": result["success"], "message": msg}
+
+    async def _get_action_hash(ctx, base_url):
+        """获取 action hash"""
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
             _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
@@ -447,110 +372,94 @@ async def setup(ctx):
         if action_hash:
             ctx.kv.set(_KV_HASH, action_hash)
             _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
-        else:
+        return action_hash
+
+    async def _sign_tick():
+        """每分钟检查，按每个账号的独立时间设置签到"""
+        base_url = ctx.config.get("base_url", "https://hdhive.com")
+        accounts = _get_accounts(ctx)
+        if not accounts:
             return
+        now = datetime.now(TZ)
+        today_str = now.strftime("%Y-%m-%d")
+        _log_debug(ctx, f"定时检查: {now.hour:02d}:{now.minute:02d}")
+
+        # 收集需要在本分钟签到的账号
+        to_sign = []
         for i, acc in enumerate(accounts):
-            seed = seed_base + i
-            rng = random.Random(seed)
-            offset = rng.randint(0, total_minutes - 1)
-            if offset != current_offset:
-                continue
+            name = acc.get("name", f"账号{i+1}")
             cookie = acc.get("cookie", "")
             if not cookie:
                 continue
-            name = acc.get("name", f"账号{i+1}")
-            gamble = acc.get("gamble", False)
-            mode = "赌狗" if gamble else "普通"
-            last_days_key = f"last_signin_days:{cookie[:20]}"
-            last_days = ctx.kv.get(last_days_key, 0)
-            if last_days > 0:
-                _log_debug(ctx, f"{name}: 今日已签，跳过")
+            # 检查今日是否已签到
+            signed_key = f"signed_today:{cookie[:20]}"
+            if ctx.kv.get(signed_key, "") == today_str:
                 continue
-            _log_debug(ctx, f"定时签到: {name}({mode})")
-            result = await _do_sign(cookie, base_url, action_hash, gamble)
-            status = "✅" if result["success"] else "❌"
-            msg = result["message"]
-            if result.get("user"):
-                u = result["user"]
-                days = u.get("signin_days", 0)
-                if days > 0:
-                    ctx.kv.set(last_days_key, days)
-                    ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
-            # 记录到签到记录
-            logs = ctx.kv.get(_KV_LOGS, [])
-            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
-            ctx.kv.set(_KV_LOGS, logs[-50:])
-            _log_debug(ctx, f"{name}: {msg}")
+            # 获取该账号的独立时间设置
+            ah = int(acc.get("sign_hour", 9) or 9)
+            am = int(acc.get("sign_minute", 0) or 0)
+            aw = int(acc.get("sign_window", 5) or 5)
+            # 判断当前时间是否在签到窗口内
+            if aw <= 0:
+                # 固定时间
+                if now.hour == ah and now.minute == am:
+                    to_sign.append((i, acc))
+            else:
+                # 窗口模式：在 ah:00 到 ah+aw:00 之间随机分配一个分钟
+                total_minutes = aw * 60
+                seed = int(hashlib.md5(f"{today_str}:{i}".encode()).hexdigest()[:12], 16)
+                rng = random.Random(seed)
+                target_offset = rng.randint(0, total_minutes - 1)
+                current_offset = (now.hour - ah) * 60 + now.minute
+                if 0 <= current_offset < total_minutes and current_offset == target_offset:
+                    to_sign.append((i, acc))
 
-    sign_hour = int(ctx.config.get("sign_hour", 9) or 9)
-    sign_window = float(ctx.config.get("sign_window", 2) or 2)
-    sign_minute = int(ctx.config.get("sign_minute", 0) or 0)
-    # 从 KV 读取自定义时间配置
-    kv_hour = ctx.kv.get("custom_sign_hour")
-    kv_window = ctx.kv.get("custom_sign_window")
-    kv_minute = ctx.kv.get("custom_sign_minute")
-    try:
-        schedule_hour = int(kv_hour) if kv_hour is not None and kv_hour != "" else sign_hour
-    except (ValueError, TypeError):
-        schedule_hour = sign_hour
-    try:
-        schedule_window = float(kv_window) if kv_window is not None and kv_window != "" else sign_window
-    except (ValueError, TypeError):
-        schedule_window = sign_window
-    try:
-        schedule_minute = int(kv_minute) if kv_minute is not None and kv_minute != "" else sign_minute
-    except (ValueError, TypeError):
-        schedule_minute = sign_minute
-    
-    # 根据窗口大小决定调度方式
-    if schedule_window <= 0:
-        # 固定分钟：用 cron 精确调度
-        ctx.schedule(_sign_tick, "cron", hour=str(schedule_hour), minute=str(schedule_minute), id=f"影巢签到-每天{schedule_hour:02d}:{schedule_minute:02d}")
-    else:
-        # 有窗口：每分钟检查
-        ctx.schedule(_sign_tick, "interval", minutes=1, id=f"影巢签到-{schedule_hour}时起{schedule_window}时窗口")
+        if not to_sign:
+            return
 
-    # 启动时立即检查：如果当前时间在窗口内，立刻执行一次
-    _now = datetime.now(TZ)
-    if schedule_window > 0 and schedule_hour <= _now.hour < schedule_hour + schedule_window:
-        _log_debug(ctx, f"启动时在窗口内，立即执行签到")
-        asyncio.create_task(_sign_tick())
-    elif schedule_window <= 0 and _now.hour == schedule_hour and _now.minute == schedule_minute:
-        _log_debug(ctx, f"启动时在固定时间，立即执行签到")
-        asyncio.create_task(_sign_tick())
+        _log_debug(ctx, f"本分钟需要签到的账号: {len(to_sign)}个")
+        action_hash = await _get_action_hash(ctx, base_url)
+        if not action_hash:
+            _log_debug(ctx, "无法获取hash，跳过")
+            return
+
+        logs = []
+        notify_lines = []
+        for i, acc in to_sign:
+            r = await _sign_account(ctx, acc, base_url, action_hash)
+            logs.append({"time": _now(), "name": r["name"], "mode": r.get("mode", ""), "status": "✅" if r["success"] else "❌", "message": r["message"]})
+            icon = "✅" if r["success"] else "❌"
+            notify_lines.append(f"{icon} {r['name']}({r.get('mode','')}): {r['message']}")
+            await asyncio.sleep(1)
+
+        if logs:
+            existing = ctx.kv.get(_KV_LOGS, [])
+            ctx.kv.set(_KV_LOGS, (existing + logs)[-50:])
+            # 推送通知
+            if ctx.config.get("notify_on_sign", True):
+                await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines))
 
     async def _do_sign_all():
+        """立即签到所有账号"""
         _log_debug(ctx, "开始签到")
         base_url = ctx.config.get("base_url", "https://hdhive.com")
-        acc_json = ctx.config.get("accounts", "[]")
-        try:
-            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
-        except Exception:
-            accounts = []
+        accounts = _get_accounts(ctx)
         if not accounts:
             _log_debug(ctx, "无账号配置")
             return {"ok": False, "message": "未配置账号"}
-        _log_debug(ctx, f"账号数: {len(accounts)}")
 
-        action_hash = await _fetch_action_hash(base_url, ctx)
+        action_hash = await _get_action_hash(ctx, base_url)
         if not action_hash:
-            _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
-            action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
-        if action_hash:
-            ctx.kv.set(_KV_HASH, action_hash)
-            _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
-        else:
-            _log_debug(ctx, "无法获取hash，请在配置中手动填写")
             return {"ok": False, "message": "无法获取 action hash，请手动填写"}
 
         logs = []
+        notify_lines = []
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
             cookie = acc.get("cookie", "")
             username = acc.get("username", "")
             password = acc.get("password", "")
             if not cookie and username and password:
-                # 先从 KV 取已保存的 Cookie
                 saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
                 if saved:
                     cookie = saved
@@ -564,43 +473,34 @@ async def setup(ctx):
                         if cookie:
                             acc["cookie"] = cookie
                             ctx.kv.set(f"cookie:{acc.get('name', '')}", cookie)
-                            _log_debug(ctx, f"{name}: 登录成功，Cookie已保存")
+                            _log_debug(ctx, f"{name}: 登录成功")
                         else:
-                            _log_debug(ctx, f"{name}: 登录失败，请检查用户名密码")
+                            _log_debug(ctx, f"{name}: 登录失败")
                     except ImportError:
-                        _log_debug(ctx, f"{name}: 平台未安装Playwright，请手动填写Cookie")
+                        _log_debug(ctx, f"{name}: 平台未安装Playwright")
             if not cookie:
-                _log_debug(ctx, f"{name}: 缺少Cookie")
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
+                notify_lines.append(f"❌ {name}: 缺少Cookie")
                 continue
-            gamble = acc.get("gamble", False)
-            mode = "赌狗" if gamble else "普通"
-            _log_debug(ctx, f"签到: {name}({mode})")
-            result = await _do_sign(cookie, base_url, action_hash, gamble)
-            status = "✅" if result["success"] else "❌"
-            msg = result["message"]
-            if result.get("user"):
-                u = result["user"]
-                pts = u.get("points", 0)
-                days = u.get("signin_days", 0)
-                nick = u.get("nickname", "")
-                if nick:
-                    msg += f" | {nick} 积分={pts} 已签{days}天"
-                if days > 0:
-                    ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
-                    ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
-            logs.append({"time": _now(), "name": name, "mode": mode, "status": status, "message": msg})
-            _log_debug(ctx, f"{name}: {msg}")
-            if result.get("user"):
-                u = result["user"]
-                pts = u.get("points", 0)
-                days = u.get("signin_days", 0)
-                nick = u.get("nickname", "")
-                _log_debug(ctx, f"{name}: {nick} 积分={pts} 签到天数={days}")
+            r = await _sign_account(ctx, acc, base_url, action_hash)
+            logs.append({"time": _now(), "name": r["name"], "mode": r.get("mode", ""), "status": "✅" if r["success"] else "❌", "message": r["message"]})
+            icon = "✅" if r["success"] else "❌"
+            notify_lines.append(f"{icon} {r['name']}({r.get('mode','')}): {r['message']}")
             await asyncio.sleep(1)
 
-        ctx.kv.set(_KV_LOGS, logs)
+        if logs:
+            ctx.kv.set(_KV_LOGS, logs)
+        # 推送通知
+        if ctx.config.get("notify_on_sign", True):
+            await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines))
+
         return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
+
+    # 调度定时任务：每分钟检查，每个账号独立时间
+    ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到-定时检查")
+
+    # 启动时立即检查一次
+    asyncio.create_task(_sign_tick())
 
     @ctx.action("sign_now")
     async def _api_sign_now(req=None):
@@ -612,13 +512,7 @@ async def setup(ctx):
 
     @ctx.on_api("/get_accounts", methods=["GET"])
     async def _api_get_accounts(req):
-        acc_json = ctx.config.get("accounts", "[]")
-        accounts = []
-        try:
-            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
-        except Exception:
-            pass
-        # 合并 KV 中保存的 Cookie
+        accounts = _get_accounts(ctx)
         for acc in accounts:
             if not acc.get("cookie"):
                 saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
@@ -628,19 +522,14 @@ async def setup(ctx):
 
     @ctx.on_api("/get_account_status", methods=["POST"])
     async def _api_get_account_status(req):
-        """获取每个账号的当前状态（积分、签到天数等）"""
         _log_debug(ctx, "获取账号状态")
-        acc_json = ctx.config.get("accounts", "[]")
-        try:
-            accounts = json.loads(acc_json) if isinstance(acc_json, str) else (acc_json if isinstance(acc_json, list) else [])
-        except Exception:
-            accounts = []
+        accounts = _get_accounts(ctx)
         results = []
         base_url = ctx.config.get("base_url", "https://hdhive.com")
         for acc in accounts:
             cookie = acc.get("cookie", "")
             if not cookie:
-                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "error": "无Cookie"})
+                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "signed": False, "error": "无Cookie"})
                 continue
             try:
                 ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -673,7 +562,7 @@ async def setup(ctx):
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
             except Exception as e:
                 _log_debug(ctx, f"状态查询失败: {e}")
-                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "error": str(e)})
+                results.append({"name": acc.get("name", ""), "points": 0, "days": 0, "signed": False, "error": str(e)})
         _log_debug(ctx, "状态: " + " | ".join(
             f'{r["name"]}:{r["points"]}分/{r["days"]}天{"✅" if r.get("signed") else "⏳"}'
             for r in results))
@@ -706,25 +595,30 @@ async def setup(ctx):
             if "sign_minute" in body:
                 ctx.kv.set("custom_sign_minute", body["sign_minute"])
             _log_debug(ctx, f"时间配置已保存: {body.get('sign_hour')}h {body.get('sign_window')}w {body.get('sign_minute')}m")
-            # 重新调度定时任务
-            h = int(body.get("sign_hour", 9) or 9)
-            w = float(body.get("sign_window", 2) or 2)
-            try:
-                m = int(body.get("sign_minute", 0) or 0)
-            except (ValueError, TypeError):
-                m = 0
-            try:
-                ctx.unschedule("影巢签到-定时检查")
-            except Exception:
-                pass
-            if w <= 0:
-                ctx.schedule(_sign_tick, "cron", hour=str(h), minute=str(m), id="影巢签到-定时检查")
-                _log_debug(ctx, f"定时任务已更新: 每天 {h:02d}:{m:02d}")
-            else:
-                ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到-定时检查")
-                _log_debug(ctx, f"定时任务已更新: 每1分钟检查（{h}时起{w}时窗口）")
             return {"ok": True, "message": "已保存"}
         except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    @ctx.on_api("/save_accounts", methods=["POST"])
+    async def _api_save_accounts(req):
+        try:
+            body = req.json if hasattr(req, 'json') else {}
+            accounts = body.get("accounts", []) if isinstance(body, dict) else []
+            if not accounts:
+                return {"ok": False, "message": "无账号数据"}
+            # 更新配置
+            try:
+                ctx.update_config({"accounts": json.dumps(accounts, ensure_ascii=False)})
+            except Exception:
+                _log_debug(ctx, "update_config 失败，尝试直接保存")
+                import json as _json
+                cfg = dict(ctx.config or {})
+                cfg["accounts"] = _json.dumps(accounts, ensure_ascii=False)
+                ctx.update_config(cfg)
+            _log_debug(ctx, f"已保存 {len(accounts)} 个账号")
+            return {"ok": True, "message": f"已保存 {len(accounts)} 个账号"}
+        except Exception as e:
+            _log_debug(ctx, f"保存账号失败: {e}")
             return {"ok": False, "message": str(e)}
 
 
