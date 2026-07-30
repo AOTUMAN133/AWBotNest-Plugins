@@ -245,15 +245,18 @@ async def setup(ctx):
         if not text:
             return
 
-        # ── /jx 统一解析命令 ──
-        if text.startswith("/jx "):
-            content = text[4:].strip()
-            await _do_parse(ctx, client, message, content)
-            return
-
-        # ── 帮助命令 ──
+        # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
         if text == "/jxsm":
             await message.reply(_get_help_text())
+            return
+
+        # ── /jx 统一解析命令 ──
+        if text.startswith("/jx"):
+            content = text[3:].strip()
+            if not content:
+                await message.reply(_get_help_text())
+                return
+            await _do_parse(ctx, client, message, content)
             return
 
     # ── 统一解析 ──
@@ -346,10 +349,10 @@ async def setup(ctx):
                 if size > max_mb * 1024 * 1024:
                     oversize_action = ctx.config.get("oversize_action", "notify")
                     if oversize_action == "notify":
-                                            await msg.edit(f"📹 <b>{title[:50]}</b>\n📐 大小: {_format_size(size)}（超过{max_mb}MB）\n💡 请在配置中调整超限处理方式")
-                                            if not ctx.config.get("keep_local", False):
-                                                dl_path.unlink(missing_ok=True)
-                                            return
+                        await msg.edit(f"📹 <b>{title[:50]}</b>\n📐 大小: {_format_size(size)}（超过{max_mb}MB）\n💡 请在配置中调整超限处理方式")
+                        if not ctx.config.get("keep_local", False):
+                            dl_path.unlink(missing_ok=True)
+                        return
                 try:
                     await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
                     if not ctx.config.get("keep_local", False):
