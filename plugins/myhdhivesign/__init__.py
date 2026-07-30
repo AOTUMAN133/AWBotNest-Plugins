@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.5.3",
+    "version": "3.5.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -336,6 +336,19 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
 async def setup(ctx):
     _log_debug(ctx, "插件加载完成")
 
+    # 启动时清理过期 signed_today 标记（防止跨天残留）
+    today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+    accounts = _get_accounts(ctx)
+    for acc in accounts:
+        cookie = acc.get("cookie", "")
+        if not cookie:
+            continue
+        sk = f"signed_today:{cookie[:20]}"
+        st = ctx.kv.get(sk, "")
+        if st and st != today_str:
+            _log_debug(ctx, f"清理过期签到标记: {acc.get('name','?')} ({st} → 待签到)")
+            ctx.kv.set(sk, "")
+
     async def _sign_account(ctx, acc, base_url, action_hash):
         """签到单个账号，返回结果"""
         name = acc.get("name", "未知")
@@ -356,11 +369,13 @@ async def setup(ctx):
                 msg += f" | {nick} 积分={pts} 已签{days}天"
             if days > 0:
                 ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
-            ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
         _log_debug(ctx, f"{name}: {msg}")
         if result.get("user"):
             u = result["user"]
             _log_debug(ctx, f"{name}: {u.get('nickname','')} 积分={u.get('points',0)} 签到天数={u.get('signin_days',0)}")
+        # 只有签到成功才标记已签到，失败不标记（允许重试）
+        if result["success"]:
+            ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
         return {"name": name, "mode": mode, "success": result["success"], "message": msg}
 
     async def _get_action_hash(ctx, base_url):
