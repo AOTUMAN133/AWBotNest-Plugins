@@ -22,6 +22,7 @@ __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
     "version": "0.10.23",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan_v2.svg",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "scope": "user",
