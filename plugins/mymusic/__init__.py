@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：音乐搜索下载 (mymusic) v1.1.0
-# 搜索 YouTube 下载 MP3 音频，支持翻页、回复编号下载
+# AWBotNest 插件：音乐搜索下载 (mymusic) v1.2.0
+# 搜索 YouTube 下载 MP3 音频，支持翻页、编号选择下载
 
 import os
 import re
 import asyncio
-import subprocess
+import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -17,10 +17,10 @@ _SEARCH_COUNT = 10
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
-    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、直接回复编号下载、翻页",
+    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、直接输入编号下载、翻页",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
@@ -37,12 +37,7 @@ def _now() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _sanitize_filename(name: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "", name)[:100]
-
-
 async def _run_ytdlp(args: list, timeout: int = 120) -> tuple[str, str]:
-    """运行 yt-dlp 并返回 (stdout, stderr)"""
     yt_path = os.path.expanduser("~/.local/bin/yt-dlp")
     if not os.path.isfile(yt_path):
         yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
@@ -62,7 +57,6 @@ async def _run_ytdlp(args: list, timeout: int = 120) -> tuple[str, str]:
 
 
 async def _search_music(query: str, max_results: int = _SEARCH_COUNT) -> list[dict]:
-    """搜索 YouTube 音乐，返回结果列表"""
     search_query = f"ytsearch{max_results}:{query}"
     stdout, _ = await _run_ytdlp([
         "--flat-playlist", "--dump-json", "--no-warnings",
@@ -76,15 +70,11 @@ async def _search_music(query: str, max_results: int = _SEARCH_COUNT) -> list[di
         try:
             import json
             data = json.loads(line)
-            title = data.get("title", "未知标题")
-            url = f"https://www.youtube.com/watch?v={data.get('id', '')}"
-            duration = data.get("duration", 0)
-            uploader = data.get("uploader", "未知")
             results.append({
-                "title": title,
-                "url": url,
-                "duration": duration,
-                "uploader": uploader,
+                "title": data.get("title", "未知标题"),
+                "url": f"https://www.youtube.com/watch?v={data.get('id', '')}",
+                "duration": data.get("duration", 0),
+                "uploader": data.get("uploader", "未知"),
                 "id": data.get("id", ""),
             })
         except json.JSONDecodeError:
@@ -101,7 +91,6 @@ def _format_duration(seconds: int) -> str:
 
 
 async def _download_audio(url: str, output_dir: Path) -> Path | None:
-    """下载 YouTube 音频并转为 MP3"""
     output_dir.mkdir(parents=True, exist_ok=True)
     template = str(output_dir / "%(title)s.%(ext)s")
 
@@ -117,7 +106,6 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
 
     if not stdout.strip():
         return None
-
     filepath = stdout.strip().split("\n")[0]
     path = Path(filepath)
     if path.exists():
@@ -129,7 +117,6 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
 
 
 def _build_result_page(results: list, page: int, query: str) -> str:
-    """构建搜索结果分页文本"""
     total = len(results)
     total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
@@ -142,102 +129,28 @@ def _build_result_page(results: list, page: int, query: str) -> str:
         dur = _format_duration(r["duration"]) if r["duration"] else "未知"
         lines.append(f"<b>{i + 1}.</b> {r['title']}")
         lines.append(f"    👤 {r['uploader']}  ⏱ {dur}\n")
-    lines.append(f"💡 回复编号下载，或 <code>.yy n</code>/<code>.yy p</code> 翻页")
+    lines.append("💡 输入编号下载，<b>n</b> 下一页 <b>p</b> 上一页 <b>0</b> 取消")
     return "\n".join(lines)
 
 
-async def _do_download(ctx, client, chat_id, message, results, idx, page=None):
-    """执行下载并发送"""
-    if idx < 0 or idx >= len(results):
-        await message.reply("❌ 编号无效")
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        return
-
-    selected = results[idx]
-    wait = await message.reply(f"⏳ 正在下载: {selected['title']}")
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-    path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
-    if not path:
-        await wait.edit_text("❌ 下载失败")
-        return
-
-    await wait.edit_text(f"⏳ 正在发送: {selected['title']}")
-    try:
-        with open(path, "rb") as f:
-            await client.send_audio(chat_id, f, title=selected["title"], performer=selected.get("uploader", ""))
-        if not ctx.config.get("keep_local", False):
-            path.unlink(missing_ok=True)
-        await wait.delete()
-    except Exception as e:
-        await wait.edit_text(f"❌ 发送失败: {e}")
-
-
 async def setup(ctx):
-    ctx.log.info("音乐搜索下载 v1.1.0 已加载")
-
-    # ── 独立处理器：回复搜索结果（优先级最高） ──
-    @ctx.on_message(ctx.filters.text, group=-100)
-    async def reply_handler(client, message):
-        text = (message.text or "").strip()
-        chat_id = str(message.chat.id)
-        if not message.reply_to_message_id:
-            return
-        search_data = ctx.kv.get(f"music_search_{chat_id}", {})
-        results = search_data.get("results", [])
-        if not results:
-            return
-        ctx.log.info(f"mymusic reply: text='{text}' reply_to={message.reply_to_message_id}")
-        if text.isdigit():
-            idx = int(text) - 1
-            ctx.log.info(f"mymusic download idx={idx}")
-            await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
-            return
-        if text.lower() in ("n", "next", "p", "prev"):
-            ctx.log.info(f"mymusic page: {text.lower()}")
-            page = search_data.get("page", 0)
-            if text.lower() in ("n", "next"):
-                page += 1
-            else:
-                page -= 1
-            total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
-            page = max(0, min(page, total_pages - 1))
-            search_data["page"] = page
-            ctx.kv.set(f"music_search_{chat_id}", search_data)
-            query = search_data.get("query", "")
-            result_text = _build_result_page(results, page, query)
-            await message.reply(result_text)
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            return
+    ctx.log.info("音乐搜索下载 v1.2.0 已加载")
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
-        chat_id = str(message.chat.id)
-
         if not text.startswith("."):
             return
 
         # ── .yysm 帮助（30秒自毁） ──
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.1.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.2.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
-                "  <code>.yy n</code> / <code>.yy p</code> — 翻页\n"
-                "  <code>.yy dl 编号</code> — 下载指定编号\n\n"
+                "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
                 "🔗 <b>直接下载</b>\n"
-                "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
-                "💡 搜索后直接回复编号即可下载"
+                "  <code>.yy URL</code> — 直接下载 YouTube 链接"
             )
             msg = await message.reply(help_text)
             try:
@@ -254,14 +167,12 @@ async def setup(ctx):
         # ── .yy help 帮助（30秒自毁） ──
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.1.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.2.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
-                "  <code>.yy n</code> / <code>.yy p</code> — 翻页\n"
-                "  <code>.yy dl 编号</code> — 下载指定编号\n\n"
+                "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
                 "🔗 <b>直接下载</b>\n"
-                "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
-                "💡 搜索后直接回复编号即可下载"
+                "  <code>.yy URL</code> — 直接下载 YouTube 链接"
             )
             msg = await message.reply(help_text)
             try:
@@ -280,51 +191,15 @@ async def setup(ctx):
 
         cmd = text[len(".yy"):].strip()
 
-        # ── .yy n / .yy p 翻页 ──
-        if cmd in ("n", "next", "p", "prev"):
-            search_data = ctx.kv.get(f"music_search_{chat_id}", {})
-            results = search_data.get("results", [])
-            if not results:
-                await message.reply("❌ 暂无搜索结果，请先搜索")
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-                return
-            page = search_data.get("page", 0)
-            if cmd in ("n", "next"):
-                page += 1
-            else:
-                page -= 1
-            total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
-            page = max(0, min(page, total_pages - 1))
-            search_data["page"] = page
-            ctx.kv.set(f"music_search_{chat_id}", search_data)
-
-            # 发送翻页结果，然后删除原消息
-            query = search_data.get("query", "")
-            result_text = _build_result_page(results, page, query)
-            await message.reply(result_text)
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            return
-
-        # ── .yy dl 编号 下载 ──
-        m = re.match(r"^dl\s+(\d+)$", cmd)
-        if m:
-            search_data = ctx.kv.get(f"music_search_{chat_id}", {})
-            results = search_data.get("results", [])
-            idx = int(m.group(1)) - 1
-            await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
-            return
-
         # ── .yy URL 直接下载 ──
         url_match = re.match(r"^https?://", cmd)
         if url_match:
             url = cmd.strip()
             wait = await message.reply("⏳ 正在下载...")
+            try:
+                await message.delete()
+            except Exception:
+                pass
             path = await _download_audio(url, _DOWNLOAD_DIR)
             if not path:
                 await wait.edit_text("❌ 下载失败，请检查链接")
@@ -332,14 +207,10 @@ async def setup(ctx):
             await wait.edit_text("⏳ 正在发送...")
             try:
                 with open(path, "rb") as f:
-                    await client.send_audio(chat_id, f, title=path.stem)
+                    await client.send_audio(message.chat.id, f, title=path.stem)
                 if not ctx.config.get("keep_local", False):
                     path.unlink(missing_ok=True)
                 await wait.delete()
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
             except Exception as e:
                 await wait.edit_text(f"❌ 发送失败: {e}")
             return
@@ -347,30 +218,28 @@ async def setup(ctx):
         # ── .yy 搜索词 ──
         if cmd:
             query = cmd.strip()
-            wait = await message.reply("🔍 正在搜索...")
-            results = await _search_music(query, _SEARCH_COUNT)
-            if not results:
-                await wait.edit_text("❌ 未找到相关结果")
-                return
-
-            # 保存到 KV
-            search_data = {
-                "results": results,
-                "page": 0,
-                "query": query,
-                "time": _now(),
-                "msg_id": wait.id,
-            }
-            ctx.kv.set(f"music_search_{chat_id}", search_data)
-
-            result_text = _build_result_page(results, 0, query)
-            await wait.edit_text(result_text)
-
-            # 删除原始命令
+            msg = await message.reply("🔍 正在搜索...")
             try:
                 await message.delete()
             except Exception:
                 pass
+            results = await _search_music(query, _SEARCH_COUNT)
+            if not results:
+                await msg.edit("❌ 未找到相关结果")
+                return
+
+            # 保存 pending 选择
+            pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+            ctx.kv.set(pending_key, {
+                "results": results,
+                "page": 0,
+                "query": query,
+                "time": time.time(),
+                "msg_id": msg.id,
+            })
+
+            result_text = _build_result_page(results, 0, query)
+            await msg.edit(result_text)
             return
 
         # ── 空参数 ──
@@ -385,7 +254,99 @@ async def setup(ctx):
         except Exception:
             pass
 
-    ctx.log.info("音乐搜索下载 v1.1.0 已就绪")
+    # ── 处理用户选择（回复编号/n/p） ──
+    @ctx.on_message(ctx.filters.text, group=1)
+    async def select_handler(client, message):
+        text = (message.text or "").strip().lower()
+        pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+        pending = ctx.kv.get(pending_key, None)
+        if not pending:
+            return
+
+        # 30秒超时
+        if time.time() - pending.get("time", 0) > 30:
+            ctx.kv.delete(pending_key)
+            return
+
+        results = pending.get("results", [])
+        page = pending.get("page", 0)
+        total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
+
+        # n/p 翻页
+        if text in ("n", "next"):
+            page = min(page + 1, total_pages - 1)
+            pending["page"] = page
+            pending["time"] = time.time()
+            ctx.kv.set(pending_key, pending)
+            result_text = _build_result_page(results, page, pending.get("query", ""))
+            await message.reply(result_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        if text in ("p", "prev"):
+            page = max(page - 1, 0)
+            pending["page"] = page
+            pending["time"] = time.time()
+            ctx.kv.set(pending_key, pending)
+            result_text = _build_result_page(results, page, pending.get("query", ""))
+            await message.reply(result_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        # 0 取消
+        if text == "0":
+            ctx.kv.delete(pending_key)
+            try:
+                await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+            except Exception:
+                pass
+            return
+
+        # 编号下载
+        if not text.isdigit():
+            return
+
+        idx = int(text)
+        if idx < 1 or idx > len(results):
+            return
+
+        # 有效选择，清理 pending
+        ctx.kv.delete(pending_key)
+        selected = results[idx - 1]
+
+        # 删除搜索结果消息和用户的选择消息
+        try:
+            await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+        except Exception:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+        # 下载并发送
+        wait = await message.reply(f"⏳ 正在下载: {selected['title']}")
+        path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
+        if not path:
+            await wait.edit_text("❌ 下载失败")
+            return
+
+        await wait.edit_text(f"⏳ 正在发送: {selected['title']}")
+        try:
+            with open(path, "rb") as f:
+                await client.send_audio(message.chat.id, f, title=selected["title"], performer=selected.get("uploader", ""))
+            if not ctx.config.get("keep_local", False):
+                path.unlink(missing_ok=True)
+            await wait.delete()
+        except Exception as e:
+            await wait.edit_text(f"❌ 发送失败: {e}")
+
+    ctx.log.info("音乐搜索下载 v1.2.0 已就绪")
 
 
 async def teardown(ctx):
