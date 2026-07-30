@@ -1,6 +1,9 @@
 '''initialize'''
 from .grabber import WebMediaGrabber
-from .common import BuildCommonVideoClient, CommonVideoClientBuilder
+try:
+    from .common import BuildCommonVideoClient, CommonVideoClientBuilder
+except Exception:
+    BuildCommonVideoClient = CommonVideoClientBuilder = None
 from .sources import BuildVideoClient, VideoClientBuilder, BaseVideoClient
 from .utils import (
     touchdir, legalizestring, printtable, colorize, resp2json, usedownloadheaderscookies, useparseheaderscookies, usesearchheaderscookies, initcdm, searchdictbykey, printfullline, cookies2string, cookies2dict, intornone, closecdm, progresslog, 
