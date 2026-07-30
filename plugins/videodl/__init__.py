@@ -14,10 +14,11 @@ from pathlib import Path
 TZ = timezone(timedelta(hours=8))
 
 try:
-    from ._videodl_engine import parse_via_videodl, HAS_VIDEODL
+    from ._videodl_engine import parse_via_videodl, is_available, try_install
 except Exception:
     parse_via_videodl = None
-    HAS_VIDEODL = False
+    is_available = lambda: False
+    try_install = lambda: None
 
 __plugin__ = {
     "name": "聚合解析",
@@ -249,6 +250,9 @@ async def _parse_via_bridge(url: str) -> dict | None:
 async def setup(ctx):
     ctx.log.info("聚合解析插件已加载 (v2.4.0, videodl原生+ParseHub+yt-dlp三引擎)")
 
+    # 后台安装 videodl 引擎（不阻塞插件启动）
+    asyncio.create_task(try_install())
+
     @ctx.on_message(ctx.filters.text, group=0)
     async def _handler(client, message):
         try:
@@ -298,13 +302,13 @@ async def setup(ctx):
             result = None
             errs = []
             # 引擎1: videodl 原生（纯Python，100+平台，优先）
-            if HAS_VIDEODL:
+            if is_available():
                 result = await parse_via_videodl(url)
                 if result and "error" in result:
                     errs.append(f"引擎1(videodl): {result['error']}")
                     result = None  # 模块级错误不打断，继续走下一引擎
             else:
-                errs.append("引擎1(videodl): 未安装(自动安装videofetch失败)")
+                errs.append("引擎1(videodl): 未安装(后台安装中，可稍后重试)")
             # 引擎2: ParseHub（中文平台）
             if not result:
                 result = await _parse_via_bridge(url)
