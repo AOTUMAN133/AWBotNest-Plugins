@@ -296,27 +296,32 @@ async def setup(ctx):
             pass
         try:
             result = None
+            errs = []
             # 引擎1: videodl 原生（纯Python，100+平台，优先）
             if HAS_VIDEODL:
                 result = await parse_via_videodl(url)
                 if result and "error" in result:
+                    errs.append(f"引擎1(videodl): {result['error']}")
                     result = None  # 模块级错误不打断，继续走下一引擎
             # 引擎2: ParseHub（中文平台）
             if not result:
                 result = await _parse_via_bridge(url)
+                if result and "error" in result:
+                    errs.append(f"引擎2(ParseHub): {result['error']}")
+                    result = None
             # 引擎3: yt-dlp（海外平台，1752个网站）
-            if not result or "error" in result:
+            if not result:
                 yt_result = await _parse_via_ytdlp(url)
                 if yt_result and "error" not in yt_result:
                     result = yt_result
+                elif yt_result:
+                    errs.append(f"引擎3(yt-dlp): {yt_result['error']}")
         except Exception as e:
             await msg.edit(f"❌ 解析异常: {e}")
             return
         if not result:
-            await msg.edit(f"❌ 解析失败，该平台暂不支持或链接无效")
-            return
-        if "error" in result:
-            await msg.edit(f"❌ {result['error']}")
+            detail = "\n".join(errs) if errs else "所有引擎均无返回"
+            await msg.edit(f"❌ 解析失败，该平台暂不支持或链接无效\n\n{detail}")
             return
 
         platform = result.get("platform_name", "未知")
