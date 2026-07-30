@@ -233,9 +233,14 @@ async def setup(ctx):
                 "  <code>.sum del 1</code> — 删除任务\n\n"
                 "⚙️ 可在插件配置中开启自动存储和定时总结"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
             try:
                 await message.delete()
+            except Exception:
+                pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
             except Exception:
                 pass
             return
@@ -337,7 +342,12 @@ async def setup(ctx):
                 "  <code>.sum del 1</code> — 删除任务\n\n"
                 "⚙️ 可在插件配置中开启自动存储和定时总结"
             )
-            await message.reply(help_text)
+            msg = await message.reply(help_text)
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
+            except Exception:
+                pass
             return
 
         # 原有的定时任务命令（.sum add/list/run/del）保持不变
