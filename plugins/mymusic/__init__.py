@@ -4,6 +4,7 @@
 
 import os
 import re
+import sys
 import asyncio
 import json
 import subprocess
@@ -85,13 +86,32 @@ def _yt_path() -> str:
 async def setup(ctx):
     ctx.log.info("音乐搜索下载 v1.4.0 已加载")
 
-    # 检查 yt-dlp 是否可用
+    # 确保 yt-dlp 可用
     yt_path = _yt_path()
+    yt_available = True
     try:
         r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
         ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
-    except Exception as e:
-        ctx.log.warning(f"yt-dlp 不可用: {e}")
+    except Exception:
+        yt_available = False
+        ctx.log.info("yt-dlp 未找到，尝试自动安装...")
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "yt-dlp", "--quiet"],
+                capture_output=True, text=True, timeout=60,
+            )
+            yt_path = _yt_path()
+            r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                yt_available = True
+                ctx.log.info(f"yt-dlp 安装成功: {r.stdout.strip()}")
+            else:
+                ctx.log.warning("yt-dlp 安装后仍不可用")
+        except Exception as e:
+            ctx.log.warning(f"yt-dlp 自动安装失败: {e}")
+
+    if not yt_available:
+        ctx.log.warning("yt-dlp 不可用，搜索下载功能将无法使用")
 
     # ── 搜索 ──
     async def _do_search(ctx, client, message, keyword, page=1):
