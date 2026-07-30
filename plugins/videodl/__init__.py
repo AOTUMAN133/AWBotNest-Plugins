@@ -28,7 +28,7 @@ __plugin__ = {
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["SignerPy>=0.12"],
+    "requirements": ["SignerPy>=0.12", "videofetch==0.9.1"],
     "config_schema": {
         "max_size": {
             "type": "number", "default": 50, "label": "最大文件大小(MB)",
