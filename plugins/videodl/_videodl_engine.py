@@ -17,7 +17,8 @@ if _vendor_pkg.exists():
 HAS_VIDEODL = False
 _import_error = ""
 try:
-    from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
+    # 只导入 sources 模块（避免 common 模块引入重型依赖）
+    from videodl.modules.sources import VideoClientBuilder, BuildVideoClient  # noqa: F401
     HAS_VIDEODL = True
 except Exception as e:
     _import_error = str(e)[:200]
@@ -36,7 +37,7 @@ async def parse_via_videodl(url: str) -> dict | None:
         return {"error": "videodl 引擎未安装"}
 
     import asyncio
-    from videodl.modules import VideoClientBuilder, BuildVideoClient
+    from videodl.modules.sources import VideoClientBuilder, BuildVideoClient
 
     loop = asyncio.get_running_loop()
 
