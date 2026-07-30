@@ -192,11 +192,14 @@ async def setup(ctx):
             search_data = ctx.kv.get(f"music_search_{chat_id}", {})
             results = search_data.get("results", [])
             if results:
+                ctx.log.info(f"mymusic reply: text='{text}' reply_to={message.reply_to_message_id}")
                 if text.isdigit():
                     idx = int(text) - 1
+                    ctx.log.info(f"mymusic download idx={idx}")
                     await _do_download(ctx, client, chat_id, message, results, idx, search_data.get("page", 0))
                     return
                 if text.lower() in ("n", "next", "p", "prev"):
+                    ctx.log.info(f"mymusic page: {text.lower()}")
                     page = search_data.get("page", 0)
                     if text.lower() in ("n", "next"):
                         page += 1
