@@ -37,9 +37,9 @@ __plugin__ = {
             "help": "主号被限制时用哪个账号代发"
         },
         "check_interval": {
-            "type": "number", "default": 5, "label": "检测间隔(秒)",
-            "section": "基本", "min": 2, "max": 30,
-            "help": "每隔几秒检测一次草稿，越短响应越快但越耗资源"
+            "type": "number", "default": 10, "label": "检测间隔(秒)",
+            "section": "基本", "min": 5, "max": 60,
+            "help": "每隔几秒检测一次草稿，越短响应越快但越耗资源（建议10秒以上）"
         },
         "notify_result": {
             "type": "boolean", "default": True, "label": "通知发送结果",
@@ -167,7 +167,7 @@ async def setup(ctx):
                 return
 
             drafts_found = 0
-            async for d in cli.get_dialogs(limit=50):
+            async for d in cli.get_dialogs(limit=30):
                 if d.chat.type not in ("group", "supergroup", "channel"):
                     continue
                 try:
@@ -232,7 +232,7 @@ async def setup(ctx):
             apps = list(ctx.user_apps or [])
             lines = ["📋 <b>账号信息</b>\n"]
             for i, app in enumerate(apps):
-                info = f"第{i+1}个账号"
+                info = f"第{i+1}个账号 (index={i})"
                 try:
                     if hasattr(app, 'get_me'):
                         me = await app.get_me()
@@ -241,8 +241,7 @@ async def setup(ctx):
                 except Exception:
                     pass
                 lines.append(f"  {info}")
-            if _client_info:
-                lines.append(f"\n当前连接: {_client_info.get('name','')}")
+            lines.append(f"\n在配置中选择:\n主号 = 第1个账号 (index=0)\n备用号 = 第2个账号 (index=1)")
             await message.reply("\n".join(lines))
             return
 
