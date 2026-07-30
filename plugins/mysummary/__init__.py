@@ -209,16 +209,13 @@ async def setup(ctx):
     # ── 命令处理 ──
     @ctx.on_message(ctx.filters.text, group=0)
     async def cmd_handler(client, message):
-        if not ctx.config.get("enable_summary", True):
-            return
         text = (message.text or "").strip()
         if not text.startswith("."):
             return
 
-        # 只在私聊或群聊中处理
         chat_id = str(message.chat.id)
 
-        # .sumsm — 帮助
+        # .sumsm — 帮助（不受 enable_summary 限制）
         if text == ".sumsm":
             help_text = (
                 "📊 <b>AI总结 v2.0</b>\n\n"
@@ -243,21 +240,24 @@ async def setup(ctx):
                 pass
             return
 
+        if not ctx.config.get("enable_summary", True):
+            return
+
         # .sum [数量] — 快速总结（自动清理）
         m = re.match(r"^\.sum\s*(\d+)?$", text)
         if m:
             count = int(m.group(1)) if m.group(1) else 50
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, count)
+            if result["success"]:
+                await message.reply(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
+            else:
+                await message.reply(f"❌ {result['error']}")
             await wait.delete()
             try:
                 await message.delete()
             except Exception:
                 pass
-            if result["success"]:
-                await client.send_message(chat_id, f"📊 {result['title']} · {_now()}\n\n{result['result']}")
-            else:
-                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
         # .sum h 小时数 — 按时间总结（自动清理）
@@ -266,15 +266,15 @@ async def setup(ctx):
             hours = int(m.group(1))
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, 500, hours)
+            if result["success"]:
+                await message.reply(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
+            else:
+                await message.reply(f"❌ {result['error']}")
             await wait.delete()
             try:
                 await message.delete()
             except Exception:
                 pass
-            if result["success"]:
-                await client.send_message(chat_id, f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
-            else:
-                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
         # .ask 问题 — 基于存储的消息回答问题（自动清理）
@@ -283,15 +283,15 @@ async def setup(ctx):
             question = m.group(1).strip()
             wait = await message.reply("⏳ 正在思考...")
             result = await _ask_question(ctx, client, chat_id, question)
+            if result["success"]:
+                await message.reply(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
+            else:
+                await message.reply(f"❌ {result['error']}")
             await wait.delete()
             try:
                 await message.delete()
             except Exception:
                 pass
-            if result["success"]:
-                await client.send_message(chat_id, f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
-            else:
-                await client.send_message(chat_id, f"❌ {result['error']}")
             return
 
         # .search 关键词 — 搜索存储的消息
@@ -312,7 +312,7 @@ async def setup(ctx):
                 lines.append(f"[{_fmt_ts(r['ts'])}] {r['user']}: {r['text'][:80]}\n<a href=\"{link}\">🔗</a>")
             if len(results) > 15:
                 lines.append(f"\n...还有{len(results)-15}条")
-            await client.send_message(chat_id, "\n".join(lines))
+            await message.reply("\n".join(lines))
             try:
                 await message.delete()
             except Exception:
