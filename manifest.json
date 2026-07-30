@@ -128,9 +128,9 @@
   },
   "msg_relay": {
     "name": "代发助手",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
-    "description": "主号被限制群组发言时，自动用小号代发",
+    "description": "检测主号草稿，自动用小号代发。你在群里打字就能发。",
     "path": "plugins/msg_relay/",
     "icon": ""
   }

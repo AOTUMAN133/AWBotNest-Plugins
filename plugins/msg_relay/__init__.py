@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
 # AWBotNest 插件：代发助手 (msg_relay)
-# 主号被限制群组发言时，自动用小号代发
+# 检测主号草稿 → 自动用小号发送
 
 import asyncio
-import re
+import json
+import time
+from datetime import datetime, timezone, timedelta
+
+TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
     "name": "代发助手",
     "id": "msg_relay",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
-    "description": "主号被限制群组发言时，自动用小号代发。私聊发消息自动转发到最近活跃的群组。",
+    "description": "检测主号在群组的未发送草稿，自动用小号代发。你在群里打字就能发。",
     "scope": "user",
     "default_enabled": True,
     "config_schema": {
@@ -21,7 +25,7 @@ __plugin__ = {
                 {"value": "0", "label": "第1个账号"},
                 {"value": "1", "label": "第2个账号"},
             ],
-            "help": "选择哪个账号是主号（被限制的那个）"
+            "help": "主号（被限制发言的那个）"
         },
         "fallback_account_index": {
             "type": "select", "default": "1", "label": "备用号（小号）",
@@ -32,20 +36,29 @@ __plugin__ = {
             ],
             "help": "主号被限制时用哪个账号代发"
         },
+        "check_interval": {
+            "type": "number", "default": 5, "label": "检测间隔(秒)",
+            "section": "基本", "min": 2, "max": 30,
+            "help": "每隔几秒检测一次草稿，越短响应越快但越耗资源"
+        },
         "notify_result": {
             "type": "boolean", "default": True, "label": "通知发送结果",
             "section": "基本",
             "help": "发送成功或失败时通知"
         },
-        "cmd_prefix": {
-            "type": "string", "default": "//", "label": "跳过前缀",
-            "section": "基本",
-            "help": "以此前缀开头的消息不转发"
-        },
     },
 }
 
-_KV_LAST_CHAT = "msg_relay_last_chat"
+_KV_LOGS = "msg_relay_logs"
+_client_ref = None
+_group_cache = []
+_group_cache_time = 0
+
+
+def _log(ctx, msg: str):
+    logs = ctx.kv.get(_KV_LOGS, [])
+    logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
+    ctx.kv.set(_KV_LOGS, logs[-30:])
 
 
 async def _get_accounts(ctx):
@@ -61,9 +74,7 @@ async def _get_accounts(ctx):
     if fallback_idx >= len(apps): fallback_idx = 1 if len(apps) > 1 else 0
     if main_idx == fallback_idx:
         fallback_idx = 1 if len(apps) > 1 else 0
-    main_acc = apps[main_idx]
-    fb_acc = apps[fallback_idx] if fallback_idx < len(apps) else None
-    return main_acc, fb_acc, None
+    return apps[main_idx], (apps[fallback_idx] if fallback_idx < len(apps) else None), None
 
 
 async def _send_with_fallback(ctx, chat_id, content):
@@ -75,89 +86,102 @@ async def _send_with_fallback(ctx, chat_id, content):
             await main_acc.send(chat_id, content)
             return {"ok": True, "account": "主号"}
         except Exception as e:
-            err_str = str(e)
-            is_banned = "USER_BANNED_IN_CHANNEL" in err_str or "user is restricted" in err_str.lower()
-            if not is_banned:
-                return {"ok": False, "error": f"主号发送失败: {e}"}
+            if "USER_BANNED_IN_CHANNEL" not in str(e):
+                return {"ok": False, "error": str(e)}
     if fb_acc:
         try:
             await fb_acc.send(chat_id, content)
             return {"ok": True, "account": "小号"}
         except Exception as e:
-            return {"ok": False, "error": f"小号也发送失败: {e}"}
-    return {"ok": False, "error": "没有可用的备用账号"}
+            return {"ok": False, "error": str(e)}
+    return {"ok": False, "error": "没有可用账号"}
 
 
 async def setup(ctx):
-    ctx.log.info("代发助手已加载")
+    global _client_ref
+    ctx.log.info("代发助手已加载 (草稿模式)")
 
-    # 跟踪最近活跃的群组
-    @ctx.on_message(ctx.filters.group & ctx.filters.text, group=999)
-    async def _track_chat(client, message):
-        ctx.kv.set(_KV_LAST_CHAT, message.chat.id)
+    @ctx.on_message(ctx.filters.text, group=999)
+    async def _store_client(client, message):
+        global _client_ref
+        _client_ref = client
+
+    async def _draft_check():
+        global _client_ref, _group_cache, _group_cache_time
+        cli = _client_ref
+        if not cli:
+            return
+
+        try:
+            # 获取所有群组对话框（带草稿信息）
+            groups = []
+            async for d in cli.get_dialogs(limit=200):
+                if d.chat.type in ("group", "supergroup", "channel"):
+                    chat_id = d.chat.id
+                    title = d.chat.title or "未知"
+                    # 检查是否有草稿
+                    draft = None
+                    if hasattr(d.raw, 'draft') and d.raw.draft:
+                        if hasattr(d.raw.draft, 'message') and d.raw.draft.message:
+                            draft = d.raw.draft.message
+                    groups.append({"id": chat_id, "title": title, "draft": draft})
+
+            if not groups:
+                return
+
+            sent = 0
+            for g in groups:
+                if not g["draft"]:
+                    continue
+                chat_id = g["id"]
+                title = g["title"]
+                content = g["draft"]
+
+                _log(ctx, f"草稿: {title}: {content[:30]}...")
+
+                # 发送
+                result = await _send_with_fallback(ctx, chat_id, content)
+                if result["ok"]:
+                    who = result.get("account", "小号")
+                    # 清除草稿
+                    try:
+                        peer = await cli.resolve_peer(chat_id)
+                        from pyrogram.raw.functions.messages import SaveDraft
+                        await cli.invoke(SaveDraft(peer=peer, message=''))
+                    except Exception:
+                        pass
+                    _log(ctx, f"✅ {title}: 已通过{who}发送")
+                    if ctx.config.get("notify_result", True):
+                        await ctx.notify(f"📨 代发: {title}\n✅ 已通过{who}发送\n📝 {content[:80]}")
+                    sent += 1
+                else:
+                    _log(ctx, f"❌ {title}: {result.get('error','')}")
+
+                if sent >= 3:
+                    break
+
+        except Exception as e:
+            _log(ctx, f"检测异常: {e}")
+
+    interval = int(ctx.config.get("check_interval", 5) or 5)
+    ctx.schedule(_draft_check, "interval", seconds=interval, id="代发助手-草稿检测")
+    _log(ctx, f"草稿检测已启动，间隔{interval}秒")
 
     @ctx.on_message(ctx.filters.text & ~ctx.filters.outgoing & ctx.filters.private, group=0)
-    async def _handler(client, message):
+    async def _help_handler(client, message):
         text = (message.text or "").strip()
-        if not text:
-            return
-
-        # 帮助
         if text in (".help", "/help", "帮助"):
-            last_chat = ctx.kv.get(_KV_LAST_CHAT, 0)
-            last_info = f"chat_id={last_chat}" if last_chat else "暂无"
             await message.reply(
-                "📦 <b>代发助手</b>\n\n"
-                "私聊中直接发消息，自动转发到最近活跃的群组。\n"
-                "主号被限制时自动切换小号发送。\n\n"
-                f"📌 <b>当前配置：</b>\n"
-                f"  最近活跃群组: {last_info}\n\n"
-                f"📌 <b>用法：</b>\n"
-                f"  直接发消息 → 转发到最近活跃的群组\n"
-                f"  .s 群组名 消息 → 发到指定群组\n"
-                f"  {ctx.config.get('cmd_prefix', '//')}消息 → 不转发\n\n"
-                f"💡 在插件配置中设置主号和备用号"
+                "📦 <b>代发助手 (草稿模式)</b>\n\n"
+                "你在群里打字发不出去？插件自动检测草稿，用小号代发。\n\n"
+                "📌 <b>用法：</b>\n"
+                "  1. 打开任意群组\n"
+                "  2. 正常打字，点发送\n"
+                "  3. 发不出去 → Telegram 自动保存为草稿\n"
+                "  4. 插件检测到草稿 → 用小号发到群里\n"
+                "  5. 群友看到消息，你看到通知\n\n"
+                "⚙️ 可在插件配置中调整检测间隔和账号"
             )
-            return
-
-        # 跳过前缀
-        prefix = ctx.config.get("cmd_prefix", "//")
-        if text.startswith(prefix):
-            return
-
-        # .s 群组名 消息 → 指定群组
-        m = re.match(r"^\.s\s+(.+?)\s+(.+)$", text)
-        if m:
-            target_name = m.group(1).strip()
-            content = m.group(2).strip()
-            chat_id = None
-            async for d in client.get_dialogs():
-                if d.chat.title and target_name.lower() in d.chat.title.lower():
-                    chat_id = d.chat.id
-                    break
-            if not chat_id:
-                await message.reply(f"❌ 未找到群组「{target_name}」")
-                return
-            result = await _send_with_fallback(ctx, chat_id, content)
-            if ctx.config.get("notify_result", True):
-                if result["ok"]:
-                    await message.reply(f"✅ 已通过{result['account']}发送到「{target_name}」")
-                else:
-                    await message.reply(f"❌ {result['error']}")
-            return
-
-        # 直接发消息 → 转发到最近活跃的群组
-        last_chat = ctx.kv.get(_KV_LAST_CHAT, 0)
-        if not last_chat:
-            await message.reply("❌ 还没有活跃的群组，请先在群组中发言或使用 .s 群组名 消息")
-            return
-
-        result = await _send_with_fallback(ctx, last_chat, text)
-        if ctx.config.get("notify_result", True):
-            if result["ok"]:
-                await message.reply(f"✅ 已通过{result['account']}发送")
-            else:
-                await message.reply(f"❌ {result['error']}")
 
     ctx.log.info("代发助手已就绪")
 
