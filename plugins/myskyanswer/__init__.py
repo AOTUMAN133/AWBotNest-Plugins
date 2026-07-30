@@ -14,7 +14,6 @@ __plugin__ = {
     "name": "天空自动答题",
     "id": "myskyanswer",
     "version": "1.0.1",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/assets/icons/myskyanswer.svg",
     "author": "凹凸曼",
     "description": "自动发言 + 自动答题。在指定群组定时发送短语，自动回复机器人的数学题。",
     "scope": "user",
