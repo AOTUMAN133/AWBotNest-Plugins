@@ -34,11 +34,16 @@ async def try_install():
     # 尝试 pip 安装（先试本地 wheel，再试 PyPI）
     python = sys.executable
     vendor_wheel = Path(__file__).parent / "_vendor" / "videofetch-0.9.1-py3-none-any.whl"
+    proxy = "http://192.168.1.33:7890"
     for installer in [
         [python, "-m", "pip", "install", str(vendor_wheel), "-q", "--no-deps"] if vendor_wheel.exists() else None,
+        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--proxy", proxy],
         [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
+        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
         [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120"],
+        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
         ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
+        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120", "--proxy", proxy],
         ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
