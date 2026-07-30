@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # AWBotNest 插件：代发助手 (msg_relay)
-# 主号被限制群组发言时，自动用小号重发
+# 主号被限制群组发言时，自动用小号代发
 
 import asyncio
 import re
@@ -10,14 +10,14 @@ __plugin__ = {
     "id": "msg_relay",
     "version": "1.0.0",
     "author": "凹凸曼",
-    "description": "主号被限制群组发言时，自动用小号代发。用法：私聊发送 .s 消息内容",
+    "description": "主号被限制群组发言时，自动用小号代发。私聊中直接发消息即可转发到群组",
     "scope": "user",
     "default_enabled": True,
     "config_schema": {
         "default_chat": {
             "type": "chat", "default": "", "label": "目标群组",
             "section": "基本", "chat_types": ["group", "supergroup"],
-            "help": "消息将发送到此群组"
+            "help": "私聊消息将自动转发到此群组"
         },
         "retry_on_banned": {
             "type": "boolean", "default": True, "label": "被限制时自动切换小号",
@@ -29,14 +29,21 @@ __plugin__ = {
             "section": "基本",
             "help": "发送成功或失败时在私聊中通知"
         },
+        "cmd_prefix": {
+            "type": "string", "default": "//", "label": "跳过前缀",
+            "section": "基本",
+            "help": "以此前缀开头的消息不会转发，用于发送普通私聊命令"
+        },
     },
 }
 
 
-async def _send_with_fallback(ctx, message, chat_id, content):
+async def _send_with_fallback(ctx, chat_id, content):
     """尝试用主号发送，失败时自动切换小号"""
     apps = list(ctx.user_apps or [])
-    primary = apps[0] if apps else None
+    if not apps:
+        return {"ok": False, "error": "没有可用的用户账号"}
+    primary = apps[0]
     fallbacks = apps[1:] if len(apps) > 1 else []
 
     # 尝试主号
@@ -55,7 +62,7 @@ async def _send_with_fallback(ctx, message, chat_id, content):
         try:
             await fb.send(chat_id, content)
             return {"ok": True, "account": "小号"}
-        except Exception as e:
+        except Exception:
             continue
 
     return {"ok": False, "error": "所有账号都无法发送"}
@@ -71,64 +78,43 @@ async def setup(ctx):
             return
 
         # 帮助
-        if text in (".help", ".s", "/help"):
+        if text in (".help", "/help", "帮助"):
             await message.reply(
                 "📦 <b>代发助手</b>\n\n"
-                "主号被限制群组发言时，自动用小号重发。\n\n"
+                "私聊中直接发消息，自动转发到目标群组。\n"
+                "主号被限制时自动切换小号发送。\n\n"
                 "📌 <b>用法：</b>\n"
-                "  .s 消息内容  — 发到默认群组（先在配置中设置目标群组）\n"
-                "  .s 群组名 消息内容  — 发到指定群组\n\n"
-                "💡 插件会自动先用主号发送，被限制时切换小号"
+                "  直接发消息 → 转发到配置的群组\n"
+                f"  <code>{ctx.config.get('cmd_prefix', '//')}</code>消息 → 跳过转发，普通私聊\n\n"
+                "💡 在插件配置中设置目标群组"
             )
             return
 
-        # 解析 .s 命令
-        m = re.match(r"^\.s\s+(.+?)\s+(.+)$", text)
-        if not m:
-            m = re.match(r"^\.s\s+(.+)$", text)
-            if m:
-                target_name = None
-                content = m.group(1)
-            else:
-                return
-        else:
-            target_name = m.group(1).strip()
-            content = m.group(2).strip()
-
-        if not content:
-            await message.reply("❌ 消息内容不能为空")
+        # 检查是否跳过转发（以配置的前缀开头）
+        prefix = ctx.config.get("cmd_prefix", "//")
+        if text.startswith(prefix):
             return
 
         # 获取目标群组
-        chat_id = None
-        if target_name:
-            async for d in client.get_dialogs():
-                if d.chat.title and target_name.lower() in d.chat.title.lower():
-                    chat_id = d.chat.id
-                    break
-            if not chat_id:
-                await message.reply(f"❌ 未找到群组「{target_name}」")
-                return
-        else:
-            default_chat = ctx.config.get("default_chat", "")
-            if default_chat:
-                try:
-                    chat_id = int(default_chat)
-                except (ValueError, TypeError):
-                    await message.reply("❌ 默认群组配置无效")
-                    return
-            else:
-                await message.reply("❌ 请指定群组名或在配置中设置默认群组")
-                return
+        default_chat = ctx.config.get("default_chat", "")
+        if not default_chat:
+            await message.reply("❌ 请先在插件配置中设置目标群组")
+            return
+
+        try:
+            chat_id = int(default_chat)
+        except (ValueError, TypeError):
+            await message.reply("❌ 目标群组配置无效")
+            return
 
         # 发送消息（自动主号→小号切换）
-        result = await _send_with_fallback(ctx, message, chat_id, content)
+        result = await _send_with_fallback(ctx, chat_id, text)
 
         # 通知结果
         if ctx.config.get("notify_result", True):
             if result["ok"]:
                 who = result.get("account", "小号")
-                await message.reply(f"✅ 已通过{who}发送到群组")
+                await message.reply(f"✅ 已通过{who}发送")
             else:
                 await message.reply(f"❌ {result.get('error', '发送失败')}")
 
