@@ -16,7 +16,7 @@ __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
     "version": "1.1.3",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search.svg?v=2",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 .sp 搜索，直接发送链接自动下载。",
     "scope": "user",

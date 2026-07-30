@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="私聊验证">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#3e1a2d"/>
+      <stop offset=".55" stop-color="#2b0d1a"/>
+      <stop offset="1" stop-color="#18060d"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="url(#bg)"/>
+  <rect x="25" y="25" width="462" height="462" rx="105" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
+  
+  <g filter="url(#shadow)">
+    <rect x="130" y="100" width="252" height="220" rx="30" fill="#11152f" stroke="#f472b6" stroke-width="12"/>
+    <rect x="130" y="100" width="252" height="220" rx="30" fill="none" stroke="#f472b6" stroke-width="3" opacity=".3"/>
+    <path d="M170,160 L342,160 M170,200 L290,200 M170,240 L322,240" stroke="#f472b6" stroke-width="8" stroke-linecap="round" opacity=".4"/>
+    <rect x="170" y="270" width="64" height="64" rx="16" fill="none" stroke="#f472b6" stroke-width="8"/>
+    <path d="M186,302 L202,318 L226,290" fill="none" stroke="#f472b6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="130" y="100" width="252" height="30" rx="6" fill="none" stroke="#f472b6" stroke-width="4" stroke-linecap="round" opacity=".5"/>
+  </g>
+
+  <text x="256" y="480" text-anchor="middle" fill="#94a3b8" font-size="22" font-family="sans-serif" font-weight="500">私聊验证</text>
+</svg>

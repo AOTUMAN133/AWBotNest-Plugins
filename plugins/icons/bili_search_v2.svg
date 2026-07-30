@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="B站搜索">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#2d1a2e"/>
+      <stop offset=".55" stop-color="#1a0d1a"/>
+      <stop offset="1" stop-color="#0d060d"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="url(#bg)"/>
+  <rect x="25" y="25" width="462" height="462" rx="105" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
+  
+  <g filter="url(#shadow)">
+    <rect x="130" y="110" width="252" height="200" rx="30" fill="#11152f" stroke="#fb7299" stroke-width="12"/>
+    <circle cx="190" cy="210" r="30" fill="#fb7299" opacity=".8"/>
+    <circle cx="322" cy="210" r="30" fill="#fb7299" opacity=".8"/>
+    <path d="M152,108 L152,60 M360,108 L360,60" stroke="#fb7299" stroke-width="12" stroke-linecap="round"/>
+    <path d="M130,310 L382,310" stroke="#fb7299" stroke-width="4" stroke-linecap="round" opacity=".3"/>
+  </g>
+
+  <text x="256" y="480" text-anchor="middle" fill="#94a3b8" font-size="22" font-family="sans-serif" font-weight="500">B站搜索</text>
+</svg>
