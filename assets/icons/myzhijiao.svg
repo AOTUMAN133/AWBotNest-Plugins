@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#2a2a2a"/><stop offset="100%" stop-color="#1a1a2e"/></linearGradient></defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <path d="M40,44 Q28,38 34,52 Q40,66 52,58 Q60,52 56,40 Q50,28 40,44 Z" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M88,44 Q100,38 94,52 Q88,66 76,58 Q68,52 72,40 Q78,28 88,44 Z" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M48,80 L80,80" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M52,88 L76,88" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+
+  <text x="64" y="112" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">掷筊占卜</text>
+</svg>

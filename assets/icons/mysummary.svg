@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#2a2a2a"/><stop offset="100%" stop-color="#1a1a2e"/></linearGradient></defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <rect x="30" y="34" width="68" height="60" rx="8" fill="none" stroke="#22d3ee" stroke-width="2.5"/>
+  <path d="M42,44 L86,44 M42,52 L78,52 M42,60 L86,60 M42,70 L70,70 M42,78 L82,78" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <circle cx="42" cy="44" r="2" fill="#22d3ee"/>
+  <circle cx="42" cy="52" r="2" fill="#22d3ee"/>
+  <circle cx="42" cy="60" r="2" fill="#22d3ee"/>
+
+  <text x="64" y="112" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">AI总结</text>
+</svg>

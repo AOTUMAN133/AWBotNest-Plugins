@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128"><stop offset="0%" stop-color="#2a2a2a"/><stop offset="100%" stop-color="#1a1a2e"/></linearGradient></defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <rect x="30" y="36" width="20" height="60" rx="4" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+  <rect x="54" y="36" width="20" height="60" rx="4" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+  <rect x="78" y="36" width="20" height="60" rx="4" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="40" y="72" text-anchor="middle" fill="#ef4444" font-size="16" font-weight="bold">A</text>
+  <text x="64" y="72" text-anchor="middle" fill="#ef4444" font-size="16" font-weight="bold">K</text>
+  <text x="88" y="72" text-anchor="middle" fill="#ef4444" font-size="16" font-weight="bold">Q</text>
+
+  <text x="64" y="112" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">炸金花监控</text>
+</svg>
