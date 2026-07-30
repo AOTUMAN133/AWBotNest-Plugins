@@ -1,29 +1,32 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：音乐搜索下载 (mymusic) v1.3.0
+# AWBotNest 插件：音乐搜索下载 (mymusic) v1.4.0
 # 搜索 YouTube 下载 MP3 音频，支持翻页、编号选择下载
 
 import os
 import re
 import asyncio
 import json
+import subprocess
+import shutil
 import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
-_DOWNLOAD_DIR = Path("/tmp/mymusic_downloads")
+_DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _PAGE_SIZE = 5
 _SEARCH_COUNT = 10
 
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、输入编号下载、翻页",
     "scope": "user",
     "default_enabled": False,
+    "requirements": ["yt-dlp>=2024.0.0"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -63,8 +66,32 @@ def _build_result_page(results: list, page: int, query: str) -> str:
     return "\n".join(lines)
 
 
+def _yt_path() -> str:
+    """查找 yt-dlp 可执行文件路径"""
+    path = shutil.which("yt-dlp")
+    if path:
+        return path
+    # 常见 venv 路径
+    for p in [
+        os.path.expanduser("~/.local/bin/yt-dlp"),
+        "/usr/local/bin/yt-dlp",
+        "/usr/bin/yt-dlp",
+    ]:
+        if os.path.isfile(p):
+            return p
+    return "yt-dlp"
+
+
 async def setup(ctx):
-    ctx.log.info("音乐搜索下载 v1.3.0 已加载")
+    ctx.log.info("音乐搜索下载 v1.4.0 已加载")
+
+    # 检查 yt-dlp 是否可用
+    yt_path = _yt_path()
+    try:
+        r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
+        ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
+    except Exception as e:
+        ctx.log.warning(f"yt-dlp 不可用: {e}")
 
     # ── 搜索 ──
     async def _do_search(ctx, client, message, keyword, page=1):
@@ -74,11 +101,7 @@ async def setup(ctx):
         except Exception:
             pass
 
-        # 用 subprocess 同步方式运行 yt-dlp 搜索
-        import subprocess, shutil
-        yt_path = shutil.which("yt-dlp")
-        if not yt_path:
-            yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
+        yt_path = _yt_path()
         search_query = f"ytsearch{_SEARCH_COUNT}:{keyword}"
         try:
             result = subprocess.run(
@@ -128,10 +151,7 @@ async def setup(ctx):
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         template = str(_DOWNLOAD_DIR / "%(title)s.%(ext)s")
 
-        import subprocess, shutil
-        yt_path = shutil.which("yt-dlp")
-        if not yt_path:
-            yt_path = "/root/.hermes/hermes-agent/venv/bin/yt-dlp"
+        yt_path = _yt_path()
         try:
             subprocess.run(
                 [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
@@ -145,7 +165,7 @@ async def setup(ctx):
         # 找 mp3
         mp3s = sorted(_DOWNLOAD_DIR.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
         if not mp3s:
-            await wait.edit_text("❌ 下载失败")
+            await wait.edit_text("❌ 下载失败，可能缺少 ffmpeg")
             return
 
         path = mp3s[0]
@@ -169,7 +189,7 @@ async def setup(ctx):
         # .yysm 帮助（30秒自毁）
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.3.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.4.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
                 "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
@@ -190,7 +210,7 @@ async def setup(ctx):
 
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.3.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.4.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
                 "  <code>.yy 歌名</code> — 搜索并显示结果\n"
                 "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
@@ -214,17 +234,14 @@ async def setup(ctx):
 
         cmd = text[len(".yy"):].strip()
 
-        # 直接下载 URL
         if re.match(r"^https?://", cmd):
             await _do_download(ctx, client, message, cmd.strip(), "音频")
             return
 
-        # 搜索
         if cmd:
             await _do_search(ctx, client, message, cmd.strip())
             return
 
-        # 空参数
         msg = await message.reply("🎵 用法: <code>.yy 歌名</code> 搜索音乐，或 <code>.yysm</code> 查看帮助")
         try:
             await message.delete()
@@ -253,7 +270,6 @@ async def setup(ctx):
         page = pending.get("page", 0)
         total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
 
-        # n/p 翻页
         if text in ("n", "next"):
             page = min(page + 1, total_pages - 1)
             pending["page"] = page
@@ -278,7 +294,6 @@ async def setup(ctx):
                 pass
             return
 
-        # 0 取消
         if text == "0":
             ctx.kv.delete(pending_key)
             try:
@@ -287,7 +302,6 @@ async def setup(ctx):
                 pass
             return
 
-        # 编号下载
         if not text.isdigit():
             return
 
@@ -308,7 +322,7 @@ async def setup(ctx):
 
         await _do_download(ctx, client, message, selected["url"], selected["title"], selected.get("uploader", ""))
 
-    ctx.log.info("音乐搜索下载 v1.3.0 已就绪")
+    ctx.log.info("音乐搜索下载 v1.4.0 已就绪")
 
 
 async def teardown(ctx):
