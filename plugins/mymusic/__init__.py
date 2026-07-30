@@ -94,25 +94,19 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
     output_dir.mkdir(parents=True, exist_ok=True)
     template = str(output_dir / "%(title)s.%(ext)s")
 
-    stdout, stderr = await _run_ytdlp([
+    _, stderr = await _run_ytdlp([
         "-x", "--audio-format", "mp3",
         "--audio-quality", "0",
         "-o", template,
         "--no-playlist",
         "--no-warnings",
-        "--print", "filename",
         url,
     ], timeout=300)
 
-    if not stdout.strip():
-        return None
-    filepath = stdout.strip().split("\n")[0]
-    path = Path(filepath)
-    if path.exists():
-        return path
-    for f in output_dir.iterdir():
-        if f.suffix == ".mp3":
-            return f
+    # 扫描输出目录找最新的 mp3 文件
+    mp3_files = sorted(output_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if mp3_files:
+        return mp3_files[0]
     return None
 
 
