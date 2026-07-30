@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.5.4",
+    "version": "3.5.5",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -420,13 +420,17 @@ async def setup(ctx):
                 if now.hour == ah and now.minute == am:
                     to_sign.append((i, acc))
             else:
-                # 窗口模式：在 ah:00 到 ah+aw:00 之间随机分配一个分钟
-                total_minutes = aw * 60
+                # 窗口模式：以 sign_hour:sign_minute 为起点，窗口宽度 aw 分钟
+                # 在该窗口内随机分配一个分钟，只有匹配时才触发
+                start_offset = ah * 60 + am
+                total_minutes = aw
+                if total_minutes < 1:
+                    total_minutes = 1
                 seed = int(hashlib.md5(f"{today_str}:{i}".encode()).hexdigest()[:12], 16)
                 rng = random.Random(seed)
-                target_offset = rng.randint(0, total_minutes - 1)
-                current_offset = (now.hour - ah) * 60 + now.minute
-                if 0 <= current_offset < total_minutes and current_offset == target_offset:
+                target_offset = start_offset + rng.randint(0, total_minutes - 1)
+                current_offset = now.hour * 60 + now.minute
+                if current_offset == target_offset:
                     to_sign.append((i, acc))
 
         if not to_sign:
