@@ -78,6 +78,16 @@ def _format_size(size: int) -> str:
     return f"{size/1024/1024/1024:.1f}GB"
 
 
+async def _resolve_url(url: str) -> str:
+    """跟随短链接跳转，获取真实 URL"""
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as cli:
+            r = await cli.head(url)
+            return str(r.url)
+    except Exception:
+        return url
+
+
 async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
     try:
         dl_headers = {
@@ -272,6 +282,11 @@ async def setup(ctx):
         if not url:
             await message.reply("❌ 未找到有效链接，请发送 /jx <链接>")
             return
+
+        # 解析短链接跳转
+        resolved = await _resolve_url(url)
+        if resolved != url:
+            url = resolved
 
         msg = await message.reply(f"⏳ 正在解析...")
         # 删除原始消息
