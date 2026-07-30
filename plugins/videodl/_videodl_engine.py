@@ -30,21 +30,21 @@ async def try_install():
         return
     except ImportError:
         pass
-
-    # 尝试 pip 安装（先装全量，再试 --no-deps）
+    # 尝试 pip 安装（先试 --no-deps 快速安装，再试全量）
     python = sys.executable
     for installer in [
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
+        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: subprocess.run(
-                installer, capture_output=True, text=True, timeout=180
+            cp = await loop.run_in_executor(None, lambda: subprocess.run(
+                installer, capture_output=True, text=True, timeout=300
             ))
+            # 尝试导入
             from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
             _engine_available = True
             return
