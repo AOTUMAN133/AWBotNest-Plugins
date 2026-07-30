@@ -15,11 +15,15 @@ if _vendor_pkg.exists():
         sys.path.insert(0, _vendor_pkg_str)
 
 HAS_VIDEODL = False
+_import_error = ""
 try:
     from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
     HAS_VIDEODL = True
-except Exception:
-    pass
+except Exception as e:
+    _import_error = str(e)[:200]
+
+def get_import_error() -> str:
+    return _import_error
 
 
 def is_available() -> bool:

@@ -14,10 +14,11 @@ from pathlib import Path
 TZ = timezone(timedelta(hours=8))
 
 try:
-    from ._videodl_engine import parse_via_videodl, HAS_VIDEODL
+    from ._videodl_engine import parse_via_videodl, HAS_VIDEODL, get_import_error
 except Exception:
     parse_via_videodl = None
     HAS_VIDEODL = False
+    get_import_error = lambda: ""
 
 __plugin__ = {
     "name": "聚合解析",
@@ -267,7 +268,10 @@ async def setup(ctx):
                 vendor_pkg_dir = Path(__file__).parent / "_vendor_pkg"
                 pkg_ok = "✅ 存在" if vendor_pkg_dir.exists() else "❌ 不存在"
                 # 检查关键依赖
-                _deps = ["m3u8", "requests", "rich", "bs4", "fake_useragent", "lxml"]
+                _deps = ["m3u8", "requests", "rich", "bs4", "fake_useragent", "lxml",
+                        "platformdirs", "pathvalidate", "parsel", "tldextract",
+                        "bleach", "emoji", "filetype", "puremagic", "prettytable",
+                        "tqdm", "click", "gmssl", "Cryptodome", "brotli"]
                 dep_status = []
                 for d in _deps:
                     try:
@@ -284,6 +288,9 @@ async def setup(ctx):
                     f"  _vendor_pkg: {pkg_ok}\n"
                     f"  {' | '.join(dep_status)}\n"
                 )
+                err = get_import_error()
+                if err:
+                    status += f"\n<b>导入错误:</b> {err}\n"
                 await message.reply(status)
                 return
 
