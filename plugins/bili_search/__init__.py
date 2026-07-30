@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站搜索",
     "id": "bili_search",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "author": "凹凸曼",
     "description": "B站视频搜索与下载。支持 .sp 搜索，直接发送链接自动下载。",
     "scope": "user",
@@ -55,6 +55,11 @@ __plugin__ = {
             "type": "boolean", "default": True, "label": "自动检测链接",
             "section": "基本", "order": 1,
             "help": "群内发送B站链接自动下载"
+        },
+        "keep_local": {
+            "type": "boolean", "default": False, "label": "保留本地文件",
+            "section": "下载", "order": 4,
+            "help": "发送后不删除本地下载的文件"
         },
         "test_bili": {
             "type": "action", "label": "🔍 测试B站搜索", "section": "调试",
@@ -274,7 +279,8 @@ async def setup(ctx):
                                 await dl_msg.delete()
                             except Exception:
                                 pass
-                            dl_path.unlink(missing_ok=True)
+                            if not ctx.config.get("keep_local", False):
+                                dl_path.unlink(missing_ok=True)
                         except Exception as e:
                             await message.reply(f"❌ 发送失败: {e}")
                     else:
@@ -372,8 +378,11 @@ async def setup(ctx):
         if success and dl_path.exists():
             try:
                 await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title}")
-                await msg.delete()
-                dl_path.unlink(missing_ok=True)
+                if not ctx.config.get("keep_local", False):
+                    await msg.delete()
+                    dl_path.unlink(missing_ok=True)
+                else:
+                    await msg.edit(f"✅ 已保存到本地: {dl_path}")
             except Exception as e:
                 await msg.edit(f"❌ 发送失败: {e}")
         else:

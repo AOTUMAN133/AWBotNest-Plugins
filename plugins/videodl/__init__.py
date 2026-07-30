@@ -16,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.2.3",
+    "version": "2.2.4",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "scope": "user",
@@ -30,13 +30,17 @@ __plugin__ = {
         },
         "oversize_action": {
             "type": "select", "default": "notify", "label": "超限处理方式",
-            "section": "下载", "order": 2,
+            "section": "下载", "order": 4,
             "options": [
-                {"value": "saved", "label": "发送到收藏夹"},
+                {"value": "notify", "label": "提示用户"},
                 {"value": "link", "label": "仅发送下载链接"},
                 {"value": "force", "label": "直接发送"},
-                {"value": "notify", "label": "提示用户"},
             ]
+        },
+        "keep_local": {
+            "type": "boolean", "default": False, "label": "保留本地文件",
+            "section": "下载", "order": 5,
+            "help": "发送后不删除本地下载的文件"
         },
         "view_logs": {
             "type": "action", "label": "📋 查看日志", "section": "调试",
@@ -270,14 +274,21 @@ async def setup(ctx):
                 if size > max_mb * 1024 * 1024:
                     oversize_action = ctx.config.get("oversize_action", "notify")
                     if oversize_action == "notify":
-                        await msg.edit(f"📹 <b>{title[:50]}</b>\n📐 大小: {_format_size(size)}（超过{max_mb}MB）\n💡 请在配置中调整超限处理方式")
-                        dl_path.unlink(missing_ok=True)
-                        return
+                                            await msg.edit(f"📹 <b>{title[:50]}</b>\n📐 大小: {_format_size(size)}（超过{max_mb}MB）\n💡 请在配置中调整超限处理方式")
+                                            if not ctx.config.get("keep_local", False):
+                                                dl_path.unlink(missing_ok=True)
+                                            return
                 try:
                     await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
-                    await msg.delete()
+                    if not ctx.config.get("keep_local", False):
+                        await msg.delete()
+                        dl_path.unlink(missing_ok=True)
+                    else:
+                        await msg.edit(f"✅ 已保存到本地: {dl_path}")
                 except Exception as e:
                     await msg.edit(f"❌ 发送失败: {e}")
+                if ctx.config.get("keep_local", False):
+                    return
                 dl_path.unlink(missing_ok=True)
             else:
                 await msg.edit(f"❌ 下载失败")
@@ -296,10 +307,13 @@ async def setup(ctx):
             if success and dl_path.exists():
                 try:
                     await client.send_photo(message.chat.id, str(dl_path), caption=f"📷 {title[:50]}")
-                    await msg.delete()
+                    if not ctx.config.get("keep_local", False):
+                        await msg.delete()
+                        dl_path.unlink(missing_ok=True)
+                    else:
+                        await msg.edit(f"✅ 已保存到本地: {dl_path}")
                 except Exception as e:
                     await msg.edit(f"❌ 发送失败: {e}")
-                dl_path.unlink(missing_ok=True)
             else:
                 await msg.edit(f"❌ 下载失败")
         except Exception as e:
