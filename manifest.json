@@ -125,5 +125,21 @@
     "description": "B站视频搜索与下载。支持 /sp 搜索，直接发送链接自动下载。",
     "path": "plugins/bili_search/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg"
+  },
+  "mymusic": {
+    "name": "音乐搜索下载",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "搜索 YouTube 下载 MP3 音频。支持 .music 歌名搜索、.music URL 直接下载",
+    "path": "plugins/mymusic/",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg"
+  },
+  "mydraw": {
+    "name": "AI 图片生成",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "AI 图片生成，免费免 Key（基于 pollinations.ai）。支持 .draw 提示词 生成图片",
+    "path": "plugins/mydraw/",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg"
   }
 }
