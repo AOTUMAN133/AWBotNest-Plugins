@@ -111,20 +111,34 @@ async def setup(ctx):
     @ctx.on_message(ctx.filters.text, group=999)
     async def _store_client(client, message):
         global _client_ref, _client_info
-        if _client_ref is None:
-            _client_ref = client
-            _log(ctx, "✅ 已获取客户端连接")
-        # 每次收到消息都更新账号信息
         try:
             me = await client.get_me()
-            if me:
+            if not me:
+                return
+            # 判断这个客户端是哪个账号
+            try:
+                main_idx = int(ctx.config.get("main_account_index", 0))
+            except (ValueError, TypeError):
+                main_idx = 0
+            apps = list(ctx.user_apps or [])
+            # 通过 get_me 比对，判断当前client是否为主号
+            is_main = False
+            if main_idx < len(apps):
+                try:
+                    app_me = await apps[main_idx].get_me()
+                    if app_me and app_me.id == me.id:
+                        is_main = True
+                except Exception:
+                    pass
+            # 只存储主号的客户端
+            if is_main and _client_ref is None:
+                _client_ref = client
                 _client_info = {
-                    "id": me.id,
-                    "name": me.first_name or "",
-                    "phone": me.phone_number or "",
-                    "username": me.username or "",
+                    "id": me.id, "name": me.first_name or "",
+                    "phone": me.phone_number or "", "username": me.username or "",
                 }
-                ctx.update_config({"status_info": f"账号: {me.first_name} | {me.phone_number or me.id}"})
+                ctx.update_config({"status_info": f"✅ 主号: {me.first_name} | {me.phone_number or me.id}"})
+                _log(ctx, f"✅ 已连接主号: {me.first_name}")
         except Exception:
             pass
 
