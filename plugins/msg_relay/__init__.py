@@ -114,22 +114,19 @@ async def setup(ctx):
         if _client_ref is None:
             _client_ref = client
             _log(ctx, "✅ 已获取客户端连接")
-            # 尝试获取账号信息
-            try:
-                me = await client.get_me()
-                if me:
-                    _client_info = {
-                        "id": me.id,
-                        "name": me.first_name or "",
-                        "phone": me.phone_number or "",
-                        "username": me.username or "",
-                    }
-                    _log(ctx, f"📋 当前账号: {me.first_name} ({me.phone_number or me.id})")
-                    # 更新状态显示
-                    info_text = f"账号: {me.first_name} | {me.phone_number or me.id}"
-                    ctx.update_config({"status_info": info_text})
-            except Exception as e:
-                _log(ctx, f"⚠️ 获取账号信息失败: {e}")
+        # 每次收到消息都更新账号信息
+        try:
+            me = await client.get_me()
+            if me:
+                _client_info = {
+                    "id": me.id,
+                    "name": me.first_name or "",
+                    "phone": me.phone_number or "",
+                    "username": me.username or "",
+                }
+                ctx.update_config({"status_info": f"账号: {me.first_name} | {me.phone_number or me.id}"})
+        except Exception:
+            pass
 
     # 账号信息 API
     @ctx.on_api("/get_accounts_info", methods=["GET"])
@@ -162,7 +159,17 @@ async def setup(ctx):
             return
         _running = True
         try:
-            cli = _client_ref
+            # 尝试从 ctx.user_apps 获取主号客户端
+            apps = list(ctx.user_apps or [])
+            cli = None
+            try:
+                main_idx = int(ctx.config.get("main_account_index", 0))
+            except (ValueError, TypeError):
+                main_idx = 0
+            if main_idx < len(apps) and hasattr(apps[main_idx], 'get_dialogs'):
+                cli = apps[main_idx]
+            if not cli:
+                cli = _client_ref
             if not cli:
                 return
 
@@ -243,6 +250,12 @@ async def setup(ctx):
                 lines.append(f"  {info}")
             lines.append(f"\n在配置中选择:\n主号 = 第1个账号 (index=0)\n备用号 = 第2个账号 (index=1)")
             await message.reply("\n".join(lines))
+            return
+
+        if text == ".scan":
+            _log(ctx, "🔍 手动触发草稿扫描...")
+            asyncio.create_task(_draft_check())
+            await message.reply("🔍 已开始扫描草稿，稍后查看 .logs")
             return
 
         if text == ".logs":
