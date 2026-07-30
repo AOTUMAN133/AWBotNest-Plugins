@@ -263,12 +263,26 @@ async def setup(ctx):
 
             # ── 引擎状态命令 ──
             if text == "/jxstatus":
-                v_status = "✅ 可用" if HAS_VIDEODL else "⏳ 安装失败(无网络?)"
+                v_status = "✅ 可用" if HAS_VIDEODL else "❌ 不可用"
+                vendor_pkg_dir = Path(__file__).parent / "_vendor_pkg"
+                pkg_ok = "✅ 存在" if vendor_pkg_dir.exists() else "❌ 不存在"
+                # 检查关键依赖
+                _deps = ["m3u8", "requests", "rich", "bs4", "fake_useragent", "lxml"]
+                dep_status = []
+                for d in _deps:
+                    try:
+                        exec(f"import {d}")
+                        dep_status.append(f"✅ {d}")
+                    except ImportError:
+                        dep_status.append(f"❌ {d}")
                 status = (
                     f"📊 <b>引擎状态</b>\n\n"
                     f"🔵 引擎1 videodl: {v_status}\n"
                     f"🟢 引擎2 ParseHub: ✅ 工作中\n"
-                    f"🟡 引擎3 yt-dlp: ✅ 可用\n"
+                    f"🟡 引擎3 yt-dlp: ✅ 可用\n\n"
+                    f"<b>诊断:</b>\n"
+                    f"  _vendor_pkg: {pkg_ok}\n"
+                    f"  {' | '.join(dep_status)}\n"
                 )
                 await message.reply(status)
                 return
