@@ -18,7 +18,7 @@ __plugin__ = {
     "version": "1.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
-    "description": "AI 图片生成。支持 .draw 提示词 生成图片，免费免 Key",
+    "description": "AI 图片生成。支持 .st 提示词 生成图片，免费免 Key",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
@@ -85,13 +85,13 @@ async def setup(ctx):
         if not text.startswith("."):
             return
 
-        # .draw help — 帮助
-        if text == ".draw help":
+        # .stsm — 帮助
+        if text == ".stsm":
             help_text = (
                 "🎨 <b>AI 图片生成 v1.0.0</b>\n\n"
                 "📝 <b>生成图片</b>\n"
-                "  <code>.draw 一只猫在太空</code> — 根据提示词生成图片\n"
-                "  <code>.draw 赛博朋克城市 --宽 1280 --高 720</code> — 指定尺寸\n\n"
+                "  <code>.st 一只猫在太空</code> — 根据提示词生成图片\n"
+                "  <code>.st 赛博朋克城市 --宽 1280 --高 720</code> — 指定尺寸\n\n"
                 "⚙️ 可在插件配置中调整默认尺寸和随机种子\n"
                 "🔗 基于 pollinations.ai，免费免 Key"
             )
@@ -102,13 +102,30 @@ async def setup(ctx):
                 pass
             return
 
-        if not text.startswith(".draw"):
+        # .st help — 帮助
+        if text == ".st help":
+            help_text = (
+                "🎨 <b>AI 图片生成 v1.0.0</b>\n\n"
+                "📝 <b>生成图片</b>\n"
+                "  <code>.st 一只猫在太空</code> — 根据提示词生成图片\n"
+                "  <code>.st 赛博朋克城市 --宽 1280 --高 720</code> — 指定尺寸\n\n"
+                "⚙️ 可在插件配置中调整默认尺寸和随机种子\n"
+                "🔗 基于 pollinations.ai，免费免 Key"
+            )
+            await message.reply(help_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
 
-        cmd = text[len(".draw"):].strip()
+        if not text.startswith(".st"):
+            return
+
+        cmd = text[len(".st"):].strip()
 
         if not cmd:
-            await message.reply("🎨 用法: <code>.draw 提示词</code> 生成图片，或 <code>.draw help</code> 查看帮助")
+            await message.reply("🎨 用法: <code>.st 提示词</code> 生成图片，或 <code>.st help</code> 查看帮助")
             try:
                 await message.delete()
             except Exception:
@@ -146,7 +163,7 @@ async def setup(ctx):
 
         prompt = cmd.strip()
         if not prompt:
-            await message.reply("🎨 请输入提示词，如: <code>.draw 一只猫在太空</code>")
+            await message.reply("🎨 请输入提示词，如: <code>.st 一只猫在太空</code>")
             try:
                 await message.delete()
             except Exception:

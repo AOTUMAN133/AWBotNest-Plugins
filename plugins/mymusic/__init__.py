@@ -18,7 +18,7 @@ __plugin__ = {
     "version": "1.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
-    "description": "搜索 YouTube 下载 MP3 音频。支持 .music 歌名搜索、.music URL 直接下载",
+    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、.yy URL 直接下载",
     "scope": "user",
     "default_enabled": False,
     "config_schema": {
@@ -142,15 +142,15 @@ async def setup(ctx):
         if not text.startswith("."):
             return
 
-        # .music help — 帮助
-        if text == ".music help":
+        # .yysm — 帮助
+        if text == ".yysm":
             help_text = (
                 "🎵 <b>音乐搜索下载 v1.0.0</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
-                "  <code>.music 歌名</code> — 搜索并显示结果\n"
-                "  <code>.music dl 编号</code> — 下载指定编号的音乐\n\n"
+                "  <code>.yy 歌名</code> — 搜索并显示结果\n"
+                "  <code>.yy dl 编号</code> — 下载指定编号的音乐\n\n"
                 "🔗 <b>直接下载</b>\n"
-                "  <code>.music URL</code> — 直接下载 YouTube 链接\n\n"
+                "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
                 "⚙️ 可在插件配置中调整搜索结果数量"
             )
             await message.reply(help_text)
@@ -160,13 +160,31 @@ async def setup(ctx):
                 pass
             return
 
-        if not text.startswith(".music"):
+        # .yy help — 帮助
+        if text == ".yy help":
+            help_text = (
+                "🎵 <b>音乐搜索下载 v1.0.0</b>\n\n"
+                "🔍 <b>搜索音乐</b>\n"
+                "  <code>.yy 歌名</code> — 搜索并显示结果\n"
+                "  <code>.yy dl 编号</code> — 下载指定编号的音乐\n\n"
+                "🔗 <b>直接下载</b>\n"
+                "  <code>.yy URL</code> — 直接下载 YouTube 链接\n\n"
+                "⚙️ 可在插件配置中调整搜索结果数量"
+            )
+            await message.reply(help_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        if not text.startswith(".yy"):
             return
 
         chat_id = str(message.chat.id)
-        cmd = text[len(".music"):].strip()
+        cmd = text[len(".yy"):].strip()
 
-        # .music dl 编号 — 下载选中的结果
+        # .yy dl 编号 — 下载选中的结果
         m = re.match(r"^dl\s+(\d+)$", cmd)
         if m:
             # 从 KV 获取搜索结果
@@ -201,7 +219,7 @@ async def setup(ctx):
                 await wait.edit_text(f"❌ 发送失败: {e}")
             return
 
-        # .music URL — 直接下载链接
+        # .yy URL — 直接下载链接
         url_match = re.match(r"^https?://", cmd)
         if url_match:
             url = cmd.strip()
@@ -221,7 +239,7 @@ async def setup(ctx):
                 await wait.edit_text(f"❌ 发送失败: {e}")
             return
 
-        # .music 搜索词 — 搜索音乐
+        # .yy 搜索词 — 搜索音乐
         if cmd:
             query = cmd.strip()
             max_results = int(ctx.config.get("max_results", 5))
@@ -239,13 +257,13 @@ async def setup(ctx):
                 dur = _format_duration(r["duration"]) if r["duration"] else "未知"
                 lines.append(f"<b>{i}.</b> {r['title']}")
                 lines.append(f"    👤 {r['uploader']}  ⏱ {dur}")
-                lines.append(f"    <code>.music dl {i}</code>\n")
-            lines.append("💡 回复编号下载: <code>.music dl 1</code>")
+                lines.append(f"    <code>.yy dl {i}</code>\n")
+            lines.append("💡 回复编号下载: <code>.yy dl 1</code>")
             await wait.edit_text("\n".join(lines))
             return
 
-        # 只有一个 .music 没有参数
-        await message.reply("🎵 用法: <code>.music 歌名</code> 搜索音乐，或 <code>.music help</code> 查看帮助")
+        # 只有一个 .yy 没有参数
+        await message.reply("🎵 用法: <code>.yy 歌名</code> 搜索音乐，或 <code>.yy help</code> 查看帮助")
         try:
             await message.delete()
         except Exception:
