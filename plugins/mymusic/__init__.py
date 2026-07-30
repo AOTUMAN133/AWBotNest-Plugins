@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
-_DOWNLOAD_DIR = Path(__file__).parent / "downloads"
+_DOWNLOAD_DIR = Path("/tmp/mymusic_downloads")
 _PAGE_SIZE = 5
 _SEARCH_COUNT = 10
 
@@ -94,7 +94,7 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
     output_dir.mkdir(parents=True, exist_ok=True)
     template = str(output_dir / "%(title)s.%(ext)s")
 
-    _, stderr = await _run_ytdlp([
+    stdout, stderr = await _run_ytdlp([
         "-x", "--audio-format", "mp3",
         "--audio-quality", "0",
         "-o", template,
@@ -103,10 +103,26 @@ async def _download_audio(url: str, output_dir: Path) -> Path | None:
         url,
     ], timeout=300)
 
-    # 扫描输出目录找最新的 mp3 文件
-    mp3_files = sorted(output_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+    # 输出目录快照
+    all_files = list(output_dir.iterdir())
+    mp3_files = [f for f in all_files if f.suffix == ".mp3"]
+    mp3_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
     if mp3_files:
         return mp3_files[0]
+
+    # 尝试从 stdout 解析文件名
+    for line in stdout.strip().split("\n"):
+        line = line.strip()
+        if line and ("/" in line or "\\" in line):
+            p = Path(line)
+            if p.exists():
+                return p
+            # 尝试改后缀为 .mp3
+            p_mp3 = p.with_suffix(".mp3")
+            if p_mp3.exists():
+                return p_mp3
+
     return None
 
 
@@ -325,7 +341,17 @@ async def setup(ctx):
 
         # 下载并发送
         wait = await message.reply(f"⏳ 正在下载: {selected['title']}")
-        path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
+        try:
+            path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
+        except Exception as e:
+            await wait.edit_text(f"❌ 下载异常: {e}")
+            return
+        if not path:
+            # 重试一次
+            try:
+                path = await _download_audio(selected["url"], _DOWNLOAD_DIR)
+            except Exception:
+                pass
         if not path:
             await wait.edit_text("❌ 下载失败")
             return
