@@ -16,10 +16,10 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.2.6",
+    "version": "2.3.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
-    "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
+    "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/YouTube/小红书/Twitter/微博等1000+平台（ParseHub+yt-dlp双引擎）。",
     "scope": "user",
     "default_enabled": False,
     "requirements": ["SignerPy>=0.12"],
@@ -100,12 +100,17 @@ def _get_help_text() -> str:
         "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
         "📌 <b>使用方法</b>\n"
         "  /jx <链接或分享文本>  — 解析并下载\n\n"
-        "📌 <b>支持平台</b>\n"
-        "  🎬 抖音 · B站 · YouTube · TikTok · 快手\n"
-        "  📷 小红书 · 微博 · Instagram · Twitter/X\n"
-        "  📝 知乎 · 贴吧 · 微信公众号 · 酷安\n"
-        "  🎮 小黑盒 · 最右\n\n"
+        "📌 <b>支持平台（双引擎）</b>\n"
+        "  🇨🇳 <b>ParseHub 引擎</b>（中文平台）\n"
+        "  🎬 抖音 · B站 · 快手 · 小红书\n"
+        "  📷 微博 · 知乎 · 贴吧 · 微信公众号\n"
+        "  🎮 小黑盒 · 最右 · 酷安\n\n"
+        "  🌍 <b>yt-dlp 引擎</b>（海外平台，1752个网站）\n"
+        "  ▶️ YouTube · Twitter/X · Instagram · Facebook\n"
+        "  🎵 TikTok · SoundCloud · Vimeo · Twitch\n"
+        "  📌 Reddit · Pinterest · Imgur · Flickr\n\n"
         "📌 <b>说明</b>\n"
+        "  自动选择引擎：中文链接走 ParseHub，海外链接走 yt-dlp\n"
         "  支持的媒体类型：视频、图文、音乐\n"
         "  超过50MB自动提示处理方式\n"
         "  可在插件配置中调整大小限制"
@@ -123,6 +128,49 @@ async def _get_python_version(python_path: str) -> str:
         return cp.stdout.strip() or cp.stderr.strip()
     except Exception:
         return ""
+
+
+async def _parse_via_ytdlp(url: str) -> dict | None:
+    """通过 yt-dlp 解析链接（YouTube/海外平台）"""
+    try:
+        import yt_dlp
+        loop = asyncio.get_running_loop()
+        def _extract():
+            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "format": "best"}) as ydl:
+                return ydl.extract_info(url, download=False)
+        info = await loop.run_in_executor(None, _extract)
+        if not info:
+            return None
+        title = info.get("title", "") or info.get("id", "视频")
+        platform = info.get("extractor_key", "unknown").lower()
+        # 获取最佳视频/音频
+        media = []
+        if info.get("url"):
+            media.append({"url": info["url"], "type": "video"})
+        elif info.get("formats"):
+            # 选最佳视频
+            best = None
+            for f in info["formats"]:
+                if f.get("vcodec") and f["vcodec"] != "none":
+                    if not best or (f.get("height", 0) or 0) > (best.get("height", 0) or 0):
+                        best = f
+            if best and best.get("url"):
+                media.append({"url": best["url"], "type": "video"})
+            elif info.get("formats") and info["formats"][0].get("url"):
+                media.append({"url": info["formats"][0]["url"], "type": "video"})
+        # 缩略图
+        thumb = info.get("thumbnail")
+        return {
+            "platform": platform,
+            "platform_name": info.get("extractor", "YouTube"),
+            "title": title,
+            "media": media,
+            "thumbnail": thumb,
+            "duration": info.get("duration", 0),
+            "source": "yt-dlp",
+        }
+    except Exception as e:
+        return {"error": f"yt-dlp解析失败: {e}"}
 
 
 async def _parse_via_bridge(url: str) -> dict | None:
@@ -213,7 +261,13 @@ async def setup(ctx):
         except Exception:
             pass
         try:
+            # 先尝试 ParseHub
             result = await _parse_via_bridge(url)
+            # 如果 ParseHub 失败，尝试 yt-dlp
+            if not result or "error" in result:
+                yt_result = await _parse_via_ytdlp(url)
+                if yt_result and "error" not in yt_result:
+                    result = yt_result
         except Exception as e:
             await msg.edit(f"❌ 解析异常: {e}")
             return
