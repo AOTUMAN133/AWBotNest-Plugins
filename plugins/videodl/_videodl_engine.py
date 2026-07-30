@@ -6,6 +6,7 @@
 import asyncio
 import subprocess
 import sys
+from pathlib import Path
 
 # 初始状态：未安装
 _engine_available = False
@@ -30,19 +31,23 @@ async def try_install():
         return
     except ImportError:
         pass
-    # 尝试 pip 安装（先试 --no-deps 快速安装，再试全量）
+    # 尝试 pip 安装（先试本地 wheel，再试 PyPI）
     python = sys.executable
+    vendor_wheel = Path(__file__).parent / "_vendor" / "videofetch-0.9.1-py3-none-any.whl"
     for installer in [
+        [python, "-m", "pip", "install", str(vendor_wheel), "-q", "--no-deps"] if vendor_wheel.exists() else None,
         [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps"],
         [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "120"],
         ["uv", "pip", "install", "videofetch==0.9.1"],
     ]:
+        if installer is None:
+            continue
         try:
             loop = asyncio.get_running_loop()
-            cp = await loop.run_in_executor(None, lambda: subprocess.run(
-                installer, capture_output=True, text=True, timeout=300
+            await loop.run_in_executor(None, lambda: subprocess.run(
+                installer, capture_output=True, text=True, timeout=120
             ))
             # 尝试导入
             from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
