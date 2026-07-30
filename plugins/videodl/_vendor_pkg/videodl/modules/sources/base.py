@@ -410,16 +410,7 @@ class BaseVideoClient():
         return hostmatchessuffix(domain, valid_domains)
     '''_autosetproxies'''
     def _autosetproxies(self):
-        if not self.auto_set_proxies:
-            # 使用环境变量代理
-            import os
-            proxies = {}
-            for k in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
-                v = os.environ.get(k)
-                if v:
-                    proto = 'https' if 'https' in k.lower() else 'http'
-                    proxies[proto] = v
-            return proxies
+        if not self.auto_set_proxies: return {}
         try: proxies = self.proxied_session_client.getrandomproxy()
         except Exception as err: self.logger_handle.error(f'{self.source}._autosetproxies >>> freeproxy lib failed to auto fetch proxies (Error: {err})', disable_print=self.disable_print); proxies = {}
         return proxies
