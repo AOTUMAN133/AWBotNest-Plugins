@@ -1,70 +1,69 @@
 # -*- coding: utf-8 -*-
 # videodl 原生引擎（纯Python，100+平台）
 # 使用 CharlesPikachu/videodl 的 VideoClient
-# 异步后台安装，不阻塞插件启动
+# 同步安装，模块加载时自动完成
 
-import asyncio
 import subprocess
 import sys
 from pathlib import Path
 
-# 初始状态：未安装
-_engine_available = False
-_install_attempted = False
 
-
-def is_available() -> bool:
-    return _engine_available
-
-
-async def try_install():
-    """后台安装 videofetch，不阻塞插件启动"""
-    global _engine_available, _install_attempted
-    if _install_attempted:
-        return
-    _install_attempted = True
-
+def _install() -> bool:
+    """同步安装 videofetch"""
     # 先检查是否已安装
     try:
         from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
-        _engine_available = True
-        return
+        return True
     except ImportError:
         pass
-    # 尝试 pip 安装（先试本地 wheel，再试 PyPI）
+
     python = sys.executable
     vendor_wheel = Path(__file__).parent / "_vendor" / "videofetch-0.9.1-py3-none-any.whl"
     proxy = "http://192.168.1.33:7890"
-    for installer in [
-        [python, "-m", "pip", "install", str(vendor_wheel), "-q"] if vendor_wheel.exists() else None,
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--proxy", proxy, "--timeout", "30"],
-        [python, "-m", "pip", "install", "videofetch==0.9.1", "-q", "--no-deps", "--timeout", "30"],
-        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
-        [python, "-m", "pip", "install", "--force-reinstall", "videofetch==0.9.1", "-q", "--timeout", "30"],
-        ["pip3", "install", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
-        ["pip3", "install", "videofetch==0.9.1", "-q", "--timeout", "30"],
-        ["pip", "install", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"],
-        ["pip", "install", "videofetch==0.9.1", "-q", "--timeout", "30"],
-        ["uv", "pip", "install", "videofetch==0.9.1"],
+
+    # 尝试安装方式
+    installers = []
+
+    # 1. 本地 wheel（最快）
+    if vendor_wheel.exists():
+        installers.append([python, "-m", "pip", "install", str(vendor_wheel), "-q", "--timeout", "30"])
+        installers.append([python, "-m", "pip", "install", str(vendor_wheel), "-q", "--no-deps", "--timeout", "30"])
+
+    # 2. 在线安装（带代理）
+    for pip_cmd in [
+        [python, "-m", "pip"],
+        ["pip3"],
+        ["pip"],
     ]:
-        if installer is None:
-            continue
+        installers.append(pip_cmd + ["install", "videofetch==0.9.1", "-q", "--proxy", proxy, "--timeout", "30"])
+        installers.append(pip_cmd + ["install", "videofetch==0.9.1", "-q", "--timeout", "30"])
+
+    # 3. uv 兜底
+    installers.append(["uv", "pip", "install", "videofetch==0.9.1"])
+
+    for installer in installers:
         try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: subprocess.run(
-                installer, capture_output=True, text=True, timeout=60
-            ))
-            # 尝试导入
+            r = subprocess.run(installer, capture_output=True, text=True, timeout=60)
+            if r.returncode != 0:
+                continue
             from videodl.modules import VideoClientBuilder, BuildVideoClient  # noqa: F401
-            _engine_available = True
-            return
+            return True
         except Exception:
             continue
+
+    return False
+
+
+HAS_VIDEODL = _install()
+
+
+def is_available() -> bool:
+    return HAS_VIDEODL
 
 
 async def parse_via_videodl(url: str) -> dict | None:
     """用 videodl 原生引擎解析链接"""
-    if not _engine_available:
+    if not HAS_VIDEODL:
         return {"error": "videodl 引擎未安装"}
 
     from videodl.modules import VideoClientBuilder, BuildVideoClient
