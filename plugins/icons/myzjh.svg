@@ -1,20 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="炸金花">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128">
-      <stop offset="0%" stop-color="#2a2a2a"/>
-      <stop offset="100%" stop-color="#1a1a2e"/>
-    </linearGradient>
+    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#3e1a1a"/>
+      <stop offset=".55" stop-color="#2b0d0d"/>
+      <stop offset="1" stop-color="#180606"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".5"/>
+    </filter>
   </defs>
-  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
-  <rect x="8" y="8" width="112" height="112" rx="16" fill="none" stroke="#ef4444" stroke-width="1" opacity="0.1"/>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="url(#bg)"/>
+  <rect x="25" y="25" width="462" height="462" rx="105" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
   
-  <g transform="translate(64,48)">
-    <rect x="-24" y="-18" width="14" height="36" rx="3" fill="none" stroke="#ef4444" stroke-width="2.5"/>
-    <rect x="-7" y="-18" width="14" height="36" rx="3" fill="none" stroke="#ef4444" stroke-width="2.5"/>
-    <rect x="10" y="-18" width="14" height="36" rx="3" fill="none" stroke="#ef4444" stroke-width="2.5"/>
-    <text x="-17" y="4" text-anchor="middle" fill="#ef4444" font-size="14" font-weight="bold" font-family="sans-serif">A</text>
-    <text x="0" y="4" text-anchor="middle" fill="#ef4444" font-size="14" font-weight="bold" font-family="sans-serif">K</text>
-    <text x="17" y="4" text-anchor="middle" fill="#ef4444" font-size="14" font-weight="bold" font-family="sans-serif">Q</text>
+  <g filter="url(#shadow)">
+    <rect x="118" y="100" width="72" height="220" rx="16" fill="#11152f" stroke="#ef4444" stroke-width="10"/>
+    <rect x="220" y="100" width="72" height="220" rx="16" fill="#11152f" stroke="#ef4444" stroke-width="10"/>
+    <rect x="322" y="100" width="72" height="220" rx="16" fill="#11152f" stroke="#ef4444" stroke-width="10"/>
+    <text x="154" y="240" text-anchor="middle" fill="#ef4444" font-size="80" font-weight="bold" font-family="sans-serif">A</text>
+    <text x="256" y="240" text-anchor="middle" fill="#ef4444" font-size="80" font-weight="bold" font-family="sans-serif">K</text>
+    <text x="358" y="240" text-anchor="middle" fill="#ef4444" font-size="80" font-weight="bold" font-family="sans-serif">Q</text>
+    <path d="M118,330 L394,330" stroke="#ef4444" stroke-width="4" stroke-linecap="round" opacity=".3"/>
   </g>
-  <text x="64" y="114" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">炸金花</text>
+
+  <text x="256" y="480" text-anchor="middle" fill="#94a3b8" font-size="22" font-family="sans-serif" font-weight="500">炸金花</text>
 </svg>

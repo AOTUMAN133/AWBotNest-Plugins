@@ -1,16 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="影巢签到">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128">
-      <stop offset="0%" stop-color="#2a2a2a"/>
-      <stop offset="100%" stop-color="#1a1a2e"/>
-    </linearGradient>
+    <radialGradient id="bg" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#0d2d1a"/>
+      <stop offset=".55" stop-color="#081a0d"/>
+      <stop offset="1" stop-color="#040d06"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".5"/>
+    </filter>
   </defs>
-  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
-  <rect x="8" y="8" width="112" height="112" rx="16" fill="none" stroke="#34d399" stroke-width="1" opacity="0.1"/>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="url(#bg)"/>
+  <rect x="25" y="25" width="462" height="462" rx="105" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
   
-  <g transform="translate(64,48)">
-    <path d="M0,-22 L8,-6 L26,-6 L12,4 L18,20 L0,10 L-18,20 L-12,4 L-26,-6 L-8,-6 Z" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linejoin="round"/>
-    <circle cx="0" cy="-2" r="4" fill="#34d399" opacity="0.6"/>
+  <g filter="url(#shadow)">
+    <path d="M256,80 L290,170 L390,170 L310,225 L340,320 L256,260 L172,320 L202,225 L122,170 L222,170 Z" fill="#11152f" stroke="#34d399" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M256,80 L290,170 L390,170 L310,225 L340,320 L256,260 L172,320 L202,225 L122,170 L222,170 Z" fill="none" stroke="#34d399" stroke-width="4" stroke-linejoin="round" opacity=".3"/>
+    <circle cx="256" cy="200" r="30" fill="#34d399" opacity=".5"/>
+    <circle cx="256" cy="200" r="15" fill="#34d399"/>
   </g>
-  <text x="64" y="114" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">影巢签到</text>
+
+  <text x="256" y="480" text-anchor="middle" fill="#94a3b8" font-size="22" font-family="sans-serif" font-weight="500">影巢签到</text>
 </svg>
