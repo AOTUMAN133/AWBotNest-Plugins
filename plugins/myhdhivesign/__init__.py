@@ -550,7 +550,7 @@ async def setup(ctx):
         return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
 
     # 调度定时任务：每分钟检查，每个账号独立时间
-    ctx.schedule(_sign_tick, "interval", minutes=1, id="影巢签到-定时检查")
+    ctx.schedule(_sign_tick, "interval", minutes=5, id="影巢签到-定时检查")
 
     # 启动时立即检查一次
     asyncio.create_task(_sign_tick())

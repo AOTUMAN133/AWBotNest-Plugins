@@ -380,7 +380,7 @@ async def setup(ctx):
         except Exception:
             pass
 
-    ctx.schedule(_auto_summary, "interval", seconds=60, id="mysummary_auto")
+    ctx.schedule(_auto_summary, "interval", seconds=300, id="mysummary_auto")
 
     # ── 每日清理 ──
     async def _daily_cleanup():

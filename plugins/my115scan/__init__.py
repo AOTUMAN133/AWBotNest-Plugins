@@ -675,7 +675,7 @@ async def setup(ctx):
         last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
         ctx.update_config({"_scan_status": f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"})
 
-    ctx.schedule(_scan_status_pusher, "interval", seconds=15, id="my115scan_status")
+    ctx.schedule(_scan_status_pusher, "interval", seconds=300, id="my115scan_status")
 
     # ───────── 扫描 API ─────────
     @ctx.on_api("/start_scan", methods=["POST"])
