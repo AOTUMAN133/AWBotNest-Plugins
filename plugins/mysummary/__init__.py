@@ -130,7 +130,7 @@ _QA_PROMPT = (
 __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
     "author": "凹凸曼",
     "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
@@ -248,51 +248,48 @@ async def setup(ctx):
         if not ctx.config.get("enable_summary", True):
             return
 
-        # .sum [数量] — 快速总结（自动清理）
+        # .sum [数量] — 快速总结（不删⏳，直接编辑）
         m = re.match(r"^\.sum\s*(\d+)?$", text)
         if m:
             count = int(m.group(1)) if m.group(1) else 50
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, count)
             if result["success"]:
-                await message.reply(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
+                await wait.edit_text(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
             else:
-                await message.reply(f"❌ {result['error']}")
-            await wait.delete()
+                await wait.edit_text(f"❌ {result['error']}")
             try:
                 await message.delete()
             except Exception:
                 pass
             return
 
-        # .sum h 小时数 — 按时间总结（自动清理）
+        # .sum h 小时数 — 按时间总结（不删⏳，直接编辑）
         m = re.match(r"^\.sum\s+h\s*(\d+)$", text)
         if m:
             hours = int(m.group(1))
             wait = await message.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, 500, hours)
             if result["success"]:
-                await message.reply(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
+                await wait.edit_text(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
             else:
-                await message.reply(f"❌ {result['error']}")
-            await wait.delete()
+                await wait.edit_text(f"❌ {result['error']}")
             try:
                 await message.delete()
             except Exception:
                 pass
             return
 
-        # .ask 问题 — 基于存储的消息回答问题（自动清理）
+        # .ask 问题 — 基于存储的消息回答问题（不删⏳，直接编辑）
         m = re.match(r"^\.ask\s+(.+)$", text)
         if m:
             question = m.group(1).strip()
             wait = await message.reply("⏳ 正在思考...")
             result = await _ask_question(ctx, client, chat_id, question)
             if result["success"]:
-                await message.reply(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
+                await wait.edit_text(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
             else:
-                await message.reply(f"❌ {result['error']}")
-            await wait.delete()
+                await wait.edit_text(f"❌ {result['error']}")
             try:
                 await message.delete()
             except Exception:
@@ -424,13 +421,15 @@ async def _summarize_from_db(ctx, client, chat_id: str, count: int, hours: int =
     formatted = "\n---\n".join(lines)
 
     try:
-        result = await ctx.ai.chat(f"{_SUM_PROMPT}\n\n{formatted}")
+        result = await asyncio.wait_for(ctx.ai.chat(f"{_SUM_PROMPT}\n\n{formatted}"), timeout=120)
         result = re.sub(r"<thinking>.*?</thinking>", "", result, flags=re.DOTALL | re.IGNORECASE)
         result = re.sub(r"^.*?think.*?}", "", result, flags=re.DOTALL | re.IGNORECASE)
         result = result.strip()
         if not result:
             return {"success": False, "error": "AI未返回内容"}
         return {"success": True, "result": result, "title": title}
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "AI响应超时，请稍后重试"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -490,12 +489,14 @@ async def _summarize_from_api(ctx, client, chat_id: str, count: int, hours: int 
     formatted = "\n---\n".join(lines)
 
     try:
-        result = await ctx.ai.chat(f"{_SUM_PROMPT}\n\n{formatted}")
+        result = await asyncio.wait_for(ctx.ai.chat(f"{_SUM_PROMPT}\n\n{formatted}"), timeout=120)
         result = re.sub(r"<thinking>.*?</thinking>", "", result, flags=re.DOTALL | re.IGNORECASE)
         result = result.strip()
         if not result:
             return {"success": False, "error": "AI未返回内容"}
         return {"success": True, "result": result, "title": title}
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "AI响应超时，请稍后重试"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -516,12 +517,14 @@ async def _ask_question(ctx, client, chat_id: str, question: str) -> dict:
     formatted = "\n---\n".join(lines)
 
     try:
-        result = await ctx.ai.chat(f"{_QA_PROMPT}\n\n群聊记录:\n{formatted}\n\n问题: {question}")
+        result = await asyncio.wait_for(ctx.ai.chat(f"{_QA_PROMPT}\n\n群聊记录:\n{formatted}\n\n问题: {question}"), timeout=120)
         result = re.sub(r"<thinking>.*?</thinking>", "", result, flags=re.DOTALL | re.IGNORECASE)
         result = result.strip()
         if not result:
             return {"success": False, "error": "AI未返回内容"}
         return {"success": True, "result": result}
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "AI响应超时，请稍后重试"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
