@@ -16,7 +16,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -209,9 +209,43 @@ async def setup(ctx):
                 "  <code>.sy 一首轻快的歌</code> — 文生音乐\n"
                 "  <code>.sy 星空之歌 --lyric 星光洒满夜空</code> — 自定义歌词\n\n"
                 "⚙️ 可在配置中调整默认比例/风格/情绪\n"
+                "📖 <code>.stsm</code> — 查看详细使用说明\n"
                 "🔗 基于豆包 AI，免费免 Key"
             )
             msg = await message.reply(help_text)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await asyncio.sleep(30)
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+
+        elif text == ".stsm":
+            sm_text = (
+                "📖 <b>豆包多模态使用说明</b>\n\n"
+                "1️⃣ <b>首次使用</b>\n"
+                "   打开插件配置页 → 点「扫码登录豆包」\n"
+                "   用豆包 App 扫码即可\n\n"
+                "2️⃣ <b>生成图片</b>\n"
+                "   <code>.st 一只柴犬</code>\n"
+                "   <code>.st 一只猫 --ratio 16:9</code>\n\n"
+                "3️⃣ <b>生成音乐</b>\n"
+                "   <code>.sy 一首轻快的歌</code>\n"
+                "   <code>.sy 星空之歌 --lyric 星光洒满夜空</code>\n"
+                "   <code>.sy 摇滚 --genre Rock --mood Excited</code>\n\n"
+                "4️⃣ <b>生成视频</b>（⚠️ 暂不可用）\n"
+                "   <code>.ssp 一只柴犬奔跑</code>\n\n"
+                "5️⃣ <b>配置</b>\n"
+                "   在插件配置页可调整：\n"
+                "   • 默认比例（1:1/16:9/9:16）\n"
+                "   • 音乐风格/情绪/歌手性别\n"
+                "   • 视频超时时间\n\n"
+                "🔗 基于豆包 AI，免费免 Key"
+            )
+            msg = await message.reply(sm_text)
             try:
                 await message.delete()
             except Exception:
