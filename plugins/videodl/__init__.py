@@ -23,7 +23,7 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.4.3",
+    "version": "2.4.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",

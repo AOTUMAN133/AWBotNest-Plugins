@@ -81,7 +81,7 @@
   },
   "mysummary": {
     "name": "AI总结",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "author": "凹凸曼",
     "description": "群消息总结+AI问答。发送 .sum [数量] 快速总结，.sum h 24 按时间总结，支持定时总结任务。",
     "path": "plugins/mysummary/",
@@ -112,7 +112,7 @@
   },
   "videodl": {
     "name": "聚合解析",
-    "version": "2.3.0",
+    "version": "2.4.4",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "path": "plugins/videodl/",
@@ -120,7 +120,7 @@
   },
   "bili_search": {
     "name": "B站&YouTube搜索",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
     "path": "plugins/bili_search/",
@@ -128,7 +128,7 @@
   },
   "mymusic": {
     "name": "音乐搜索下载",
-    "version": "1.4.1",
+    "version": "1.4.4",
     "author": "凹凸曼",
     "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、输入编号下载、翻页",
     "path": "plugins/mymusic/",
