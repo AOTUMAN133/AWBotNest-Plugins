@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：B站搜索 (bili_search)
+# AWBotNest 插件：B站&YouTube搜索 (bili_search)
 
 import asyncio
 import httpx
 import json
 import os
 import re
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -13,14 +15,15 @@ from pathlib import Path
 TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
-    "name": "B站搜索",
+    "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.1.4",
+    "version": "1.2.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
-    "description": "B站视频搜索与下载。支持 .sp 搜索，直接发送链接自动下载。",
+    "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
     "scope": "user",
     "default_enabled": False,
+    "requirements": ["yt-dlp"],
     "config_schema": {
         "max_size": {
             "type": "number", "default": 50, "label": "最大文件大小(MB)",
@@ -38,8 +41,8 @@ __plugin__ = {
             ]
         },
         "quality": {
-            "type": "select", "default": "80", "label": "下载清晰度",
-            "section": "下载", "order": 3,
+            "type": "select", "default": "80", "label": "B站下载清晰度",
+            "section": "B站", "order": 1,
             "options": [
                 {"value": "120", "label": "4K"},
                 {"value": "116", "label": "1080P60"},
@@ -52,8 +55,20 @@ __plugin__ = {
             "type": "number", "default": 5, "label": "搜索返回数量",
             "section": "搜索", "min": 1, "max": 20, "order": 1
         },
+        "yt_quality": {
+            "type": "select", "default": "1080", "label": "YouTube下载画质",
+            "section": "YouTube", "order": 1,
+            "options": [
+                {"value": "2160", "label": "4K"},
+                {"value": "1440", "label": "2K"},
+                {"value": "1080", "label": "1080P"},
+                {"value": "720", "label": "720P"},
+                {"value": "480", "label": "480P"},
+                {"value": "audio", "label": "仅音频(MP3)"},
+            ]
+        },
         "auto_detect": {
-            "type": "boolean", "default": True, "label": "自动检测链接",
+            "type": "boolean", "default": True, "label": "自动检测B站链接",
             "section": "基本", "order": 1,
             "help": "群内发送B站链接自动下载"
         },
@@ -65,6 +80,10 @@ __plugin__ = {
         "test_bili": {
             "type": "action", "label": "🔍 测试B站搜索", "section": "调试",
             "action": "test_bili"
+        },
+        "test_youtube": {
+            "type": "action", "label": "▶️ 测试YouTube搜索", "section": "调试",
+            "action": "test_youtube"
         },
         "view_logs": {
             "type": "action", "label": "📋 查看日志", "section": "调试",
@@ -101,6 +120,20 @@ def _format_size(size: int) -> str:
         return f"{size/1024/1024:.1f}MB"
     return f"{size/1024/1024/1024:.1f}GB"
 
+
+def _format_duration(seconds) -> str:
+    if not seconds or seconds <= 0:
+        return "?"
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+# ═══════════════════════════════════════════════
+# B站 API
+# ═══════════════════════════════════════════════
 
 async def _bili_search(keyword: str, page: int = 1, count: int = 5) -> list:
     async with httpx.AsyncClient(timeout=15, headers=_BILI_HEADERS) as cli:
@@ -187,18 +220,75 @@ async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
         return False
 
 
+# ═══════════════════════════════════════════════
+# YouTube API (yt-dlp)
+# ═══════════════════════════════════════════════
+
+def _youtube_search(keyword: str, count: int = 5) -> list:
+    try:
+        cmd = [
+            sys.executable, "-m", "yt_dlp",
+            f"ytsearch{count}:{keyword}",
+            "--dump-json",
+            "--no-download",
+            "--flat-playlist",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return []
+        results = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                results.append({
+                    "title": data.get("title", ""),
+                    "id": data.get("id", ""),
+                    "duration": data.get("duration") or 0,
+                    "channel": data.get("channel", "") or data.get("uploader", ""),
+                    "view_count": data.get("view_count", 0),
+                    "url": f"https://www.youtube.com/watch?v={data.get('id', '')}",
+                })
+            except json.JSONDecodeError:
+                continue
+        return results
+    except Exception:
+        return []
+
+
+# ═══════════════════════════════════════════════
+# 插件入口
+# ═══════════════════════════════════════════════
+
 async def setup(ctx):
-    ctx.log.info("B站搜索插件已加载")
+    ctx.log.info("B站&YouTube搜索插件已加载")
 
     @ctx.on_message(ctx.filters.text, group=0)
     async def _handler(client, message):
         text = (message.text or "").strip()
         if not text:
             return
+
+        # .spb keyword — B站搜索
+        if text.startswith(".spb "):
+            kw = text[5:].strip()
+            await _do_search_bili(ctx, client, message, kw)
+            return
+
+        # .spy keyword — YouTube搜索
+        if text.startswith(".spy "):
+            kw = text[5:].strip()
+            await _do_search_youtube(ctx, client, message, kw)
+            return
+
+        # .sp keyword — 聚合搜索
         if text.startswith(".sp "):
             kw = text[4:].strip()
-            await _do_search(ctx, client, message, kw)
+            await _do_search_aggregate(ctx, client, message, kw)
             return
+
+        # 自动检测B站链接
         if ctx.config.get("auto_detect", True):
             bili_m = re.search(r"(?:bilibili\.com/video/|b23\.tv/)(BV\w+)", text)
             if bili_m:
@@ -207,24 +297,19 @@ async def setup(ctx):
                 return
 
     # ── B站搜索 ──
-    async def _do_search(ctx, client, message, keyword, page=1):
-        msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
+    async def _do_search_bili(ctx, client, message, keyword, page=1):
+        msg = await message.reply(f"🔍 正在B站搜索「{keyword}」...")
         try:
             await message.delete()
         except Exception:
             pass
-        results = []
         count = ctx.config.get("search_count", 5)
         bili = await _bili_search(keyword, page=page, count=count)
-        for v in bili:
-            results.append({"platform": "B站", **v})
+        results = [{"platform": "B站", **v} for v in bili]
         if not results:
-            if page == 1:
-                await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
-            else:
-                await msg.edit(f"📄 没有更多结果了")
+            await msg.edit(f"❌ 未在B站找到「{keyword}」的相关视频")
             return
-        lines = [f"🔍 <b>搜索「{keyword}」结果</b>\n"]
+        lines = [f"🔍 <b>B站搜索「{keyword}」</b>\n"]
         for i, r in enumerate(results, 1):
             title = r.get("title", "?")[:40]
             lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
@@ -233,6 +318,72 @@ async def setup(ctx):
             lines.append(f"回复 <b>0</b> 取消，<b>n</b> 下一页")
         else:
             lines.append(f"回复 <b>0</b> 取消")
+        await msg.edit("\n".join(lines))
+        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+
+    # ── YouTube搜索 ──
+    async def _do_search_youtube(ctx, client, message, keyword, page=1):
+        msg = await message.reply(f"🔍 正在YouTube搜索「{keyword}」...")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        count = ctx.config.get("search_count", 5)
+        yt_results = await asyncio.to_thread(_youtube_search, keyword, count)
+        results = [{"platform": "YouTube", **v} for v in yt_results]
+        if not results:
+            await msg.edit(f"❌ 未在YouTube找到「{keyword}」的相关视频")
+            return
+        lines = [f"🔍 <b>YouTube搜索「{keyword}」</b>\n"]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "?")[:50]
+            dur = _format_duration(r.get("duration", 0))
+            lines.append(f"<b>{i}.</b> [YouTube] {title}  ⏱{dur}")
+        lines.append(f"\n回复序号选择下载（30秒内）")
+        if len(results) >= count:
+            lines.append(f"回复 <b>0</b> 取消，<b>n</b> 翻页（新搜索）")
+        else:
+            lines.append(f"回复 <b>0</b> 取消")
+        await msg.edit("\n".join(lines))
+        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+
+    # ── 聚合搜索 ──
+    async def _do_search_aggregate(ctx, client, message, keyword, page=1):
+        msg = await message.reply(f"🔍 正在B站+YouTube搜索「{keyword}」...")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        count = ctx.config.get("search_count", 5)
+
+        # 并行搜索
+        bili_task = _bili_search(keyword, page=page, count=count)
+        yt_task = asyncio.to_thread(_youtube_search, keyword, count)
+        bili, yt_results = await asyncio.gather(bili_task, yt_task)
+
+        results = []
+        for v in bili:
+            results.append({"platform": "B站", **v})
+        for v in yt_results:
+            results.append({"platform": "YouTube", **v})
+
+        if not results:
+            await msg.edit(f"❌ 未找到「{keyword}」的相关视频")
+            return
+
+        lines = [f"🔍 <b>聚合搜索「{keyword}」</b>\n"]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "?")[:45]
+            plat = r.get("platform", "?")
+            if plat == "B站":
+                lines.append(f"<b>{i}.</b> [B站] {title}  ⭐{r.get('play',0)}")
+            else:
+                dur = _format_duration(r.get("duration", 0))
+                lines.append(f"<b>{i}.</b> [YouTube] {title}  ⏱{dur}")
+        lines.append(f"\n回复序号选择下载（30秒内）")
+        lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
@@ -302,7 +453,16 @@ async def setup(ctx):
             keyword = pending.get("keyword", "")
             if keyword:
                 ctx.kv.delete(pending_key)
-                await _do_search(ctx, client, message, keyword, page=page)
+                # 根据结果类型决定翻页方式
+                results = pending.get("results", [])
+                platforms = set(r.get("platform", "") for r in results)
+                if platforms == {"B站"}:
+                    await _do_search_bili(ctx, client, message, keyword, page=page)
+                elif platforms == {"YouTube"}:
+                    await _do_search_youtube(ctx, client, message, keyword, page=page)
+                else:
+                    # 聚合搜索不支持翻页，重新搜索
+                    await _do_search_aggregate(ctx, client, message, keyword)
             return
 
         if not text.isdigit():
@@ -325,8 +485,11 @@ async def setup(ctx):
                     await message.delete()
                 except Exception:
                     pass
-            if r.get("bvid"):
+            platform = r.get("platform", "")
+            if platform == "B站" and r.get("bvid"):
                 await _do_bili_download(ctx, client, message, r["bvid"])
+            elif platform == "YouTube" and r.get("url"):
+                await _do_youtube_download(ctx, client, message, r["url"], r.get("title", "视频"))
 
     # ── B站下载 ──
     async def _do_bili_download(ctx, client, message, bvid):
@@ -389,10 +552,91 @@ async def setup(ctx):
         else:
             await msg.edit(f"❌ 下载失败")
 
+    # ── YouTube下载 ──
+    async def _do_youtube_download(ctx, client, message, video_url, title):
+        msg = await message.reply(f"⏳ 正在下载 YouTube 视频...")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        video_id = video_url.split("watch?v=")[-1].split("&")[0] if "watch?v=" in video_url else "yt"
+        yt_quality = ctx.config.get("yt_quality", "1080")
+        is_audio = yt_quality == "audio"
+        ext = "mp3" if is_audio else "mp4"
+        dl_path = _DOWNLOAD_DIR / f"yt_{video_id}.{ext}"
+
+        await msg.edit(f"⏳ 正在下载（{yt_quality}）...")
+        _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if is_audio:
+                r = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                     "-o", str(dl_path), "--no-playlist", "--no-warnings", video_url],
+                    capture_output=True, text=True, timeout=600,
+                )
+            else:
+                r = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+                     "--merge-output-format", "mp4", "-o", str(dl_path),
+                     "--no-playlist", "--no-warnings", video_url],
+                    capture_output=True, text=True, timeout=600,
+                )
+        except Exception as e:
+            await msg.edit(f"❌ 下载异常: {e}")
+            return
+
+        if r.returncode != 0:
+            err = r.stderr.strip()[:200] or r.stdout.strip()[:200] or f"返回码 {r.returncode}"
+            await msg.edit(f"❌ 下载失败: {err}")
+            return
+
+        if not dl_path.exists():
+            # 可能是命名问题，检查下载目录是否有新文件
+            files = list(_DOWNLOAD_DIR.glob(f"yt_{video_id}*"))
+            if files:
+                dl_path = files[0]
+            else:
+                await msg.edit(f"❌ 下载失败，未找到输出文件")
+                return
+
+        file_size = dl_path.stat().st_size
+        max_mb = int(ctx.config.get("max_size", 50) or 50)
+        oversize = file_size > max_mb * 1024 * 1024 and not is_audio
+        if oversize:
+            action = ctx.config.get("oversize_action", "notify")
+            if action == "link":
+                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(file_size)}（超过{max_mb}MB）\n🔗 {video_url}", disable_web_page_preview=True)
+                if not ctx.config.get("keep_local", False):
+                    dl_path.unlink(missing_ok=True)
+                return
+            elif action == "saved":
+                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(file_size)}（超过{max_mb}MB）\n📁 已发送到收藏夹")
+                if not ctx.config.get("keep_local", False):
+                    dl_path.unlink(missing_ok=True)
+                return
+        try:
+            if is_audio:
+                await client.send_audio(message.chat.id, str(dl_path), caption=f"🎵 {title}")
+            else:
+                await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
+            if not ctx.config.get("keep_local", False):
+                await msg.delete()
+                dl_path.unlink(missing_ok=True)
+            else:
+                await msg.edit(f"✅ 已保存到本地: {dl_path}")
+        except Exception as e:
+            await msg.edit(f"❌ 发送失败: {e}")
+
     @ctx.action("test_bili")
     async def _test_bili(req=None):
         r = await _bili_search("风景", count=3)
-        return {"ok": True, "message": f"找到 {len(r)} 个结果: {[v['bvid'] for v in r]}"}
+        return {"ok": True, "message": f"B站找到 {len(r)} 个结果: {[v['bvid'] for v in r]}"}
+
+    @ctx.action("test_youtube")
+    async def _test_youtube(req=None):
+        r = await asyncio.to_thread(_youtube_search, "test", 3)
+        return {"ok": True, "message": f"YouTube找到 {len(r)} 个结果: {[v['id'] for v in r]}"}
 
     @ctx.action("view_logs")
     async def _view_logs(req=None):
@@ -404,8 +648,8 @@ async def setup(ctx):
             lines.append(f"[{log['t']}] {log['m']}")
         return {"ok": True, "message": "\n".join(lines)}
 
-    ctx.log.info("B站搜索已就绪")
+    ctx.log.info("B站&YouTube搜索已就绪")
 
 
 async def teardown(ctx):
-    ctx.log.info("B站搜索已卸载")
+    ctx.log.info("B站&YouTube搜索已卸载")
