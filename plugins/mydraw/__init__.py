@@ -80,7 +80,7 @@ async def _generate_image(prompt: str, width: int = 1024, height: int = 1024, se
 async def setup(ctx):
     ctx.log.info("AI 图片生成 v1.0.0 已加载")
 
-    @ctx.on_message(ctx.filters.text, group=0)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
         if not text.startswith("."):
