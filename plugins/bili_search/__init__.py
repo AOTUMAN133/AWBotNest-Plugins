@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -587,9 +587,33 @@ async def setup(ctx):
             return
 
         if r.returncode != 0:
-            err = r.stderr.strip()[:200] or r.stdout.strip()[:200] or f"返回码 {r.returncode}"
-            await msg.edit(f"❌ 下载失败: {err}")
-            return
+            # 视频格式下载失败，自动降级为音频
+            await msg.edit(f"⏳ 视频格式不可用，尝试音频下载...")
+            audio_path = _DOWNLOAD_DIR / f"yt_{video_id}.mp3"
+            try:
+                r2 = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                     "-o", str(audio_path), "--no-playlist", "--no-warnings", video_url],
+                    capture_output=True, text=True, timeout=600,
+                )
+            except Exception as e:
+                await msg.edit(f"❌ 下载异常: {e}")
+                return
+            if r2.returncode != 0:
+                err = r2.stderr.strip()[:200] or r2.stdout.strip()[:200] or f"返回码 {r2.returncode}"
+                await msg.edit(f"❌ 下载失败: {err}")
+                return
+            if not audio_path.exists():
+                files = list(_DOWNLOAD_DIR.glob(f"yt_{video_id}*"))
+                if files:
+                    dl_path = files[0]
+                    is_audio = True
+                else:
+                    await msg.edit(f"❌ 下载失败，未找到输出文件")
+                    return
+            else:
+                dl_path = audio_path
+                is_audio = True
 
         if not dl_path.exists():
             # 可能是命名问题，检查下载目录是否有新文件
