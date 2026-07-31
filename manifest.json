@@ -136,7 +136,7 @@
   },
   "mydraw": {
     "name": "AI 图片生成",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "author": "凹凸曼",
     "description": "AI 图片生成，免费免 Key（基于 pollinations.ai）。支持 .st 提示词 生成图片",
     "path": "plugins/mydraw/",

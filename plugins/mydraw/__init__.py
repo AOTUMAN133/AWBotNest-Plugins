@@ -16,7 +16,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -200,7 +200,7 @@ async def setup(ctx):
             await _handle_music(ctx, client, message, text[5:])
         elif text == ".st help":
             help_text = (
-                "🎨 <b>豆包多模态 v2.1.0</b>\n\n"
+                "🎨 <b>豆包多模态 v2.1.1</b>\n\n"
                 "📝 <b>生成图片</b>\n"
                 "  <code>.st 一只柴犬</code> — 文生图\n\n"
                 "🎬 <b>生成视频</b>\n"
