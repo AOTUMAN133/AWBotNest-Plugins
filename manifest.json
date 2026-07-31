@@ -49,7 +49,7 @@
   },
   "myhdhivesign": {
     "name": "影巢签到",
-    "version": "3.5.1",
+    "version": "3.6.0",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "path": "plugins/myhdhivesign/",
@@ -112,9 +112,9 @@
   },
   "videodl": {
     "name": "聚合解析",
-    "version": "2.4.0",
+    "version": "2.3.0",
     "author": "凹凸曼",
-    "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
+    "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "path": "plugins/videodl/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg"
   },

@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.5.6",
+    "version": "3.6.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -139,31 +139,17 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
     except ImportError:
         return None
     try:
-        import cloakbrowser
-        has_cloak = True
+        from ._playwright_stealth import create_stealth_context, STEALTH_LAUNCH_ARGS
     except ImportError:
-        has_cloak = False
+        return None
     try:
         async with async_playwright() as p:
-            if has_cloak:
-                browser = await cloakbrowser.launch_async(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-                    locale="zh-CN",
-                    timezone="Asia/Shanghai",
-                )
-            else:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-                )
-            ctx = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                viewport={"width": 1920, "height": 1080},
-                locale="zh-CN",
-                timezone_id="Asia/Shanghai",
+            browser = await p.chromium.launch(
+                headless=True,
+                args=STEALTH_LAUNCH_ARGS,
             )
-            page = await ctx.new_page()
+            context = await create_stealth_context(browser)
+            page = await context.new_page()
             page.set_default_timeout(60000)
             await page.goto(f"{base_url}/login", wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(3)
@@ -189,7 +175,7 @@ async def _login_with_playwright(base_url: str, username: str, password: str) ->
                 await asyncio.sleep(5)
             except Exception:
                 pass
-            cookies = await ctx.cookies()
+            cookies = await context.cookies()
             cookie_parts = []
             for c in cookies:
                 cookie_parts.append(f"{c['name']}={c['value']}")
