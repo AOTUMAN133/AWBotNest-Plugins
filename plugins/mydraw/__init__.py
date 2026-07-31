@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import time
+import threading
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -15,10 +16,10 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
-    "description": "豆包 AI 多模态生成。支持 .dt 文生图，.dtv 文生视频，.dtm 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
+    "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
     "scope": "user",
     "default_enabled": False,
     "requirements": ["aiohttp"],
@@ -54,10 +55,9 @@ __plugin__ = {
             "options": {"Male": "男声", "Female": "女声"},
         },
         "video_timeout": {
-            "type": "number", "default": 300, "label": "视频生成超时(秒)",
-            "section": "生成", "min": 60, "max": 600,
+            "type": "number", "default": 600, "label": "视频生成超时(秒)",
+            "section": "生成", "min": 60, "max": 1800,
         },
-        # 登录状态
         "_login_status": {
             "type": "info", "label": "登录状态", "section": "豆包账号",
         },
@@ -78,17 +78,19 @@ _CLIENT_LOCK = asyncio.Lock()
 
 
 async def _get_client(ctx) -> object | None:
-    """获取或创建客户端"""
-    global _CLIENT_INSTANCE
+    """获取客户端，自动管理 session 生命周期"""
+    global _CLIENT_INSTANCE, _CLIENT_LOCK
     session_path = ctx.data_dir / _SESSION_FILE
     if not session_path.exists():
         return None
     async with _CLIENT_LOCK:
         if _CLIENT_INSTANCE is None:
             try:
-                from _doubao2api import DoubaoChatClient
+                from ._doubao2api import DoubaoChatClient
                 _CLIENT_INSTANCE = DoubaoChatClient.from_session(str(session_path))
                 _CLIENT_INSTANCE._session_path = session_path
+                # 预创建 session
+                await _CLIENT_INSTANCE.__aenter__()
                 ctx.log.info("豆包客户端已加载")
             except Exception as e:
                 ctx.log.error("豆包客户端加载失败: %s", e)
@@ -97,13 +99,13 @@ async def _get_client(ctx) -> object | None:
 
 
 async def setup(ctx):
-    ctx.log.info("豆包多模态 v2.0.0 已加载")
+    ctx.log.info("豆包多模态 v2.1.0 已加载")
 
     # 恢复登录状态
     session_path = ctx.data_dir / _SESSION_FILE
     if session_path.exists():
         try:
-            from _doubao2api.session import load_session
+            from ._doubao2api.session import load_session
             session = load_session(str(session_path))
             if session.get("cookies", {}).get("sessionid"):
                 ctx.update_config({"_login_status": "✅ 已登录"})
@@ -113,22 +115,67 @@ async def setup(ctx):
     # ── 扫码登录 ──
     @ctx.action("qr_login")
     async def _qr_login(req=None):
-        from _doubao2api.qr_login import QRLogin
+        from ._doubao2api.qr_login import QRLogin, QRStatus
+
+        loop = asyncio.get_running_loop()
+        qr = QRLogin()
+        result_holder = {}
+        qr_ready = threading.Event()
+        done = threading.Event()
+
+        def on_status(status, msg):
+            if status == QRStatus.FETCHING_QR and msg == "qr_ready":
+                qr_ready.set()
+
+        def on_done(result):
+            result_holder["result"] = result
+            done.set()
+
+        qr.start(on_status=on_status, on_done=on_done)
+
+        # 等待 QR 码就绪（最多 30 秒）
+        await loop.run_in_executor(None, qr_ready.wait, 30)
+        if not qr.qrcode_data:
+            qr.cancel()
+            return {"ok": False, "message": "❌ 获取二维码失败"}
+
+        # 保存二维码到本地
+        qr_path = ctx.data_dir / "doubao_qr.png"
+        qr_path.write_bytes(qr.qrcode_data)
+        # 发送二维码到聊天（通过平台通知）
         try:
-            result = QRLogin.login_and_save(str(ctx.data_dir / _SESSION_FILE))
-            ctx.update_config({"_login_status": "✅ 已登录"})
-            global _CLIENT_INSTANCE
-            _CLIENT_INSTANCE = None
-            return {"ok": True, "message": "✅ 豆包登录成功"}
+            await ctx.bot.send_photo(ctx.owner_id, str(qr_path))
+            ctx.update_config({"_login_status": "📱 二维码已发送，请用豆包 App 扫码"})
         except Exception as e:
-            return {"ok": False, "message": f"❌ 登录失败: {e}"}
+            ctx.update_config({"_login_status": f"📱 二维码已生成（{qr_path}），但发送失败: {e}"})
+
+        # 后台等待扫码结果
+        async def _wait_scan():
+            await loop.run_in_executor(None, done.wait, 120)
+            result = result_holder.get("result")
+            if result and result.status == QRStatus.CONFIRMED and result.cookies:
+                session_data = {"cookies": result.cookies, "params": {}}
+                session_path = ctx.data_dir / _SESSION_FILE
+                session_path.write_text(json.dumps(session_data, indent=2, ensure_ascii=False), encoding="utf-8")
+                ctx.update_config({"_login_status": "✅ 已登录"})
+                global _CLIENT_INSTANCE
+                _CLIENT_INSTANCE = None
+                try:
+                    await ctx.bot.send(ctx.owner_id, "✅ 豆包登录成功！")
+                except Exception:
+                    pass
+            else:
+                ctx.update_config({"_login_status": "❌ 登录失败"})
+
+        asyncio.create_task(_wait_scan())
+        return {"ok": True, "message": f"📱 二维码已生成（{qr_path}），请用豆包 App 扫码"}
 
     @ctx.action("check_login")
     async def _check_login(req=None):
         session_path = ctx.data_dir / _SESSION_FILE
         if session_path.exists():
             try:
-                from _doubao2api.session import load_session
+                from ._doubao2api.session import load_session
                 session = load_session(str(session_path))
                 if session.get("cookies", {}).get("sessionid"):
                     ctx.update_config({"_login_status": "✅ 已登录"})
@@ -145,23 +192,22 @@ async def setup(ctx):
         if not text.startswith("."):
             return
 
-        # 命令分发
-        if text.startswith(".dt "):
+        if text.startswith(".st "):
             await _handle_image(ctx, client, message, text[4:])
-        elif text.startswith(".dtv "):
+        elif text.startswith(".ssp "):
             await _handle_video(ctx, client, message, text[5:])
-        elif text.startswith(".dtm "):
+        elif text.startswith(".sy "):
             await _handle_music(ctx, client, message, text[5:])
-        elif text == ".dt help":
+        elif text == ".st help":
             help_text = (
-                "🎨 <b>豆包多模态 v2.0.0</b>\n\n"
+                "🎨 <b>豆包多模态 v2.1.0</b>\n\n"
                 "📝 <b>生成图片</b>\n"
-                "  <code>.dt 一只柴犬</code> — 文生图\n\n"
+                "  <code>.st 一只柴犬</code> — 文生图\n\n"
                 "🎬 <b>生成视频</b>\n"
-                "  <code>.dtv 一只柴犬奔跑</code> — 文生视频（约1-3分钟）\n\n"
+                "  <code>.ssp 一只柴犬奔跑</code> — 文生视频（⚠️ 暂不可用）\n\n"
                 "🎵 <b>生成音乐</b>\n"
-                "  <code>.dtm 一首轻快的歌</code> — 文生音乐\n"
-                "  <code>.dtm 星空之歌 --lyric 星光洒满夜空</code> — 自定义歌词\n\n"
+                "  <code>.sy 一首轻快的歌</code> — 文生音乐\n"
+                "  <code>.sy 星空之歌 --lyric 星光洒满夜空</code> — 自定义歌词\n\n"
                 "⚙️ 可在配置中调整默认比例/风格/情绪\n"
                 "🔗 基于豆包 AI，免费免 Key"
             )
@@ -176,31 +222,14 @@ async def setup(ctx):
             except Exception:
                 pass
 
-    ctx.log.info("豆包多模态 v2.0.0 已就绪")
-
-
-async def _get_or_create_client(ctx):
-    """获取或创建客户端，登录态检查"""
-    client = await _get_client(ctx)
-    if client is None:
-        return None
-    try:
-        async with client:
-            me = await client.get_current_user()
-            if me:
-                return client
-    except Exception:
-        pass
-    return None
+    ctx.log.info("豆包多模态 v2.1.0 已就绪")
 
 
 async def _handle_image(ctx, client, message, prompt):
-    """处理文生图"""
     if not prompt:
-        await message.reply("🎨 请输入提示词，如: <code>.dt 一只柴犬</code>")
+        await message.reply("🎨 请输入提示词，如: <code>.st 一只柴犬</code>")
         return
 
-    # 解析参数
     ratio = ctx.config.get("ratio", "1:1")
     wm = __import__("re").search(r"--ratio\s*([\d:]+)", prompt)
     if wm:
@@ -214,42 +243,43 @@ async def _handle_image(ctx, client, message, prompt):
         pass
 
     try:
-        db = await _get_or_create_client(ctx)
+        db = await _get_client(ctx)
         if not db:
             await wait.edit_text("❌ 未登录豆包，请先扫码登录")
             return
 
-        async with db:
-            result = await db.generate_image(prompt=prompt.strip(), ratio=ratio)
-            if result.images:
-                img = result.images[0]
-                _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
-                # 下载图片
-                import aiohttp
-                async with aiohttp.ClientSession() as sess:
-                    async with sess.get(img.ori_url) as r:
-                        if r.status == 200:
-                            filepath.write_bytes(await r.read())
-                await wait.delete()
-                with open(filepath, "rb") as f:
-                    await client.send_photo(message.chat.id, f, caption=f"🎨 {prompt}\n{ratio}")
-                if not ctx.config.get("keep_local", False):
-                    filepath.unlink(missing_ok=True)
-            else:
-                await wait.edit_text("❌ 图片生成失败")
+        result = await db.generate_image(prompt=prompt.strip(), ratio=ratio)
+        ctx.log.info("图片生成结果: %s images", len(result.images) if result else 0)
+        if result.images:
+            img = result.images[0]
+            _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
+            import aiohttp
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(img.ori_url) as r:
+                    if r.status == 200:
+                        filepath.write_bytes(await r.read())
+            await wait.delete()
+            with open(filepath, "rb") as f:
+                await client.send_photo(message.chat.id, f, caption=f"🎨 {prompt}\n{ratio}")
+            filepath.unlink(missing_ok=True)
+        else:
+            await wait.edit_text("❌ 图片生成失败")
     except Exception as e:
+        import traceback
+        ctx.log.error("图片生成异常: %s", traceback.format_exc())
         await wait.edit_text(f"❌ 生成失败: {e}")
 
 
 async def _handle_video(ctx, client, message, prompt):
-    """处理文生视频"""
     if not prompt:
-        await message.reply("🎬 请输入提示词，如: <code>.dtv 一只柴犬奔跑</code>")
+        await message.reply("🎬 请输入提示词，如: <code>.ssp 一只柴犬奔跑</code>")
         return
 
     ratio = ctx.config.get("ratio", "16:9")
-    timeout = int(ctx.config.get("video_timeout", 300) or 300)
+    timeout = int(ctx.config.get("video_timeout", 600) or 600)
+    # 传给 generate_video 的超时，实际等待时间
+    api_timeout = max(timeout, 600)
 
     wait = await message.reply(f"🎬 正在生成视频: {prompt}\n⏳ 大约需要1-3分钟...")
     try:
@@ -258,37 +288,34 @@ async def _handle_video(ctx, client, message, prompt):
         pass
 
     try:
-        db = await _get_or_create_client(ctx)
+        db = await _get_client(ctx)
         if not db:
             await wait.edit_text("❌ 未登录豆包，请先扫码登录")
             return
 
-        async with db:
-            result = await db.generate_video(prompt=prompt.strip(), ratio=ratio, timeout=timeout)
-            if result.videos:
-                v = result.videos[0]
-                _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                filepath = _DOWNLOAD_DIR / f"dtv_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.mp4"
-                import aiohttp
-                async with aiohttp.ClientSession() as sess:
-                    async with sess.get(v.video_url) as r:
-                        if r.status == 200:
-                            filepath.write_bytes(await r.read())
-                await wait.delete()
-                with open(filepath, "rb") as f:
-                    await client.send_video(message.chat.id, f, caption=f"🎬 {prompt}\n{v.duration}s")
-                if not ctx.config.get("keep_local", False):
-                    filepath.unlink(missing_ok=True)
-            else:
-                await wait.edit_text("❌ 视频生成失败")
+        result = await db.generate_video(prompt=prompt.strip(), ratio=ratio, timeout=api_timeout)
+        if result.videos:
+            v = result.videos[0]
+            _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            filepath = _DOWNLOAD_DIR / f"dtv_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.mp4"
+            import aiohttp
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(v.video_url) as r:
+                    if r.status == 200:
+                        filepath.write_bytes(await r.read())
+            await wait.delete()
+            with open(filepath, "rb") as f:
+                await client.send_video(message.chat.id, f, caption=f"🎬 {prompt}\n{v.duration}s")
+            filepath.unlink(missing_ok=True)
+        else:
+            await wait.edit_text("❌ 视频生成失败")
     except Exception as e:
         await wait.edit_text(f"❌ 生成失败: {e}")
 
 
 async def _handle_music(ctx, client, message, cmd):
-    """处理文生音乐"""
     if not cmd:
-        await message.reply("🎵 请输入提示词，如: <code>.dtm 一首轻快的歌</code>")
+        await message.reply("🎵 请输入提示词，如: <code>.sy 一首轻快的歌</code>")
         return
 
     prompt = cmd.strip()
@@ -297,18 +324,15 @@ async def _handle_music(ctx, client, message, cmd):
     mood = ctx.config.get("music_mood", "Happy")
     gender = ctx.config.get("music_gender", "Female")
 
-    # 解析参数
     import re
     lm = re.search(r"--lyric\s+(.+)", prompt)
     if lm:
         lyric = lm.group(1).strip()
         prompt = prompt.replace(lm.group(0), "")
-
     gm = re.search(r"--genre\s+(\S+)", prompt)
     if gm:
         genre = gm.group(1)
         prompt = prompt.replace(gm.group(0), "")
-
     mm = re.search(r"--mood\s+(\S+)", prompt)
     if mm:
         mood = mm.group(1)
@@ -323,39 +347,42 @@ async def _handle_music(ctx, client, message, cmd):
         pass
 
     try:
-        db = await _get_or_create_client(ctx)
+        db = await _get_client(ctx)
         if not db:
             await wait.edit_text("❌ 未登录豆包，请先扫码登录")
             return
 
-        async with db:
-            kwargs = {"prompt": prompt, "genre": genre, "mood": mood, "gender": gender}
-            if lyric:
-                kwargs["lyric"] = lyric
-                kwargs["generation_type"] = "custome_lyric"
-            result = await db.generate_music(**kwargs)
-            if result.tracks:
-                track = result.tracks[0]
-                _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                filepath = _DOWNLOAD_DIR / f"dtm_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.mp4"
-                import aiohttp
-                async with aiohttp.ClientSession() as sess:
-                    async with sess.get(track.audio_url) as r:
-                        if r.status == 200:
-                            filepath.write_bytes(await r.read())
-                await wait.delete()
-                caption = f"🎵 {track.title}\n{genre} | {mood} | {gender}\n时长: {track.duration:.0f}s"
-                with open(filepath, "rb") as f:
-                    await client.send_audio(message.chat.id, f, caption=caption)
-                if not ctx.config.get("keep_local", False):
-                    filepath.unlink(missing_ok=True)
-            else:
-                await wait.edit_text("❌ 音乐生成失败")
+        kwargs = {"prompt": prompt, "genre": genre, "mood": mood, "gender": gender}
+        if lyric:
+            kwargs["lyric"] = lyric
+            kwargs["generation_type"] = "custome_lyric"
+        result = await db.generate_music(**kwargs)
+        if result.tracks:
+            track = result.tracks[0]
+            _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            filepath = _DOWNLOAD_DIR / f"dtm_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.m4a"
+            import aiohttp
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(track.audio_url) as r:
+                    if r.status == 200:
+                        filepath.write_bytes(await r.read())
+            await wait.delete()
+            caption = f"🎵 {track.title}\n{genre} | {mood} | {gender}\n时长: {track.duration:.0f}s"
+            with open(filepath, "rb") as f:
+                await client.send_audio(message.chat.id, f, caption=caption)
+            filepath.unlink(missing_ok=True)
+        else:
+            await wait.edit_text("❌ 音乐生成失败")
     except Exception as e:
         await wait.edit_text(f"❌ 生成失败: {e}")
 
 
 async def teardown(ctx):
     global _CLIENT_INSTANCE
+    if _CLIENT_INSTANCE:
+        try:
+            await _CLIENT_INSTANCE.__aexit__(None, None, None)
+        except Exception:
+            pass
     _CLIENT_INSTANCE = None
     ctx.log.info("豆包多模态已卸载")
