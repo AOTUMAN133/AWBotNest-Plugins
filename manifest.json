@@ -120,7 +120,7 @@
   },
   "bili_search": {
     "name": "B站&YouTube搜索",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
     "path": "plugins/bili_search/",
