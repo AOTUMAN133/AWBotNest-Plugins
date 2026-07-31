@@ -17,7 +17,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -577,8 +577,7 @@ async def setup(ctx):
                 )
             else:
                 r = subprocess.run(
-                    [sys.executable, "-m", "yt_dlp", "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
-                     "--merge-output-format", "mp4", "-o", str(dl_path),
+                    [sys.executable, "-m", "yt_dlp", "-f", "best[ext=mp4]/best", "-o", str(dl_path),
                      "--no-playlist", "--no-warnings", video_url],
                     capture_output=True, text=True, timeout=600,
                 )
@@ -592,8 +591,9 @@ async def setup(ctx):
             return
 
         if not dl_path.exists():
-            # 可能是命名问题，检查下载目录是否有新文件
-            files = list(_DOWNLOAD_DIR.glob(f"yt_{video_id}*"))
+            # 可能是命名问题，检查下载目录排除中间文件
+            files = sorted(_DOWNLOAD_DIR.glob(f"yt_{video_id}*"), key=lambda p: p.stat().st_mtime, reverse=True)
+            files = [f for f in files if not re.search(r"\.f\d{3,}\.", f.name)]
             if files:
                 dl_path = files[0]
             else:
