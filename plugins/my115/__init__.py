@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.4.4",
+    "version": "1.4.5",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -467,7 +467,9 @@ async def setup(ctx):
 
     @ctx.on_api("/update_config", methods=["POST"])
     async def _api_update_config(req):
-        body = await req.json()
+        body = req if isinstance(req, dict) else {}
+        if not body and hasattr(req, 'json'):
+            body = req.json
         # shareswitch 从 enabled 推导
         body["shareswitch"] = body.get("shareswitch", True)
         ctx.update_config(body)
