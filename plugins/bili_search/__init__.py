@@ -264,7 +264,7 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
 async def setup(ctx):
     ctx.log.info("B站&YouTube搜索插件已加载")
 
-    @ctx.on_message(ctx.filters.text, group=0)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def _handler(client, message):
         text = (message.text or "").strip()
         if not text:
@@ -389,7 +389,7 @@ async def setup(ctx):
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── 处理用户选择回复 ──
-    @ctx.on_message(ctx.filters.text, group=1)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
     async def _select_handler(client, message):
         text = (message.text or "").strip().lower()
         pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"

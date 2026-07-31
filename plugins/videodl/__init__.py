@@ -253,7 +253,7 @@ async def _parse_via_bridge(url: str) -> dict | None:
 async def setup(ctx):
     ctx.log.info("聚合解析插件已加载 (v2.4.0, videodl原生+ParseHub+yt-dlp三引擎)")
 
-    @ctx.on_message(ctx.filters.text, group=0)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def _handler(client, message):
         try:
             text = (message.text or "").strip()

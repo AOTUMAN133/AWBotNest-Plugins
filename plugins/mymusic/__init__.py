@@ -227,7 +227,7 @@ async def setup(ctx):
             await wait.edit_text(f"❌ 发送失败: {e}")
 
     # ── 命令处理 ──
-    @ctx.on_message(ctx.filters.text, group=0)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
         if not text.startswith("."):
@@ -301,7 +301,7 @@ async def setup(ctx):
             pass
 
     # ── 选择处理 ──
-    @ctx.on_message(ctx.filters.text, group=1)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
     async def select_handler(client, message):
         text = (message.text or "").strip().lower()
         pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"

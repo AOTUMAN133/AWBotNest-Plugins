@@ -207,7 +207,7 @@ async def setup(ctx):
             pass
 
     # ── 命令处理 ──
-    @ctx.on_message(ctx.filters.text, group=0)
+    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def cmd_handler(client, message):
         text = (message.text or "").strip()
         if not text.startswith("."):
