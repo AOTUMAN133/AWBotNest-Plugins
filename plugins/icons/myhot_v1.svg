@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B35"/>
+      <stop offset="100%" style="stop-color:#E63900"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- 火焰主体 -->
+  <path d="M256 420c-60 0-110-45-110-100 0-55 40-90 60-130 10-20 20-50 20-50s10 30 20 50c20 40 60 75 60 130 0 55-50 100-110 100z" fill="#FFD700" opacity="0.9"/>
+  <path d="M256 380c-35 0-65-25-65-60 0-35 25-55 35-80 5-12 10-30 10-30s5 18 10 30c10 25 35 45 35 80 0 35-30 60-65 60z" fill="#FFF" opacity="0.8"/>
+  <!-- 热度波浪 -->
+  <path d="M180 370 Q200 350 220 370 Q240 390 260 370 Q280 350 300 370 Q320 390 332 370" fill="none" stroke="#FFD700" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <text x="256" y="470" text-anchor="middle" font-family="Arial" font-size="36" font-weight="bold" fill="#fff">热搜</text>
+</svg>

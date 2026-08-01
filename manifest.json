@@ -141,5 +141,21 @@
     "description": "AI 图片生成，免费免 Key（基于 pollinations.ai）。支持 .st 提示词 生成图片",
     "path": "plugins/mydraw/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg"
+  },
+  "myhot": {
+    "name": "热搜热点",
+    "version": "1.1.0",
+    "author": "凹凸曼",
+    "description": "查看百度/微博热搜榜。.hot 百度热搜，.hot weibo 微博热搜，支持定时推送。",
+    "path": "plugins/myhot/",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhot_v1.svg"
+  },
+  "mytoday": {
+    "name": "历史上的今天",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "查看历史上的今天大事记。.jt 查看今天发生的历史事件，支持定时推送。",
+    "path": "plugins/mytoday/",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mytoday_v1.svg"
   }
 }
