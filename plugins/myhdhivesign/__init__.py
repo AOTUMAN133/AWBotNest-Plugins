@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.7.0",
+    "version": "3.7.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -530,9 +530,6 @@ async def setup(ctx):
         id="影巢签到-每日签到",
     )
     _log_debug(ctx, f"已注册每日签到任务: {checkin_hour:02d}:{checkin_minute:02d}")
-
-    # 启动时立即检查一次（补签今天错过的窗口）
-    asyncio.create_task(_do_sign_all("启动"))
 
     @ctx.action("sign_now")
     async def _api_sign_now(req=None):
