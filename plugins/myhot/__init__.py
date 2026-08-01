@@ -4,6 +4,7 @@
 import asyncio
 import httpx
 import json
+import re
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -12,10 +13,10 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "热搜热点",
     "id": "myhot",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhot_v1.svg",
     "author": "凹凸曼",
-    "description": "查看百度/微博热搜榜。.hot 查看热搜榜，.hot baidu 百度热搜，.hot weibo 微博热搜",
+    "description": "查看百度/微博热搜榜。.hot 百度热搜，.hot weibo 微博热搜，.hot auto 在当前群开启/关闭定时推送",
     "scope": "user",
     "default_enabled": False,
     "requirements": ["httpx"],
@@ -25,24 +26,28 @@ __plugin__ = {
             "section": "基本", "min": 5, "max": 30, "order": 1,
             "help": "每次热搜显示的条数"
         },
-        "auto_push": {
-            "type": "boolean", "default": False, "label": "定时推送热搜",
-            "section": "定时", "order": 1,
-            "help": "开启后每天定时推送热搜到群"
-        },
         "push_hour": {
             "type": "number", "default": 9, "label": "推送时间(小时)",
-            "section": "定时", "min": 0, "max": 23, "order": 2,
-            "help": "每天几点推送热搜（0-23）"
+            "section": "定时", "min": 0, "max": 23, "order": 1,
+            "help": "每天几点推送热搜（0-23），在群内发 .hot auto 开启定时推送"
         },
         "push_minute": {
             "type": "number", "default": 0, "label": "推送时间(分钟)",
-            "section": "定时", "min": 0, "max": 59, "order": 3,
+            "section": "定时", "min": 0, "max": 59, "order": 2,
+        },
+        "test_hot": {
+            "type": "action", "label": "🔍 测试热搜", "section": "调试",
+            "action": "test_hot"
+        },
+        "view_logs": {
+            "type": "action", "label": "📋 查看日志", "section": "调试",
+            "action": "view_logs"
         },
     },
 }
 
 _KV_LOGS = "myhot_logs"
+_KV_GROUPS = "myhot_push_groups"
 _BAIDU_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": "https://top.baidu.com/",
@@ -81,8 +86,6 @@ async def _weibo_hot(count: int = 10) -> list:
         r = await cli.get("https://weibo.cn/")
         if r.status_code != 200:
             return []
-        import re
-        # 提取 <div class="c"><a href="...">话题</a></div> 中的话题
         items = re.findall(r'<div class="c"><a[^>]*>([^<]+)</a></div>', r.text)
         return [{"word": item.strip(), "hot_score": 0} for item in items[:count]]
 
@@ -111,6 +114,8 @@ async def setup(ctx):
         if not text:
             return
 
+        chat_id = message.chat.id
+
         # .hot — 显示百度热搜
         if text == ".hot":
             await _show_hot(ctx, client, message, "baidu")
@@ -124,6 +129,27 @@ async def setup(ctx):
         # .hot weibo — 微博热搜
         if text == ".hot weibo":
             await _show_hot(ctx, client, message, "weibo")
+            return
+
+        # .hot auto — 在当前群开启/关闭定时推送
+        if text == ".hot auto":
+            groups = ctx.kv.get(_KV_GROUPS, [])
+            if chat_id in groups:
+                groups.remove(chat_id)
+                ctx.kv.set(_KV_GROUPS, groups)
+                await message.reply("❌ 已关闭本群的热搜定时推送")
+                _log(ctx, f"群 {chat_id} 关闭定时推送")
+            else:
+                groups.append(chat_id)
+                ctx.kv.set(_KV_GROUPS, groups)
+                hour = ctx.config.get("push_hour", 9)
+                minute = ctx.config.get("push_minute", 0)
+                await message.reply(f"✅ 已开启本群的热搜定时推送（每天 {hour:02d}:{minute:02d} 推送）")
+                _log(ctx, f"群 {chat_id} 开启定时推送")
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
 
     async def _show_hot(ctx, client, message, source: str):
@@ -147,22 +173,28 @@ async def setup(ctx):
             await msg.edit(f"❌ 获取热搜失败: {e}")
             _log(ctx, f"获取{source}热搜失败: {e}")
 
-    # ── 定时推送 ──
+    # ── 定时推送（只推注册过的群） ──
     async def _push_hot():
+        groups = ctx.kv.get(_KV_GROUPS, [])
+        if not groups:
+            return
         try:
             items = await _baidu_hot(10)
             formatted = _format_hot_list(items, "百度")
-            # 推送到所有群
-            await ctx.send_message(formatted)
-            _log(ctx, "定时推送热搜完成")
+            for gid in groups:
+                try:
+                    await ctx.send_message(formatted, chat_id=gid)
+                except Exception as e:
+                    _log(ctx, f"推送群 {gid} 失败: {e}")
+            _log(ctx, f"定时推送热搜完成，已推送 {len(groups)} 个群")
         except Exception as e:
             _log(ctx, f"定时推送热搜失败: {e}")
 
-    if ctx.config.get("auto_push", False):
-        hour = ctx.config.get("push_hour", 9)
-        minute = ctx.config.get("push_minute", 0)
-        ctx.schedule("hot_push", _push_hot, "cron", hour=hour, minute=minute)
-        _log(ctx, f"已注册定时推送: 每天 {hour:02d}:{minute:02d}")
+    # 注册定时任务（始终注册，但只推有注册群组的）
+    hour = ctx.config.get("push_hour", 9)
+    minute = ctx.config.get("push_minute", 0)
+    ctx.schedule("hot_push", _push_hot, "cron", hour=hour, minute=minute)
+    _log(ctx, f"定时任务已注册: 每天 {hour:02d}:{minute:02d}")
 
     @ctx.action("test_hot")
     async def _test_hot(req=None):

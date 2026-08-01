@@ -11,10 +11,10 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "历史上的今天",
     "id": "mytoday",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mytoday_v1.svg",
     "author": "凹凸曼",
-    "description": "查看历史上的今天大事记。.jt 查看今天发生的历史事件，支持定时推送。",
+    "description": "查看历史上的今天大事记。.jt 查看今天发生的历史事件，.jt auto 在当前群开启/关闭定时推送",
     "scope": "user",
     "default_enabled": False,
     "requirements": ["httpx"],
@@ -24,23 +24,28 @@ __plugin__ = {
             "section": "基本", "min": 3, "max": 20, "order": 1,
             "help": "每次显示的历史事件数量"
         },
-        "auto_push": {
-            "type": "boolean", "default": False, "label": "定时推送",
-            "section": "定时", "order": 1,
-            "help": "开启后每天早上推送历史上的今天"
-        },
         "push_hour": {
             "type": "number", "default": 8, "label": "推送时间(小时)",
-            "section": "定时", "min": 0, "max": 23, "order": 2,
+            "section": "定时", "min": 0, "max": 23, "order": 1,
+            "help": "每天几点推送，在群内发 .jt auto 开启定时推送"
         },
         "push_minute": {
             "type": "number", "default": 30, "label": "推送时间(分钟)",
-            "section": "定时", "min": 0, "max": 59, "order": 3,
+            "section": "定时", "min": 0, "max": 59, "order": 2,
+        },
+        "test_today": {
+            "type": "action", "label": "🔍 测试", "section": "调试",
+            "action": "test_today"
+        },
+        "view_logs": {
+            "type": "action", "label": "📋 查看日志", "section": "调试",
+            "action": "view_logs"
         },
     },
 }
 
 _KV_LOGS = "mytoday_logs"
+_KV_GROUPS = "mytoday_push_groups"
 _WIKI_HEADERS = {
     "User-Agent": "AWBotNest/1.0 (MyToday Plugin; +https://github.com/AOTUMAN133/AWBotNest-Plugins)",
     "Accept": "application/json",
@@ -94,9 +99,32 @@ async def setup(ctx):
         if not text:
             return
 
+        chat_id = message.chat.id
+
         # .jt — 查看历史上的今天
         if text == ".jt":
             await _show_today(ctx, client, message)
+            return
+
+        # .jt auto — 在当前群开启/关闭定时推送
+        if text == ".jt auto":
+            groups = ctx.kv.get(_KV_GROUPS, [])
+            if chat_id in groups:
+                groups.remove(chat_id)
+                ctx.kv.set(_KV_GROUPS, groups)
+                await message.reply("❌ 已关闭本群的历史今天定时推送")
+                _log(ctx, f"群 {chat_id} 关闭定时推送")
+            else:
+                groups.append(chat_id)
+                ctx.kv.set(_KV_GROUPS, groups)
+                hour = ctx.config.get("push_hour", 8)
+                minute = ctx.config.get("push_minute", 30)
+                await message.reply(f"✅ 已开启本群的历史今天定时推送（每天 {hour:02d}:{minute:02d} 推送）")
+                _log(ctx, f"群 {chat_id} 开启定时推送")
+            try:
+                await message.delete()
+            except Exception:
+                pass
             return
 
     async def _show_today(ctx, client, message):
@@ -115,21 +143,28 @@ async def setup(ctx):
             await msg.edit(f"❌ 获取失败: {e}")
             _log(ctx, f"获取历史事件失败: {e}")
 
-    # ── 定时推送 ──
+    # ── 定时推送（只推注册过的群） ──
     async def _push_today():
+        groups = ctx.kv.get(_KV_GROUPS, [])
+        if not groups:
+            return
         try:
             events = await _today_events(8)
             formatted = _format_events(events)
-            await ctx.send_message(formatted)
-            _log(ctx, "定时推送历史上的今天完成")
+            for gid in groups:
+                try:
+                    await ctx.send_message(formatted, chat_id=gid)
+                except Exception as e:
+                    _log(ctx, f"推送群 {gid} 失败: {e}")
+            _log(ctx, f"定时推送历史上的今天完成，已推送 {len(groups)} 个群")
         except Exception as e:
             _log(ctx, f"定时推送失败: {e}")
 
-    if ctx.config.get("auto_push", False):
-        hour = ctx.config.get("push_hour", 8)
-        minute = ctx.config.get("push_minute", 30)
-        ctx.schedule("today_push", _push_today, "cron", hour=hour, minute=minute)
-        _log(ctx, f"已注册定时推送: 每天 {hour:02d}:{minute:02d}")
+    # 注册定时任务
+    hour = ctx.config.get("push_hour", 8)
+    minute = ctx.config.get("push_minute", 30)
+    ctx.schedule("today_push", _push_today, "cron", hour=hour, minute=minute)
+    _log(ctx, f"定时任务已注册: 每天 {hour:02d}:{minute:02d}")
 
     @ctx.action("test_today")
     async def _test_today(req=None):
