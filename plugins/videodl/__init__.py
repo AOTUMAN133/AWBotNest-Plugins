@@ -64,6 +64,7 @@ _PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 
 def _log(ctx, msg: str):
+    ctx.log.info("[聚合解析] %s", msg)
     logs = ctx.kv.get(_KV_LOGS, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-30:])

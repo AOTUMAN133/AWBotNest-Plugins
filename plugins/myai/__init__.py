@@ -27,6 +27,7 @@ _KV_DEBUG = "ai_debug_logs"
 _KV_MONITOR_STATE = "ai_monitor_state"
 
 def _log_debug(ctx, msg: str):
+    ctx.log.info("[AI聊天] %s", msg)
     logs = ctx.kv.get(_KV_DEBUG, [])
     logs.append({"t": datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])

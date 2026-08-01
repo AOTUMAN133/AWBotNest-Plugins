@@ -89,6 +89,7 @@ def _now():
 
 
 def _log(ctx, msg: str):
+    ctx.log.info("[DC助手] %s", msg)
     logs = ctx.kv.get(_KV_LOGS, [])
     logs.append({"t": _now(), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-50:])

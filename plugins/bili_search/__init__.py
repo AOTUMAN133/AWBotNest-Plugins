@@ -102,6 +102,7 @@ _KV_LOGS = "bili_search_logs"
 
 
 def _log(ctx, msg: str):
+    ctx.log.info("[B站搜索] %s", msg)
     logs = ctx.kv.get(_KV_LOGS, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-30:])
