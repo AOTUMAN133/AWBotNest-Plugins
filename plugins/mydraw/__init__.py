@@ -16,7 +16,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.1.2",
+    "version": "2.1.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -286,16 +286,43 @@ async def _handle_image(ctx, client, message, prompt):
         ctx.log.info("图片生成结果: %s images", len(result.images) if result else 0)
         if result.images:
             img = result.images[0]
+            # 尝试去除水印：去掉 URL 中的 _watermark 后缀
+            img_url = img.ori_url.replace("_watermark", "")
             _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
             filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
             import aiohttp
             async with aiohttp.ClientSession() as sess:
-                async with sess.get(img.ori_url) as r:
-                    if r.status == 200:
-                        filepath.write_bytes(await r.read())
+                # 先尝试无水印URL，失败则用原URL
+                r = await sess.get(img_url)
+                if r.status != 200:
+                    r = await sess.get(img.ori_url)
+                if r.status == 200:
+                    data = await r.read()
+                    # 用 OpenCV 去除水印
+                    try:
+                        import cv2
+                        import numpy as np
+                        img_arr = np.frombuffer(data, np.uint8)
+                        img_cv = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+                        if img_cv is not None:
+                            h, w = img_cv.shape[:2]
+                            mw = max(w // 4, 200)
+                            mh = max(h // 12, 60)
+                            mask = np.zeros((h, w), dtype=np.uint8)
+                            mask[h-mh:h, w-mw:w] = 255
+                            cleaned = cv2.inpaint(img_cv, mask, 5, cv2.INPAINT_TELEA)
+                            _, buf = cv2.imencode(".png", cleaned)
+                            data = buf.tobytes()
+                            ctx.log.info("去水印: %dx%d, 区域 %dx%d", w, h, mw, mh)
+                    except ImportError:
+                        pass
+                    filepath.write_bytes(data)
+                else:
+                    await wait.edit_text("❌ 图片下载失败")
+                    return
             await wait.delete()
             with open(filepath, "rb") as f:
-                await client.send_photo(message.chat.id, f, caption=f"🎨 {prompt}\n{ratio}")
+                await client.send_photo(message.chat.id, f)
             filepath.unlink(missing_ok=True)
         else:
             await wait.edit_text("❌ 图片生成失败")
