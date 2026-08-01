@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.6.0",
+    "version": "3.7.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -39,6 +39,14 @@ __plugin__ = {
             "type": "boolean", "default": True, "label": "推送签到结果",
             "section": "通知", "help": "定时签到和手动签到后推送结果通知"
         },
+        "checkin_hour": {
+            "type": "slider", "default": 9, "label": "签到小时",
+            "min": 0, "max": 23, "step": 1, "section": "定时",
+        },
+        "checkin_minute": {
+            "type": "slider", "default": 0, "label": "签到分钟",
+            "min": 0, "max": 59, "step": 1, "section": "定时",
+        },
         "_logs": {
             "type": "info", "label": "运行日志", "section": "日志"
         },
@@ -51,8 +59,10 @@ _KV_HASH = "hdhive_action_hash"
 _KV_DEBUG = "hdhive_debug_logs"
 
 _LOG_FILE = "/tmp/hdhive_sign.log"
+_run_lock = None
 
 def _log_debug(ctx, msg: str):
+    ctx.log.info("[影巢签到] %s", msg)
     logs = ctx.kv.get(_KV_DEBUG, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
@@ -423,78 +433,9 @@ async def setup(ctx):
             _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         return action_hash
 
-    async def _sign_tick():
-        """每分钟检查，按每个账号的独立时间设置签到"""
-        base_url = ctx.config.get("base_url", "https://hdhive.com")
-        accounts = _get_accounts(ctx)
-        if not accounts:
-            return
-        now = datetime.now(TZ)
-        today_str = now.strftime("%Y-%m-%d")
-        _log_debug(ctx, f"定时检查: {now.hour:02d}:{now.minute:02d}")
-
-        # 收集需要在本分钟签到的账号
-        to_sign = []
-        for i, acc in enumerate(accounts):
-            name = acc.get("name", f"账号{i+1}")
-            cookie = acc.get("cookie", "")
-            if not cookie:
-                continue
-            # 检查今日是否已签到
-            signed_key = f"signed_today:{cookie[:20]}"
-            if ctx.kv.get(signed_key, "") == today_str:
-                continue
-            # 获取该账号的独立时间设置
-            ah = int(acc.get("sign_hour", 9) or 9)
-            am = int(acc.get("sign_minute", 0) or 0)
-            aw = int(acc.get("sign_window", 5) or 5)
-            # 判断当前时间是否在签到窗口内
-            if aw <= 0:
-                # 固定时间
-                if now.hour == ah and now.minute == am:
-                    to_sign.append((i, acc))
-            else:
-                # 窗口模式：以 sign_hour:sign_minute 为起点，窗口宽度 aw 分钟
-                # 在该窗口内随机分配一个分钟，只有匹配时才触发
-                start_offset = ah * 60 + am
-                total_minutes = aw
-                if total_minutes < 1:
-                    total_minutes = 1
-                seed = int(hashlib.md5(f"{today_str}:{i}".encode()).hexdigest()[:12], 16)
-                rng = random.Random(seed)
-                target_offset = start_offset + rng.randint(0, total_minutes - 1)
-                current_offset = now.hour * 60 + now.minute
-                if current_offset == target_offset:
-                    to_sign.append((i, acc))
-
-        if not to_sign:
-            return
-
-        _log_debug(ctx, f"本分钟需要签到的账号: {len(to_sign)}个")
-        action_hash = await _get_action_hash(ctx, base_url)
-        if not action_hash:
-            _log_debug(ctx, "无法获取hash，跳过")
-            return
-
-        logs = []
-        notify_lines = []
-        for i, acc in to_sign:
-            r = await _sign_account(ctx, acc, base_url, action_hash)
-            logs.append({"time": _now(), "name": r["name"], "mode": r.get("mode", ""), "status": "✅" if r["success"] else "❌", "message": r["message"]})
-            icon = "✅" if r["success"] else "❌"
-            notify_lines.append(f"{icon} {r['name']}({r.get('mode','')}): {r['message']}")
-            await asyncio.sleep(1)
-
-        if logs:
-            existing = ctx.kv.get(_KV_LOGS, [])
-            ctx.kv.set(_KV_LOGS, (existing + logs)[-50:])
-            # 推送通知
-            if ctx.config.get("notify_on_sign", True):
-                await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines))
-
-    async def _do_sign_all():
-        """立即签到所有账号"""
-        _log_debug(ctx, "开始签到")
+    async def _do_sign_all(source="定时"):
+        """签到所有账号，source 为 '定时' 或 '手动'"""
+        _log_debug(ctx, f"开始{source}签到")
         base_url = ctx.config.get("base_url", "https://hdhive.com")
         accounts = _get_accounts(ctx)
         if not accounts:
@@ -512,6 +453,18 @@ async def setup(ctx):
             cookie = acc.get("cookie", "")
             username = acc.get("username", "")
             password = acc.get("password", "")
+
+            # 检查今日是否已签到
+            today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+            if cookie:
+                signed_key = f"signed_today:{cookie[:20]}"
+                if ctx.kv.get(signed_key, "") == today_str:
+                    _log_debug(ctx, f"{name}: 今日已签到，跳过")
+                    logs.append({"time": _now(), "name": name, "status": "✅", "message": "今日已签到"})
+                    notify_lines.append(f"✅ {name}: 今日已签到")
+                    continue
+
+            # 无Cookie时尝试用账号密码登录
             if not cookie and username and password:
                 saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
                 if saved:
@@ -519,23 +472,34 @@ async def setup(ctx):
                     acc["cookie"] = saved
                     _log_debug(ctx, f"{name}: 使用已保存的Cookie")
                 else:
-                    try:
-                        import playwright
-                        _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
-                        cookie = await _login_with_playwright(base_url, username, password)
-                        if cookie:
-                            acc["cookie"] = cookie
-                            ctx.kv.set(f"cookie:{acc.get('name', '')}", cookie)
-                            _log_debug(ctx, f"{name}: 登录成功")
-                        else:
-                            _log_debug(ctx, f"{name}: 登录失败")
-                    except ImportError:
-                        _log_debug(ctx, f"{name}: 平台未安装Playwright")
+                    _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
+                    cookie = await _login_with_playwright(base_url, username, password)
+                    if cookie:
+                        acc["cookie"] = cookie
+                        ctx.kv.set(f"cookie:{acc.get('name', '')}", cookie)
+                        _log_debug(ctx, f"{name}: 登录成功")
+                    else:
+                        _log_debug(ctx, f"{name}: 登录失败")
+
             if not cookie:
                 logs.append({"time": _now(), "name": name, "status": "❌", "message": "缺少Cookie"})
                 notify_lines.append(f"❌ {name}: 缺少Cookie")
                 continue
+
             r = await _sign_account(ctx, acc, base_url, action_hash)
+
+            # Cookie 失效时自动重新登录
+            if not r["success"] and "Cookie 失效" in r.get("message", "") and username and password:
+                _log_debug(ctx, f"{name}: Cookie 失效，尝试重新登录")
+                new_cookie = await _login_with_playwright(base_url, username, password)
+                if new_cookie:
+                    acc["cookie"] = new_cookie
+                    ctx.kv.set(f"cookie:{acc.get('name', '')}", new_cookie)
+                    _log_debug(ctx, f"{name}: 重新登录成功，重试签到")
+                    r = await _sign_account(ctx, acc, base_url, action_hash)
+                else:
+                    _log_debug(ctx, f"{name}: 重新登录失败")
+
             logs.append({"time": _now(), "name": r["name"], "mode": r.get("mode", ""), "status": "✅" if r["success"] else "❌", "message": r["message"]})
             icon = "✅" if r["success"] else "❌"
             notify_lines.append(f"{icon} {r['name']}({r.get('mode','')}): {r['message']}")
@@ -543,17 +507,32 @@ async def setup(ctx):
 
         if logs:
             ctx.kv.set(_KV_LOGS, logs)
-        # 推送通知
         if ctx.config.get("notify_on_sign", True):
-            await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines))
+            has_errors = any("❌" in l for l in notify_lines)
+            level = "error" if all("❌" in l for l in notify_lines) else ("warning" if has_errors else "success")
+            await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines), level=level, category="影巢签到")
 
         return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
 
-    # 调度定时任务：每分钟检查，每个账号独立时间
-    ctx.schedule(_sign_tick, "interval", minutes=5, id="影巢签到-定时检查")
+    # 注册定时签到（参考 GPT-GOD 的 cron 模式）
+    checkin_hour = int(ctx.config.get("checkin_hour", 9) or 9)
+    checkin_minute = int(ctx.config.get("checkin_minute", 0) or 0)
 
-    # 启动时立即检查一次
-    asyncio.create_task(_sign_tick())
+    async def _scheduled_checkin():
+        ctx.log.info("[影巢签到] 定时任务已触发")
+        await _do_sign_all("定时")
+
+    ctx.schedule(
+        _scheduled_checkin,
+        "cron",
+        hour=checkin_hour,
+        minute=checkin_minute,
+        id="影巢签到-每日签到",
+    )
+    _log_debug(ctx, f"已注册每日签到任务: {checkin_hour:02d}:{checkin_minute:02d}")
+
+    # 启动时立即检查一次（补签今天错过的窗口）
+    asyncio.create_task(_do_sign_all("启动"))
 
     @ctx.action("sign_now")
     async def _api_sign_now(req=None):
