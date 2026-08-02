@@ -37,7 +37,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -305,7 +305,7 @@ async def setup(ctx):
         # .yysm 帮助
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v2.0.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v2.1.0</b>\n\n"
                 "🔍 <b>聚合搜索</b>（5音源）\n"
                 "  <code>.yy 歌名</code> — 网易云/QQ/酷狗/酷我/咪咕\n\n"
                 "🔍 <b>单音源搜索</b>\n"
@@ -331,7 +331,7 @@ async def setup(ctx):
 
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v2.0.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v2.1.0</b>\n\n"
                 "🔍 <b>聚合搜索</b>（5音源）\n"
                 "  <code>.yy 歌名</code> — 网易云/QQ/酷狗/酷我/咪咕\n\n"
                 "🔍 <b>单音源搜索</b>\n"
