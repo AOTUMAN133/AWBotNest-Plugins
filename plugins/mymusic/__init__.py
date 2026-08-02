@@ -10,6 +10,7 @@ import json
 import subprocess
 import shutil
 import time
+import importlib
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -124,7 +125,22 @@ async def setup(ctx):
     if HAS_MUSICDL:
         ctx.log.info("musicdl 引擎可用，支持5音源搜索")
     else:
-        ctx.log.info(f"musicdl 引擎不可用（{get_import_error()}），降级为网易云 EAPI")
+        ctx.log.info(f"musicdl 引擎不可用（{get_import_error()}），尝试修复 pywidevine...")
+        try:
+            # 修复 pywidevine 版本
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "pywidevine>=1.9.0", "--upgrade", "-q"],
+                capture_output=True, text=True, timeout=30
+            )
+            importlib.invalidate_caches()
+            # 重新加载引擎
+            importlib.reload(_musicdl_engine)
+            if _musicdl_engine.HAS_MUSICDL:
+                ctx.log.info("pywidevine 修复成功，musicdl 引擎已可用")
+            else:
+                ctx.log.warning(f"pywidevine 修复后仍不可用: {_musicdl_engine.get_import_error()}")
+        except Exception as e:
+            ctx.log.warning(f"pywidevine 修复失败: {e}")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
