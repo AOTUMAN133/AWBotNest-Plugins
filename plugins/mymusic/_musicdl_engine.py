@@ -64,18 +64,22 @@ def search_via_musicdl(keyword: str, sources: list = None) -> list:
     return songs
 
 
-# ── 网易云 EAPI 降级方案 ──
 EAPI_KEY = b'e82ckenh8dichen8'
 
 def _eapi_encrypt(url_path, body):
-    from Crypto.Cipher import AES
+    """EAPI 加密（使用 cryptography 而非 pycryptodome）"""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import hashlib
     body_str = json.dumps(body, separators=(',', ':'))
     text = url_path + '-36cd479b6b5-' + body_str + '-36cd479b6b5-' + \
         hashlib.md5(('nobody' + url_path + 'use' + body_str + 'md5forencrypt').encode()).hexdigest()
+    # PKCS7 padding
     pad = 16 - len(text) % 16
     text += chr(pad) * pad
-    cipher = AES.new(EAPI_KEY, AES.MODE_ECB)
-    return cipher.encrypt(text.encode()).hex().upper()
+    cipher = Cipher(algorithms.AES(EAPI_KEY), modes.ECB(), backend=default_backend())
+    encryptor = cipher.encryptor()
+    return (encryptor.update(text.encode()) + encryptor.finalize()).hex().upper()
 
 
 def search_netease(keyword: str, limit: int = 10) -> list:
