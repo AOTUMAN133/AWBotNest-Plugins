@@ -1,30 +1,98 @@
 # -*- coding: utf-8 -*-
-# musicdl 引擎封装层
-# 借鉴聚合解析插件的 _videodl_engine.py 模式：try/except 包裹，失败则有 HAS_MUSICDL=False
-# 这样即使 musicdl 依赖（pywidevine 等）有问题，插件仍可降级使用网易云 EAPI
-
+# musicdl 引擎封装层 — 直接导入各源模块，绕过 sources/__init__.py（避免 pywidevine 依赖）
 import sys
 import json
 import hashlib
+import io
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).parent
 
+# ── 直接导入各源模块（绕过 sources/__init__.py，避免触发 apple/soundcloud 的 pywidevine 依赖）──
 HAS_MUSICDL = False
 _import_error = ""
 
-# ── 尝试导入 musicdl ──
+_CLIENTS = {}
+_CLIENT_MAP = {
+    "netease": "NeteaseMusicClient", "qq": "QQMusicClient",
+    "kugou": "KugouMusicClient", "kuwo": "KuwoMusicClient", "migu": "MiguMusicClient",
+}
+_NAME_MAP = {"netease": "网易云音乐", "qq": "QQ音乐", "kugou": "酷狗音乐", "kuwo": "酷我音乐", "migu": "咪咕音乐"}
+
 try:
-    from musicdl.musicdl import MusicClient
+    from musicdl.modules.sources.netease import NeteaseMusicClient
+    from musicdl.modules.sources.qq import QQMusicClient
+    from musicdl.modules.sources.kugou import KugouMusicClient
+    from musicdl.modules.sources.kuwo import KuwoMusicClient
+    from musicdl.modules.sources.migu import MiguMusicClient
+    _CLIENTS = {
+        "NeteaseMusicClient": NeteaseMusicClient,
+        "QQMusicClient": QQMusicClient,
+        "KugouMusicClient": KugouMusicClient,
+        "KuwoMusicClient": KuwoMusicClient,
+        "MiguMusicClient": MiguMusicClient,
+    }
     HAS_MUSICDL = True
 except Exception as e:
     _import_error = str(e)[:200]
 
-# ── 网易云 EAPI 降级方案（纯 requests+pycryptodome，平台已有） ──
+
+def _build_client(client_class):
+    """构建单个音乐客户端"""
+    return client_class(
+        search_size_per_source=5, auto_set_proxies=False,
+        random_update_ua=False, max_retries=3, maintain_session=False,
+        disable_print=True, work_dir=str(_BASE_DIR / "musicdl_outputs"),
+        default_search_cookies={}, default_download_cookies={},
+        default_parse_cookies={},
+        search_size_per_page=10, strict_limit_search_size_per_page=True,
+        quark_parser_config={}, freeproxy_settings=None,
+        enable_download_curl_cffi=False, enable_parse_curl_cffi=False,
+        enable_search_curl_cffi=False,
+    )
+
+
+def search_via_musicdl(keyword: str, sources: list = None) -> list:
+    """使用 musicdl 搜索（仅导入中国音源，不依赖 pywidevine）"""
+    src_list = sources or list(_CLIENT_MAP.keys())
+    songs = []
+    
+    _old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    
+    try:
+        for src in src_list:
+            client_name = _CLIENT_MAP.get(src)
+            if not client_name or client_name not in _CLIENTS:
+                continue
+            client_class = _CLIENTS[client_name]
+            client = _build_client(client_class)
+            result = client.search(keyword, 5)
+            if not result:
+                continue
+            for s in result:
+                songs.append({
+                    "song_name": s.song_name,
+                    "singers": [str(sg) for sg in (s.singers or [])],
+                    "album": s.album or "",
+                    "duration_s": s.duration_s or 0,
+                    "download_url": s.download_url or "",
+                    "ext": s.ext or "",
+                    "file_size": s.file_size or "",
+                    "source": s.source or client_name,
+                    "_source_key": src,
+                    "_source_name": _NAME_MAP.get(src, src),
+                })
+    finally:
+        sys.stdout = _old_stdout
+    
+    return songs
+
+
+# ── 网易云 EAPI 降级方案 ──
 EAPI_KEY = b'e82ckenh8dichen8'
 
 def _eapi_encrypt(url_path, body):
-    """EAPI 加密"""
     from Crypto.Cipher import AES
     body_str = json.dumps(body, separators=(',', ':'))
     text = url_path + '-36cd479b6b5-' + body_str + '-36cd479b6b5-' + \
@@ -36,7 +104,7 @@ def _eapi_encrypt(url_path, body):
 
 
 def search_netease(keyword: str, limit: int = 10) -> list:
-    """网易云音乐搜索（EAPI 直连，不依赖 musicdl）"""
+    """网易云音乐搜索（EAPI 直连）"""
     import requests
     api_path = '/api/cloudsearch/pc'
     body = {'s': keyword, 'type': 1, 'limit': limit, 'offset': 0, 'total': 'true'}
@@ -82,113 +150,57 @@ def get_netease_url(song_id: str) -> str:
 
 
 def search(keyword: str, sources: list = None) -> list:
-    """搜索音乐
-    如果 musicdl 可用，使用 musicdl 搜索全部音源；
-    否则降级为网易云 EAPI。
-    """
-    CLIENT_MAP = {
-        "netease": "NeteaseMusicClient", "qq": "QQMusicClient",
-        "kugou": "KugouMusicClient", "kuwo": "KuwoMusicClient", "migu": "MiguMusicClient"
-    }
-    NAME_MAP = {"netease": "网易云音乐", "qq": "QQ音乐", "kugou": "酷狗音乐", "kuwo": "酷我音乐", "migu": "咪咕音乐"}
-    
-    src_list = sources or list(CLIENT_MAP.keys())
-    
-    if HAS_MUSICDL and not sources:
-        # 聚合搜索全部音源
-        import io
-        _old_stdout = sys.stdout
-        sys.stdout = io.StringIO()
-        try:
-            client_names = [CLIENT_MAP.get(s, s) for s in src_list]
-            client = MusicClient(
-                music_sources=client_names,
-                init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
-            )
-            result = client.search(keyword)
-            songs = []
-            for src, src_songs in result.items():
-                if src in client_names:
-                    for s in src_songs:
-                        songs.append({
-                            "song_name": s.song_name,
-                            "singers": [str(sg) for sg in (s.singers or [])],
-                            "album": s.album or "",
-                            "duration_s": s.duration_s or 0,
-                            "download_url": s.download_url or "",
-                            "ext": s.ext or "",
-                            "file_size": s.file_size or "",
-                            "source": s.source or src,
-                            "_source_key": next((k for k, v in CLIENT_MAP.items() if v == src), src),
-                            "_source_name": NAME_MAP.get(next((k for k, v in CLIENT_MAP.items() if v == src), src), src),
-                        })
-        finally:
-            sys.stdout = _old_stdout
-        return songs
-    
-    elif sources:
-        # 单音源搜索
-        src = sources[0]
-        if src == "netease":
-            eapi_result = search_netease(keyword)
-            songs = []
-            for s in eapi_result:
-                songs.append({
-                    "song_name": s["name"],
-                    "singers": [s["artist"]],
-                    "album": s["album"],
-                    "duration_s": s["duration"],
-                    "download_url": "",
-                    "ext": "mp3",
-                    "file_size": "",
-                    "source": "NeteaseMusicClient",
-                    "url_id": s["id"],
-                    "_source_key": "netease",
-                    "_source_name": "网易云音乐",
-                })
-            # 预获取第一个的 URL
-            if songs and not songs[0].get("download_url"):
-                try:
-                    url = get_netease_url(eapi_result[0]["id"])
-                    if url:
-                        songs[0]["download_url"] = url
-                except:
-                    pass
-            return songs
-        elif HAS_MUSICDL:
-            # 非网易云但有 musicdl
-            import io
-            _old_stdout = sys.stdout
-            sys.stdout = io.StringIO()
-            try:
-                client_names = [CLIENT_MAP.get(s, s) for s in src_list]
-                client = MusicClient(
-                    music_sources=client_names,
-                    init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
-                )
-                result = client.search(keyword)
-                songs = []
-                for s in result.get(client_names[0], []):
-                    songs.append({
-                        "song_name": s.song_name,
-                        "singers": [str(sg) for sg in (s.singers or [])],
-                        "album": s.album or "",
-                        "duration_s": s.duration_s or 0,
-                        "download_url": s.download_url or "",
-                        "ext": s.ext or "",
-                        "file_size": s.file_size or "",
-                        "source": s.source or client_names[0],
-                        "_source_key": src,
-                        "_source_name": NAME_MAP.get(src, src),
-                    })
-            finally:
-                sys.stdout = _old_stdout
-            return songs
-        else:
-            return []
+    """搜索音乐 — 优先用 musicdl，失败降级为网易云 EAPI"""
+    if HAS_MUSICDL and sources:
+        # 单音源搜索（musicdl）
+        return search_via_musicdl(keyword, sources)
+    elif HAS_MUSICDL and not sources:
+        # 聚合搜索（musicdl）
+        return search_via_musicdl(keyword)
+    elif sources and sources[0] == "netease":
+        # 降级：网易云 EAPI
+        return _netease_to_songs(search_netease(keyword))
     else:
-        # 默认降级到网易云
-        return search_netease(keyword)
+        return []
+
+
+def get_url(song_data: dict) -> str:
+    """获取下载 URL"""
+    url = song_data.get("download_url", "")
+    if url:
+        return url
+    url_id = song_data.get("url_id", "")
+    if url_id:
+        return get_netease_url(url_id)
+    return ""
+
+
+def _netease_to_songs(eapi_result):
+    """将 EAPI 结果转为标准格式"""
+    songs = []
+    for s in eapi_result:
+        songs.append({
+            "song_name": s["name"],
+            "singers": [s["artist"]],
+            "album": s["album"],
+            "duration_s": s["duration"],
+            "download_url": "",
+            "ext": "mp3",
+            "file_size": "",
+            "source": "NeteaseMusicClient",
+            "url_id": s["id"],
+            "_source_key": "netease",
+            "_source_name": "网易云音乐",
+        })
+    # 预获取第一个的 URL
+    if songs:
+        try:
+            url = get_netease_url(eapi_result[0]["id"])
+            if url:
+                songs[0]["download_url"] = url
+        except:
+            pass
+    return songs
 
 
 def get_import_error() -> str:

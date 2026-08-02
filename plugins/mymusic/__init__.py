@@ -106,7 +106,7 @@ def _yt_path() -> str:
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from _musicdl_engine import search as _musicdl_search_sync, get_netease_url as _musicdl_url_sync, HAS_MUSICDL, get_import_error
+from _musicdl_engine import search as _musicdl_search_sync, get_url as _musicdl_url_sync, HAS_MUSICDL, get_import_error
 
 
 async def setup(ctx):
