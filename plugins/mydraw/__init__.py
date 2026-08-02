@@ -16,13 +16,13 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.1.3",
+    "version": "2.2.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["aiohttp"],
+    "requirements": ["aiohttp", "cloakbrowser", "playwright"],
     "config_schema": {
         "ratio": {
             "type": "select", "default": "1:1", "label": "默认比例",
@@ -191,44 +191,65 @@ async def setup(ctx):
 
     @ctx.action("test_video")
     async def _test_video(req=None):
-        """测试视频生成功能"""
-        client = await _get_client(ctx)
-        if not client:
+        """保存session到插件目录，供抓包用"""
+        session_path = ctx.data_dir / _SESSION_FILE
+        if not session_path.exists():
             return {"ok": False, "message": "❌ 未登录，请先扫码登录"}
+        
+        import json, os as _os, shutil
+        
+        # 保存 session 到插件目录
+        dst = _os.path.join(_os.path.dirname(__file__), "_session.json")
+        shutil.copy(str(session_path), dst)
+        ctx.log.info("[抓包] session已保存到 %s", dst)
+        
+        # 也保存cookie到单独文件
+        session = json.loads(open(str(session_path), encoding="utf-8").read())
+        cookies = session.get("cookies", {})
+        cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        cookie_path = _os.path.join(_os.path.dirname(__file__), "_cookies.txt")
+        with open(cookie_path, "w", encoding="utf-8") as f:
+            f.write(cookie_str)
+        ctx.log.info("[抓包] cookies已保存到 %s", cookie_path)
+        ctx.log.info("[抓包] cookie keys: %s", list(cookies.keys()))
+        
+        return {"ok": True, "message": f"✅ session已保存，请查看插件目录下的 _session.json 和 _cookies.txt\ncookie keys: {list(cookies.keys())}"}
+
+    # ── 解析豆包对话链接，提取无水印图片 ──
+    async def _parse_url(ctx, client, message, url):
+        msg = await message.reply(f"🔍 正在解析豆包链接...")
         try:
-            from ._doubao2api.client import DoubaoChatClient
-            # 先试生成，捕获详细错误
-            try:
-                result = await client.generate_video(
-                    prompt="一只可爱的柴犬在草地上奔跑",
-                    timeout=120,
-                )
-            except Exception as e:
-                # 把原始响应保存到文件供检查
-                import traceback
-                tb = traceback.format_exc()
-                ctx.log.info("[测试视频] 异常: %s\n%s", e, tb)
-                return {"ok": False, "message": f"❌ 异常: {e}\n详情见日志"}
-
-            if result and result.videos:
-                urls = [v.video_url for v in result.videos]
-                return {"ok": True, "message": f"✅ 成功！{len(result.videos)} 个视频\n首条URL: {urls[0][:100]}"}
-
-            # 没有 videos 但也没抛异常 - 检查 result 结构
-            import json
-            info = {
-                "has_result": result is not None,
-                "type": str(type(result)),
-                "videos": str(getattr(result, "videos", "N/A")),
-                "prompt": getattr(result, "prompt", ""),
-                "error": getattr(result, "error", ""),
-            }
-            ctx.log.info("[测试视频] 返回为空: %s", json.dumps(info, ensure_ascii=False))
-            return {"ok": False, "message": f"❌ 返回为空\n{json.dumps(info, ensure_ascii=False, indent=2)}"}
+            await message.delete()
+        except Exception:
+            pass
+        try:
+            from _doubao_parser import doubao_image_parse
+            result = await doubao_image_parse(url)
         except Exception as e:
-            import traceback
-            ctx.log.info("[测试视频] 外层异常: %s\n%s", e, traceback.format_exc())
-            return {"ok": False, "message": f"❌ 异常: {e}"}
+            await msg.edit(f"❌ 解析失败: {e}")
+            return
+        if not result:
+            await msg.edit("❌ 未找到图片")
+            return
+        await msg.edit(f"⏳ 正在发送 {len(result)} 张无水印图片...")
+        try:
+            async with aiohttp.ClientSession() as session:
+                for i, img in enumerate(result):
+                    img_url = img.get("url", "")
+                    if not img_url:
+                        continue
+                    async with session.get(img_url) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.read()
+                    await client.send_photo(message.chat.id, data)
+        except Exception as e:
+            await msg.edit(f"❌ 发送失败: {e}")
+            return
+        try:
+            await msg.delete()
+        except Exception:
+            pass
 
     # ── 命令处理 ──
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
@@ -238,14 +259,18 @@ async def setup(ctx):
             return
 
         if text.startswith(".st "):
-            await _handle_image(ctx, client, message, text[4:])
+            keyword = text[4:].strip()
+            if keyword.startswith("parse "):
+                await _parse_url(ctx, client, message, keyword[6:].strip())
+            else:
+                await _handle_image(ctx, client, message, keyword)
         elif text.startswith(".ssp "):
             await _handle_video(ctx, client, message, text[5:])
         elif text.startswith(".sy "):
             await _handle_music(ctx, client, message, text[5:])
         elif text == ".st help":
             help_text = (
-                "🎨 <b>豆包多模态 v2.1.1</b>\n\n"
+                "🎨 <b>豆包多模态 v2.2.0</b>\n\n"
                 "📝 <b>生成图片</b>\n"
                 "  <code>.st 一只柴犬</code> — 文生图\n\n"
                 "🎬 <b>生成视频</b>\n"
@@ -331,36 +356,17 @@ async def _handle_image(ctx, client, message, prompt):
         ctx.log.info("图片生成结果: %s images", len(result.images) if result else 0)
         if result.images:
             img = result.images[0]
-            # 尝试去除水印：去掉 URL 中的 _watermark 后缀
-            img_url = img.ori_url.replace("_watermark", "")
+            # 优先使用无水印 URL（clean_url），其次 raw_url，最后 ori_url
+            img_url = img.clean_url or img.raw_url or img.ori_url
             _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
             filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
             import aiohttp
             async with aiohttp.ClientSession() as sess:
-                # 先尝试无水印URL，失败则用原URL
                 r = await sess.get(img_url)
                 if r.status != 200:
                     r = await sess.get(img.ori_url)
                 if r.status == 200:
                     data = await r.read()
-                    # 用 OpenCV 去除水印
-                    try:
-                        import cv2
-                        import numpy as np
-                        img_arr = np.frombuffer(data, np.uint8)
-                        img_cv = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
-                        if img_cv is not None:
-                            h, w = img_cv.shape[:2]
-                            mw = max(w // 4, 200)
-                            mh = max(h // 12, 60)
-                            mask = np.zeros((h, w), dtype=np.uint8)
-                            mask[h-mh:h, w-mw:w] = 255
-                            cleaned = cv2.inpaint(img_cv, mask, 5, cv2.INPAINT_TELEA)
-                            _, buf = cv2.imencode(".png", cleaned)
-                            data = buf.tobytes()
-                            ctx.log.info("去水印: %dx%d, 区域 %dx%d", w, h, mw, mh)
-                    except ImportError:
-                        pass
                     filepath.write_bytes(data)
                 else:
                     await wait.edit_text("❌ 图片下载失败")
@@ -399,7 +405,262 @@ async def _handle_video(ctx, client, message, prompt):
             await wait.edit_text("❌ 未登录豆包，请先扫码登录")
             return
 
-        result = await db.generate_video(prompt=prompt.strip(), ratio=ratio, timeout=api_timeout)
+        # 用浏览器方案生成视频（打字输入方式）
+        try:
+            import cloakbrowser
+            from playwright.async_api import async_playwright as _async_pw
+            import uuid
+            
+            session_path = ctx.data_dir / _SESSION_FILE
+            if not session_path.exists():
+                raise Exception("session文件不存在")
+            
+            session = json.loads(open(str(session_path), encoding="utf-8").read())
+            cookies = session.get("cookies", {})
+            
+            ctx.log.info("[视频] 启动浏览器...")
+            async with _async_pw() as pw:
+                browser = await cloakbrowser.launch_async(headless=True)
+                context = await browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    locale="zh-CN",
+                )
+                bpage = await context.new_page()
+                
+                # 设置 cookies
+                for name, value in cookies.items():
+                    await context.add_cookies([{
+                        "name": name, "value": str(value),
+                        "domain": ".doubao.com", "path": "/",
+                    }])
+                
+                # 捕获 SSE 响应
+                sse_response = []
+                async def on_response(response):
+                    if "/chat/completion" in response.url:
+                        try:
+                            body = await response.text()
+                            if body and len(body) > 100:
+                                sse_response.append(body)
+                        except:
+                            pass
+                
+                bpage.on("response", on_response)
+                
+                # 打开豆包，让 fetch hook 注入
+                await bpage.goto("https://www.doubao.com/chat", wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(5)
+                
+                # 等待 fetch hook 生效
+                for i in range(15):
+                    hooked = await bpage.evaluate("""() => {
+                        try { const s = window.fetch.toString(); return !s.includes('native code'); }
+                        catch(e) { return false; }
+                    }""")
+                    if hooked:
+                        ctx.log.info("[视频] fetch hook 第%d秒生效", i+1)
+                        break
+                    await asyncio.sleep(1)
+                
+                # 找输入框，打字输入提示词
+                input_selector = 'textarea[placeholder*="发消息"], textarea.semi-input-textarea'
+                await bpage.wait_for_selector(input_selector, timeout=15000)
+                
+                video_prompt = f"生成影片：{prompt.strip()}，{ratio or '16:9'}，5秒"
+                await bpage.click(input_selector)
+                await bpage.type(input_selector, video_prompt, delay=30)
+                await asyncio.sleep(1)
+                await bpage.keyboard.press("Enter")
+                ctx.log.info("[视频] 已发送提示词")
+                
+                # 等待响应
+                await asyncio.sleep(10)
+                
+                if not sse_response:
+                    raise Exception("未收到API响应")
+                
+                raw = sse_response[0]
+                
+                # 解析 SSE 获取 conversation_id
+                conv_id = ""
+                for block in raw.split("\n\n"):
+                    block = block.strip()
+                    if not block:
+                        continue
+                    for line in block.split("\n"):
+                        if line.startswith("data: "):
+                            try:
+                                import json as _json
+                                data = _json.loads(line[6:])
+                                ack = data.get("ack_client_meta", {})
+                                if isinstance(ack, dict) and ack.get("conversation_id"):
+                                    conv_id = ack["conversation_id"]
+                            except:
+                                pass
+                
+                if not conv_id:
+                    raise Exception("未获取到 conversation_id")
+                
+                ctx.log.info("[视频] conversation_id: %s", conv_id)
+                
+                # 检查是否需要确认（检查原始SSE文本，不依赖JSON解析）
+                need_confirm = "确认" in raw or "确认后" in raw
+                ctx.log.info("[视频] 是否需要确认: %s", need_confirm)
+                
+                # 如果需要确认，发送确认
+                if need_confirm:
+                    ctx.log.info("[视频] AI要求确认，发送确认...")
+                    await bpage.click(input_selector)
+                    await bpage.type(input_selector, "确认生成", delay=30)
+                    await asyncio.sleep(1)
+                    await bpage.keyboard.press("Enter")
+                    await asyncio.sleep(10)
+                    # 如果有多条响应，取最新的
+                    if len(sse_response) > 1:
+                        raw = sse_response[-1]
+                    ctx.log.info("[视频] 已发送确认")
+                
+                # 构建轮询 payload
+                now_ms = int(time.time() * 1000)
+                poll_payload = {
+                    "client_meta": {
+                        "local_conversation_id": f"local_{now_ms}",
+                        "conversation_id": conv_id,
+                        "bot_id": "7338286299411103781",
+                        "last_section_id": "",
+                        "last_message_index": None,
+                    },
+                    "messages": [{
+                        "local_message_id": str(uuid.uuid4()),
+                        "content_block": [{
+                            "block_type": 10000,
+                            "content": {
+                                "text_block": {
+                                    "text": "视频完成了吗？",
+                                    "icon_url": "", "icon_url_dark": "", "summary": "",
+                                },
+                                "pc_event_block": "",
+                            },
+                            "block_id": str(uuid.uuid4()),
+                            "parent_id": "", "meta_info": [], "append_fields": [],
+                        }],
+                        "message_status": 0,
+                    }],
+                    "option": {
+                        "send_message_scene": "", "create_time_ms": now_ms,
+                        "collect_id": "", "is_audio": False,
+                        "answer_with_suggest": False, "agent_mode": 2,
+                        "tts_switch": False, "need_deep_think": 0,
+                        "click_clear_context": False, "from_suggest": False,
+                        "is_regen": False, "is_replace": False,
+                        "is_from_click_option": False, "is_from_click_softlink": False,
+                        "disable_sse_cache": False, "select_text_action": "",
+                        "is_select_text": False, "resend_for_regen": False,
+                        "scene_type": 0, "unique_key": str(uuid.uuid4()),
+                        "start_seq": 0, "need_create_conversation": False,
+                        "regen_query_id": [], "edit_query_id": [],
+                        "regen_instruction": "", "no_replace_for_regen": False,
+                        "message_from": 0, "shared_app_name": "", "shared_app_id": "",
+                        "sse_recv_event_options": {"support_chunk_delta": True},
+                        "is_ai_playground": False, "is_old_user": True,
+                        "recovery_option": {
+                            "is_recovery": False,
+                            "req_create_time_sec": int(time.time()),
+                            "append_sse_event_scene": 0,
+                        },
+                        "message_storage_type": 0,
+                    },
+                    "user_context": [],
+                    "ext": {
+                        "use_deep_think": "0", "sub_conv_firstmet_type": "1",
+                        "collection_id": "",
+                        "conversation_init_option": '{"need_ack_conversation":true}',
+                        "commerce_credit_config_enable": "0",
+                    },
+                }
+                
+                # 轮询视频结果（通过检查页面元素 + 监听 SSE 响应）
+                ctx.log.info("[视频] 等待视频生成...")
+                await wait.edit_text("🎬 视频生成中，请等待（约1-5分钟）...")
+                
+                video_url = None
+                start = time.time()
+                while time.time() - start < 600:
+                    await asyncio.sleep(3)
+                    
+                    # 1. 检查页面中的视频元素
+                    try:
+                        page_video = await bpage.evaluate("""() => {
+                            // 查找页面中的视频 URL
+                            const videos = document.querySelectorAll('video');
+                            for (const v of videos) {
+                                if (v.src && v.src.includes('http')) return v.src;
+                            }
+                            // 查找 creation 元素中的视频 URL
+                            const els = document.querySelectorAll('[class*="creation"],[class*="video"]');
+                            for (const el of els) {
+                                const text = el.textContent || '';
+                                const m = text.match(/https?:\\/\\/[^\\s"\']+\\.(mp4|webm)/i);
+                                if (m) return m[0];
+                            }
+                            // 查找图片元素中的视频封面
+                            const imgs = document.querySelectorAll('img[src*="video"]');
+                            for (const img of imgs) {
+                                if (img.src) return img.src.replace('cover', 'video');
+                            }
+                            return null;
+                        }""")
+                        if page_video and page_video.startswith("http"):
+                            video_url = page_video
+                            break
+                    except:
+                        pass
+                    
+                    # 2. 检查是否有新的 SSE 响应
+                    for resp_text in sse_response:
+                        try:
+                            from ._doubao2api.browser_client import BrowserClient
+                            bc = BrowserClient(headless=True)
+                            result = bc._parse_video_result(resp_text, prompt.strip())
+                            if result.get("videos"):
+                                video_url = result["videos"][0].get("video_url", "")
+                                break
+                        except:
+                            pass
+                    if video_url:
+                        break
+                    
+                    # 每30秒更新一次状态
+                    elapsed = int(time.time() - start)
+                    if elapsed % 30 < 3:
+                        await wait.edit_text(f"🎬 视频生成中（已等待{elapsed}秒）...")
+                        ctx.log.info("[视频] 等待中... %d秒", elapsed)
+                
+                await browser.close()
+            
+            if video_url:
+                _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+                filepath = _DOWNLOAD_DIR / f"dtv_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.mp4"
+                import aiohttp
+                async with aiohttp.ClientSession() as sess:
+                    async with sess.get(video_url) as r:
+                        if r.status == 200:
+                            with open(filepath, "wb") as f:
+                                f.write(await r.read())
+                            await wait.delete()
+                            await client.send_video(message.chat.id, filepath, caption=f"🎬 {prompt[:50]}")
+                            return
+                await wait.edit_text(f"✅ 视频已生成，但下载失败")
+            else:
+                await wait.edit_text("❌ 视频生成超时（10分钟）")
+            return
+                
+        except Exception as e:
+            ctx.log.error("[视频] 浏览器方案失败: %s", e)
+            import traceback
+            ctx.log.error("[视频] 详细错误: %s", traceback.format_exc())
+            await wait.edit_text(f"❌ 视频生成失败: {e}")
+            return
         if result.videos:
             v = result.videos[0]
             _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)

@@ -148,11 +148,13 @@ class GeneratedImage:
         ori_url: "download" quality, ~tplv-*-image_dld_watermark (largest, has watermark)
         raw_url: "preview" quality, ~tplv-*-image_pre_watermark (has watermark)
         thumb_url: thumbnail with watermark (smallest)
+        clean_url: original URL without watermark template (from image_ori_raw, if available)
     """
     key: str = ""
     thumb_url: str = ""
     ori_url: str = ""
     raw_url: str = ""
+    clean_url: str = ""
     width: int = 0
     height: int = 0
     format: str = ""
@@ -180,6 +182,7 @@ class VideoGenerationResult:
     """Result of a video generation call."""
     videos: List[GeneratedVideo] = field(default_factory=list)
     prompt: str = ""
+    raw_response: str = ""
 
 
 @dataclass
@@ -1508,11 +1511,20 @@ class DoubaoChatClient:
                 ori = item.get("image_ori", {}) or {}
                 raw = item.get("image_raw", {}) or {}
                 thumb = item.get("image_thumb", {}) or {}
+                # 尝试从嵌套的 image 字段提取原始无水印 URL
+                clean_url = ""
+                img_field = item.get("image", {}) or {}
+                if isinstance(img_field, dict):
+                    ori_raw = img_field.get("image_ori_raw", {}) or {}
+                    clean_url = ori_raw.get("url", "")
+                if not clean_url:
+                    clean_url = raw.get("url", "")
                 img = GeneratedImage(
                     key=item.get("key", ""),
                     thumb_url=thumb.get("url", ""),
                     ori_url=ori.get("url", ""),
                     raw_url=raw.get("url", ""),
+                    clean_url=clean_url,
                     width=ori.get("width", 0) or thumb.get("width", 0),
                     height=ori.get("height", 0) or thumb.get("height", 0),
                     format=ori.get("format", "") or thumb.get("format", ""),
@@ -1602,6 +1614,11 @@ class DoubaoChatClient:
             "Accept": "text/event-stream",
             "Content-Type": "application/json",
             "Agw-Js-Conv": "str",
+            "x-tt-passport-csrf-token": (
+                self.cookies.get("passport_csrf_token")
+                or self.cookies.get("passport_csrf_token_default")
+                or ""
+            ),
         }
 
         # Phase 1: Submit video generation request
@@ -1617,16 +1634,6 @@ class DoubaoChatClient:
                     f"generate_video failed ({resp.status}): {error_text[:500]}"
                 )
             raw = (await resp.read()).decode("utf-8", errors="replace")
-
-        # Debug: dump raw response
-        try:
-            import tempfile, os as _os
-            _dump_path = _os.path.join(tempfile.gettempdir(), "doubao_video_raw_response.txt")
-            with open(_dump_path, "w", encoding="utf-8") as _f:
-                _f.write(raw)
-            self.logger.info("generate_video: raw response saved to %s (len=%d)", _dump_path, len(raw))
-        except Exception:
-            pass
 
         # Extract task_id from fin_reason in CMPL events
         task_id = self._extract_async_task_id(raw)
@@ -1656,10 +1663,14 @@ class DoubaoChatClient:
                     "generate_video: 服务过载，请稍后重试"
                 )
             # Try parsing as sync response (content_type=2021)
-            return self._parse_video_sse(raw, prompt)
+            result = self._parse_video_sse(raw, prompt)
+            result.raw_response = raw
+            return result
 
         # Phase 2: Poll /samantha/chat/async/stream for video result
-        return await self._poll_async_video(task_id, prompt, timeout)
+        result = await self._poll_async_video(task_id, prompt, timeout)
+        result.raw_response = raw
+        return result
 
     def _extract_async_task_id(self, raw: str) -> Optional[str]:
         """Extract async task_id from SSE response (fin_reason.async_task.id)."""
@@ -1740,15 +1751,6 @@ class DoubaoChatClient:
                 except (json.JSONDecodeError, KeyError):
                     continue
         _log.getLogger("doubao2api").warning("_extract_async_task_id: 所有方案均未找到 task_id")
-        # 保存原始响应到文件供调试
-        try:
-            import tempfile
-            dump_path = os.path.join(tempfile.gettempdir(), "doubao_video_raw_response.txt")
-            with open(dump_path, "w", encoding="utf-8") as f:
-                f.write(raw)
-            _log.getLogger("doubao2api").info("原始响应已保存到 %s", dump_path)
-        except Exception:
-            pass
         return None
 
     async def _poll_async_video(
