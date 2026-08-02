@@ -42,7 +42,7 @@ __plugin__ = {
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["yt-dlp>=2024.0.0", "aiohttp"],
+    "requirements": ["yt-dlp>=2024.0.0", "aiohttp", "musicdl"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -103,41 +103,56 @@ def _yt_path() -> str:
 
 
 def _musicdl_search_sync(keyword: str, sources: list = None) -> list:
-    """搜索网易云音乐（通过 _netease_api.py，纯 requests+pycryptodome）"""
-    import json
-    from _netease_api import search as _netease_search, get_song_url as _netease_url
+    """通过 musicdl 搜索音乐（纯 Python，直接在插件进程内导入）"""
+    import json, io, sys as _sys
     
-    NAME_MAP = {"netease": "网易云音乐"}
-    target = sources[0] if sources else "netease"
+    # 确保模块路径正确
+    _base = str(_BASE_DIR)
+    if _base not in _sys.path:
+        _sys.path.insert(0, _base)
     
-    if target == "netease":
-        result = _netease_search(keyword, _SEARCH_COUNT)
+    # 音源映射
+    CLIENT_MAP = {
+        "netease": "NeteaseMusicClient", "qq": "QQMusicClient",
+        "kugou": "KugouMusicClient", "kuwo": "KuwoMusicClient", "migu": "MiguMusicClient"
+    }
+    NAME_MAP = {"netease": "网易云音乐", "qq": "QQ音乐", "kugou": "酷狗音乐", "kuwo": "酷我音乐", "migu": "咪咕音乐"}
+    
+    src_list = sources or list(CLIENT_MAP.keys())
+    client_names = [CLIENT_MAP.get(s, s) for s in src_list]
+    
+    # 重定向 stdout 以抑制 musicdl 的进度条，保留 stderr 的日志
+    _old_stdout = _sys.stdout
+    _sys.stdout = io.StringIO()
+    
+    try:
+        from musicdl.musicdl import MusicClient
+        client = MusicClient(
+            music_sources=client_names,
+            init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
+        )
+        result = client.search(keyword)
+        
         songs = []
-        for s in result:
-            songs.append({
-                "song_name": s["name"],
-                "singers": [s["artist"]],
-                "album": s["album"],
-                "duration_s": s["duration"],
-                "download_url": "",
-                "ext": "mp3",
-                "file_size": "",
-                "source": "NeteaseMusicClient",
-                "url_id": s["id"],
-                "_source_key": "netease",
-                "_source_name": "网易云音乐",
-            })
-        # 获取第一个的下载 URL（预获取）
-        if songs:
-            try:
-                url = _netease_url(result[0]["id"])
-                if url:
-                    songs[0]["download_url"] = url
-            except Exception:
-                pass
-        return songs
+        for src, src_songs in result.items():
+            if src in client_names:
+                for s in src_songs:
+                    songs.append({
+                        "song_name": s.song_name,
+                        "singers": [str(sg) for sg in (s.singers or [])],
+                        "album": s.album or "",
+                        "duration_s": s.duration_s or 0,
+                        "download_url": s.download_url or "",
+                        "ext": s.ext or "",
+                        "file_size": s.file_size or "",
+                        "source": s.source or src,
+                        "_source_key": next((k for k, v in CLIENT_MAP.items() if v == src), src),
+                        "_source_name": NAME_MAP.get(next((k for k, v in CLIENT_MAP.items() if v == src), src), src),
+                    })
+    finally:
+        _sys.stdout = _old_stdout
     
-    return []
+    return songs
 
 
 def _musicdl_url_sync(song_data: dict) -> str:
@@ -160,6 +175,42 @@ async def setup(ctx):
         ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
     except Exception:
         ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
+
+    # 检查并安装 musicdl 及其依赖
+    # 先确保 pywidevine 版本正确（否则 musicdl 导入会失败）
+    try:
+        import pywidevine.license_protocol_pb2
+    except ImportError:
+        ctx.log.info("安装 pywidevine 依赖...")
+        for pkg_cmd in [
+            ["uv", "pip", "install", "pywidevine>=1.9.0", "-q"],
+            [sys.executable, "-m", "pip", "install", "pywidevine>=1.9.0", "-q"],
+        ]:
+            try:
+                subprocess.run(pkg_cmd, capture_output=True, text=True, timeout=60)
+                break
+            except:
+                continue
+    
+    try:
+        from musicdl.musicdl import MusicClient
+        ctx.log.info("musicdl 已就绪")
+    except ImportError:
+        ctx.log.info("安装 musicdl...")
+        for pkg_cmd in [
+            ["uv", "pip", "install", "musicdl", "-q"],
+            [sys.executable, "-m", "pip", "install", "musicdl", "-q"],
+        ]:
+            try:
+                subprocess.run(pkg_cmd, capture_output=True, text=True, timeout=120)
+                break
+            except:
+                continue
+        try:
+            from musicdl.musicdl import MusicClient
+            ctx.log.info("musicdl 安装成功")
+        except Exception as e2:
+            ctx.log.warning(f"musicdl 安装失败: {e2}")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
@@ -373,11 +424,11 @@ async def setup(ctx):
         # 单音源命令映射
         cmd_map = {
             ".yyyt": ("youtube", None),
-            ".yywy": ("musicdl", ["netease"]),
-            ".yyqq": ("musicdl", ["qq"]),
-            ".yykg": ("musicdl", ["kugou"]),
-            ".yykw": ("musicdl", ["kuwo"]),
-            ".yymg": ("musicdl", ["migu"]),
+            ".yywy": ("netease", None),
+            ".yyqq": ("qq", None),
+            ".yykg": ("kugou", None),
+            ".yykw": ("kuwo", None),
+            ".yymg": ("migu", None),
         }
         for prefix, (engine, sources) in cmd_map.items():
             if text.startswith(prefix):
@@ -387,14 +438,14 @@ async def setup(ctx):
                 if engine == "youtube":
                     await _yt_search(ctx, client, message, keyword)
                 else:
-                    await _musicdl_search(ctx, client, message, keyword, sources)
+                    await _musicdl_search(ctx, client, message, keyword, [engine])
                 return
 
-        # .yy 歌名 → 聚合搜索
+        # .yy 歌名 → 聚合搜索（全部音源）
         if text.startswith(".yy"):
             keyword = text[len(".yy"):].strip()
             if keyword:
-                await _musicdl_search(ctx, client, message, keyword)
+                await _musicdl_search(ctx, client, message, keyword, None)
             return
 
     # ── 选择处理 ──
