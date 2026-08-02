@@ -112,9 +112,9 @@
   },
   "mymusic": {
     "name": "音乐搜索下载",
-    "version": "1.5.1",
+    "version": "2.0.0",
     "author": "凹凸曼",
-    "description": "搜索 YouTube / 网易云音乐下载 MP3。支持 .yy 歌名搜索、.yy wy 网易云搜索、输入编号下载、翻页",
+    "description": "聚合搜索5音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube",
     "path": "plugins/mymusic/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg"
   },
