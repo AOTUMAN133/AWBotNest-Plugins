@@ -42,7 +42,7 @@ __plugin__ = {
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["yt-dlp>=2024.0.0", "aiohttp", "musicdl"],
+    "requirements": ["yt-dlp>=2024.0.0", "aiohttp"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -102,67 +102,11 @@ def _yt_path() -> str:
     return "yt-dlp"
 
 
-def _musicdl_search_sync(keyword: str, sources: list = None) -> list:
-    """通过 musicdl 搜索音乐（纯 Python，直接在插件进程内导入）"""
-    import json, io, sys as _sys
-    
-    # 确保模块路径正确
-    _base = str(_BASE_DIR)
-    if _base not in _sys.path:
-        _sys.path.insert(0, _base)
-    
-    # 音源映射
-    CLIENT_MAP = {
-        "netease": "NeteaseMusicClient", "qq": "QQMusicClient",
-        "kugou": "KugouMusicClient", "kuwo": "KuwoMusicClient", "migu": "MiguMusicClient"
-    }
-    NAME_MAP = {"netease": "网易云音乐", "qq": "QQ音乐", "kugou": "酷狗音乐", "kuwo": "酷我音乐", "migu": "咪咕音乐"}
-    
-    src_list = sources or list(CLIENT_MAP.keys())
-    client_names = [CLIENT_MAP.get(s, s) for s in src_list]
-    
-    # 重定向 stdout 以抑制 musicdl 的进度条，保留 stderr 的日志
-    _old_stdout = _sys.stdout
-    _sys.stdout = io.StringIO()
-    
-    try:
-        from musicdl.musicdl import MusicClient
-        client = MusicClient(
-            music_sources=client_names,
-            init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
-        )
-        result = client.search(keyword)
-        
-        songs = []
-        for src, src_songs in result.items():
-            if src in client_names:
-                for s in src_songs:
-                    songs.append({
-                        "song_name": s.song_name,
-                        "singers": [str(sg) for sg in (s.singers or [])],
-                        "album": s.album or "",
-                        "duration_s": s.duration_s or 0,
-                        "download_url": s.download_url or "",
-                        "ext": s.ext or "",
-                        "file_size": s.file_size or "",
-                        "source": s.source or src,
-                        "_source_key": next((k for k, v in CLIENT_MAP.items() if v == src), src),
-                        "_source_name": NAME_MAP.get(next((k for k, v in CLIENT_MAP.items() if v == src), src), src),
-                    })
-    finally:
-        _sys.stdout = _old_stdout
-    
-    return songs
+# 确保模块路径正确（平台通过 importlib 加载，可能不添加插件目录到 sys.path）
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
 
-
-def _musicdl_url_sync(song_data: dict) -> str:
-    """获取网易云歌曲下载URL"""
-    url = song_data.get("download_url", "")
-    if url:
-        return url
-    # 如果预获取的URL为空，实时获取
-    from _netease_api import get_song_url
-    return get_song_url(song_data.get("url_id", ""))
+from _musicdl_engine import search as _musicdl_search_sync, get_netease_url as _musicdl_url_sync, HAS_MUSICDL, get_import_error
 
 
 async def setup(ctx):
@@ -176,41 +120,11 @@ async def setup(ctx):
     except Exception:
         ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
 
-    # 检查并安装 musicdl 及其依赖
-    # 先确保 pywidevine 版本正确（否则 musicdl 导入会失败）
-    try:
-        import pywidevine.license_protocol_pb2
-    except ImportError:
-        ctx.log.info("安装 pywidevine 依赖...")
-        for pkg_cmd in [
-            ["uv", "pip", "install", "pywidevine>=1.9.0", "-q"],
-            [sys.executable, "-m", "pip", "install", "pywidevine>=1.9.0", "-q"],
-        ]:
-            try:
-                subprocess.run(pkg_cmd, capture_output=True, text=True, timeout=60)
-                break
-            except:
-                continue
-    
-    try:
-        from musicdl.musicdl import MusicClient
-        ctx.log.info("musicdl 已就绪")
-    except ImportError:
-        ctx.log.info("安装 musicdl...")
-        for pkg_cmd in [
-            ["uv", "pip", "install", "musicdl", "-q"],
-            [sys.executable, "-m", "pip", "install", "musicdl", "-q"],
-        ]:
-            try:
-                subprocess.run(pkg_cmd, capture_output=True, text=True, timeout=120)
-                break
-            except:
-                continue
-        try:
-            from musicdl.musicdl import MusicClient
-            ctx.log.info("musicdl 安装成功")
-        except Exception as e2:
-            ctx.log.warning(f"musicdl 安装失败: {e2}")
+    # 检查 musicdl 引擎状态
+    if HAS_MUSICDL:
+        ctx.log.info("musicdl 引擎可用，支持5音源搜索")
+    else:
+        ctx.log.info(f"musicdl 引擎不可用（{get_import_error()}），降级为网易云 EAPI")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
