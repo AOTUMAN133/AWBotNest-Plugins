@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：音乐搜索下载 (mymusic) v1.4.0
-# 搜索 YouTube 下载 MP3 音频，支持翻页、编号选择下载
+# AWBotNest 插件：音乐搜索下载 (mymusic) v1.5.1
+# 搜索 YouTube / 网易云音乐下载 MP3，支持翻页、编号选择下载
 
 import os
 import re
@@ -15,19 +15,24 @@ from datetime import datetime, timezone, timedelta
 
 TZ = timezone(timedelta(hours=8))
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
+_BASE_DIR = Path(__file__).parent
 _PAGE_SIZE = 5
 _SEARCH_COUNT = 10
+
+# 音源标识
+SOURCE_YOUTUBE = "youtube"
+SOURCE_NETEASE = "netease"
 
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "1.4.4",
+    "version": "1.5.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
-    "description": "搜索 YouTube 下载 MP3 音频。支持 .yy 歌名搜索、输入编号下载、翻页",
+    "description": "搜索 YouTube / 网易云音乐下载 MP3。支持 .yy 歌名搜索、.yywy 网易云搜索、输入编号下载、翻页",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["yt-dlp>=2024.0.0"],
+    "requirements": ["yt-dlp>=2024.0.0", "aiohttp"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -60,9 +65,11 @@ def _build_result_page(results: list, page: int, query: str) -> str:
     lines = [f"🎵 <b>搜索结果: {query}</b>  ({page + 1}/{total_pages})\n"]
     for i in range(start, end):
         r = results[i]
-        dur = _format_duration(r["duration"]) if r["duration"] else "未知"
-        lines.append(f"<b>{i + 1}.</b> {r['title']}")
-        lines.append(f"    👤 {r['uploader']}  ⏱ {dur}\n")
+        title = r.get("title") or r.get("name") or "未知"
+        uploader = r.get("uploader") or r.get("artist") or "未知"
+        dur = _format_duration(r["duration"]) if r.get("duration") else "未知"
+        lines.append(f"<b>{i + 1}.</b> {title}")
+        lines.append(f"    👤 {uploader}  ⏱ {dur}\n")
     lines.append("💡 输入编号下载，<b>n</b> 下一页 <b>p</b> 上一页 <b>0</b> 取消")
     return "\n".join(lines)
 
@@ -72,7 +79,6 @@ def _yt_path() -> str:
     path = shutil.which("yt-dlp")
     if path:
         return path
-    # 常见 venv 路径
     for p in [
         os.path.expanduser("~/.local/bin/yt-dlp"),
         "/usr/local/bin/yt-dlp",
@@ -83,8 +89,50 @@ def _yt_path() -> str:
     return "yt-dlp"
 
 
+def _netease_search_sync(keyword: str, limit: int = 10) -> list:
+    """搜索网易云音乐（纯 Python）"""
+    api_path = str(_BASE_DIR / "_netease_api.py")
+    try:
+        r = subprocess.run(
+            [sys.executable, api_path, "search", keyword],
+            capture_output=True, text=True, timeout=30,
+            cwd=str(_BASE_DIR),
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"脚本错误: {r.stderr[:200]}")
+        data = json.loads(r.stdout.strip())
+        if isinstance(data, dict) and "error" in data:
+            raise RuntimeError(data["error"])
+        if not isinstance(data, list):
+            raise RuntimeError("返回格式异常")
+        return data[:limit]
+    except Exception as e:
+        raise RuntimeError(f"网易云搜索失败: {e}")
+
+
+def _netease_url_sync(song_id: str) -> str:
+    """获取网易云音乐下载链接（纯 Python）"""
+    api_path = str(_BASE_DIR / "_netease_api.py")
+    try:
+        r = subprocess.run(
+            [sys.executable, api_path, "url", str(song_id)],
+            capture_output=True, text=True, timeout=30,
+            cwd=str(_BASE_DIR),
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"脚本错误: {r.stderr[:200]}")
+        data = json.loads(r.stdout.strip())
+        if isinstance(data, dict) and "error" in data:
+            raise RuntimeError(data["error"])
+        if not isinstance(data, dict) or not data.get("url"):
+            raise RuntimeError("未获取到下载链接")
+        return data["url"]
+    except Exception as e:
+        raise RuntimeError(f"获取网易云URL失败: {e}")
+
+
 async def setup(ctx):
-    ctx.log.info("音乐搜索下载 v1.4.0 已加载")
+    ctx.log.info("音乐搜索下载 v1.5.1 已加载")
 
     # 确保 yt-dlp 可用
     yt_path = _yt_path()
@@ -130,7 +178,7 @@ async def setup(ctx):
     else:
         ctx.log.info("ffmpeg 已可用")
 
-    # ── 搜索 ──
+    # ── YouTube 搜索 ──
     async def _do_search(ctx, client, message, keyword, page=1):
         msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
         try:
@@ -170,7 +218,6 @@ async def setup(ctx):
             await msg.edit(f"❌ 未找到相关结果")
             return
 
-        # 保存 pending
         pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
         ctx.kv.set(pending_key, {
             "results": results,
@@ -178,11 +225,11 @@ async def setup(ctx):
             "query": keyword,
             "time": time.time(),
             "msg_id": msg.id,
+            "source": SOURCE_YOUTUBE,
         })
-
         await msg.edit(_build_result_page(results, 0, keyword))
 
-    # ── 下载 ──
+    # ── YouTube 下载 ──
     async def _do_download(ctx, client, message, url, title, uploader=""):
         wait = await message.reply(f"⏳ 正在下载: {title}")
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -191,14 +238,12 @@ async def setup(ctx):
         yt_path = _yt_path()
         try:
             if shutil.which("ffmpeg"):
-                # 有 ffmpeg，转 mp3
                 subprocess.run(
                     [yt_path, "-x", "--audio-format", "mp3", "--audio-quality", "0",
                      "-o", template, "--no-playlist", "--no-warnings", url],
                     capture_output=True, text=True, timeout=300,
                 )
             else:
-                # 无 ffmpeg，下载 M4A 格式（Telegram 可直接播放）
                 subprocess.run(
                     [yt_path, "-f", "bestaudio[ext=m4a]/bestaudio",
                      "-o", template, "--no-playlist", "--no-warnings", url],
@@ -208,7 +253,6 @@ async def setup(ctx):
             await wait.edit_text(f"❌ 下载异常: {e}")
             return
 
-        # 找音频文件（mp3 或 webm/m4a）
         audio_files = sorted(_DOWNLOAD_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
         audio_files = [f for f in audio_files if f.suffix in (".mp3", ".webm", ".m4a", ".opus")]
         if not audio_files:
@@ -226,6 +270,85 @@ async def setup(ctx):
         except Exception as e:
             await wait.edit_text(f"❌ 发送失败: {e}")
 
+    # ── 网易云搜索 ──
+    async def _netease_do_search(ctx, client, message, keyword, page=1):
+        msg = await message.reply(f"🔍 正在搜索网易云「{keyword}」...")
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, _netease_search_sync, keyword, _SEARCH_COUNT
+                ), timeout=35
+            )
+        except Exception as e:
+            await msg.edit(f"❌ {e}")
+            return
+
+        if not results:
+            await msg.edit(f"❌ 网易云未找到相关结果")
+            return
+
+        pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+        ctx.kv.set(pending_key, {
+            "results": results,
+            "page": 0,
+            "query": keyword,
+            "time": time.time(),
+            "msg_id": msg.id,
+            "source": SOURCE_NETEASE,
+        })
+        await msg.edit(_build_result_page(results, 0, keyword))
+
+    # ── 网易云下载 ──
+    async def _netease_do_download(ctx, client, message, song_id, title, artist=""):
+        wait = await message.reply(f"⏳ 正在获取网易云音频: {title}")
+        _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+        try:
+            url = await asyncio.get_event_loop().run_in_executor(
+                None, _netease_url_sync, song_id
+            )
+        except Exception as e:
+            await wait.edit_text(f"❌ {e}")
+            return
+
+        if not url:
+            await wait.edit_text(f"❌ 未获取到下载链接（可能需VIP）")
+            return
+
+        await wait.edit_text(f"⏳ 正在下载: {title}")
+        import aiohttp
+        filepath = _DOWNLOAD_DIR / f"netease_{song_id}_{int(time.time())}.mp3"
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                    if resp.status != 200:
+                        await wait.edit_text(f"❌ 下载失败: HTTP {resp.status}")
+                        return
+                    with open(filepath, "wb") as f:
+                        f.write(await resp.read())
+        except Exception as e:
+            await wait.edit_text(f"❌ 下载异常: {e}")
+            return
+
+        if not filepath.exists() or filepath.stat().st_size == 0:
+            await wait.edit_text("❌ 下载失败，文件为空")
+            return
+
+        await wait.edit_text(f"⏳ 正在发送: {title}")
+        try:
+            with open(filepath, "rb") as f:
+                await client.send_audio(message.chat.id, f, title=title, performer=artist)
+            if not ctx.config.get("keep_local", False):
+                filepath.unlink(missing_ok=True)
+            await wait.delete()
+        except Exception as e:
+            await wait.edit_text(f"❌ 发送失败: {e}")
+
     # ── 命令处理 ──
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
     async def cmd_handler(client, message):
@@ -236,9 +359,10 @@ async def setup(ctx):
         # .yysm 帮助（30秒自毁）
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.4.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.5.1</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
-                "  <code>.yy 歌名</code> — 搜索并显示结果\n"
+                "  <code>.yy 歌名</code> — 搜索YouTube并显示结果\n"
+                "  <code>.yywy 歌名</code> — 搜索网易云音乐\n"
                 "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
                 "🔗 <b>直接下载</b>\n"
                 "  <code>.yy URL</code> — 直接下载 YouTube 链接"
@@ -257,9 +381,10 @@ async def setup(ctx):
 
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v1.4.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v1.5.1</b>\n\n"
                 "🔍 <b>搜索音乐</b>\n"
-                "  <code>.yy 歌名</code> — 搜索并显示结果\n"
+                "  <code>.yy 歌名</code> — 搜索YouTube并显示结果\n"
+                "  <code>.yywy 歌名</code> — 搜索网易云音乐\n"
                 "  输入 <b>编号</b> 下载，<b>n</b>/<b>p</b> 翻页\n\n"
                 "🔗 <b>直接下载</b>\n"
                 "  <code>.yy URL</code> — 直接下载 YouTube 链接"
@@ -277,6 +402,13 @@ async def setup(ctx):
             return
 
         if not text.startswith(".yy"):
+            return
+
+        # .yywy 歌名 → 网易云搜索
+        if text.startswith(".yywy"):
+            keyword = text[len(".yywy"):].strip()
+            if keyword:
+                await _netease_do_search(ctx, client, message, keyword)
             return
 
         cmd = text[len(".yy"):].strip()
@@ -315,6 +447,7 @@ async def setup(ctx):
 
         results = pending.get("results", [])
         page = pending.get("page", 0)
+        source = pending.get("source", SOURCE_YOUTUBE)
         total_pages = max(1, (len(results) + _PAGE_SIZE - 1) // _PAGE_SIZE)
 
         if text in ("n", "next"):
@@ -367,9 +500,12 @@ async def setup(ctx):
             except Exception:
                 pass
 
-        await _do_download(ctx, client, message, selected["url"], selected["title"], selected.get("uploader", ""))
+        if source == SOURCE_NETEASE:
+            await _netease_do_download(ctx, client, message, selected["id"], selected["name"], selected.get("artist", ""))
+        else:
+            await _do_download(ctx, client, message, selected["url"], selected["title"], selected.get("uploader", ""))
 
-    ctx.log.info("音乐搜索下载 v1.4.0 已就绪")
+    ctx.log.info("音乐搜索下载 v1.5.1 已就绪")
 
 
 async def teardown(ctx):

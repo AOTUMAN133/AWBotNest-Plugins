@@ -69,6 +69,10 @@ __plugin__ = {
             "type": "action", "label": "🔄 检查登录状态", "section": "豆包账号",
             "action": "check_login", "danger": False,
         },
+        "_test_video": {
+            "type": "action", "label": "🎬 测试视频生成", "section": "调试",
+            "action": "test_video", "danger": False,
+        },
     },
 }
 
@@ -184,6 +188,47 @@ async def setup(ctx):
                 pass
         ctx.update_config({"_login_status": "❌ 未登录"})
         return {"ok": False, "message": "❌ 未登录，请先扫码登录"}
+
+    @ctx.action("test_video")
+    async def _test_video(req=None):
+        """测试视频生成功能"""
+        client = await _get_client(ctx)
+        if not client:
+            return {"ok": False, "message": "❌ 未登录，请先扫码登录"}
+        try:
+            from ._doubao2api.client import DoubaoChatClient
+            # 先试生成，捕获详细错误
+            try:
+                result = await client.generate_video(
+                    prompt="一只可爱的柴犬在草地上奔跑",
+                    timeout=120,
+                )
+            except Exception as e:
+                # 把原始响应保存到文件供检查
+                import traceback
+                tb = traceback.format_exc()
+                ctx.log.info("[测试视频] 异常: %s\n%s", e, tb)
+                return {"ok": False, "message": f"❌ 异常: {e}\n详情见日志"}
+
+            if result and result.videos:
+                urls = [v.video_url for v in result.videos]
+                return {"ok": True, "message": f"✅ 成功！{len(result.videos)} 个视频\n首条URL: {urls[0][:100]}"}
+
+            # 没有 videos 但也没抛异常 - 检查 result 结构
+            import json
+            info = {
+                "has_result": result is not None,
+                "type": str(type(result)),
+                "videos": str(getattr(result, "videos", "N/A")),
+                "prompt": getattr(result, "prompt", ""),
+                "error": getattr(result, "error", ""),
+            }
+            ctx.log.info("[测试视频] 返回为空: %s", json.dumps(info, ensure_ascii=False))
+            return {"ok": False, "message": f"❌ 返回为空\n{json.dumps(info, ensure_ascii=False, indent=2)}"}
+        except Exception as e:
+            import traceback
+            ctx.log.info("[测试视频] 外层异常: %s\n%s", e, traceback.format_exc())
+            return {"ok": False, "message": f"❌ 异常: {e}"}
 
     # ── 命令处理 ──
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)

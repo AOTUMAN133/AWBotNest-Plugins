@@ -1618,6 +1618,16 @@ class DoubaoChatClient:
                 )
             raw = (await resp.read()).decode("utf-8", errors="replace")
 
+        # Debug: dump raw response
+        try:
+            import tempfile, os as _os
+            _dump_path = _os.path.join(tempfile.gettempdir(), "doubao_video_raw_response.txt")
+            with open(_dump_path, "w", encoding="utf-8") as _f:
+                _f.write(raw)
+            self.logger.info("generate_video: raw response saved to %s (len=%d)", _dump_path, len(raw))
+        except Exception:
+            pass
+
         # Extract task_id from fin_reason in CMPL events
         task_id = self._extract_async_task_id(raw)
 
@@ -1654,6 +1664,10 @@ class DoubaoChatClient:
     def _extract_async_task_id(self, raw: str) -> Optional[str]:
         """Extract async task_id from SSE response (fin_reason.async_task.id)."""
         self._check_gateway_error(raw)
+        # Debug: dump raw response for troubleshooting
+        import logging as _log
+        _log.getLogger("doubao2api").debug("_extract_async_task_id raw[:2000]=%s", raw[:2000])
+        idx = 0
         for block in raw.split("\n\n"):
             if not block.strip():
                 continue
@@ -1662,19 +1676,79 @@ class DoubaoChatClient:
                     continue
                 try:
                     data = json.loads(line[5:].strip())
-                    if data.get("event_type") != 2001:
-                        continue
-                    ed = json.loads(data["event_data"])
-                    fin_reason = ed.get("fin_reason", {})
-                    if not fin_reason:
-                        continue
-                    if fin_reason.get("reason") == 1:  # FinReasonAsyncTask
-                        async_task = fin_reason.get("async_task", {})
+                    event_type = data.get("event_type", 0)
+                    ed_raw = data.get("event_data", "{}")
+                    try:
+                        ed = json.loads(ed_raw) if isinstance(ed_raw, str) else ed_raw
+                    except json.JSONDecodeError:
+                        ed = {}
+                    _log.getLogger("doubao2api").debug(
+                        "  event[%d] type=%s ed_keys=%s",
+                        idx, event_type, list(ed.keys())[:10],
+                    )
+                    idx += 1
+
+                    # 方案1: 原版逻辑 — event_type==2001, fin_reason.reason==1, async_task.id
+                    if event_type == 2001:
+                        fin_reason = ed.get("fin_reason", {})
+                        if fin_reason:
+                            if fin_reason.get("reason") == 1:
+                                async_task = fin_reason.get("async_task", {})
+                                tid = async_task.get("id", "")
+                                if tid:
+                                    return tid
+
+                    # 方案2: 直接找 async_task.id (不管 event_type)
+                    async_task = ed.get("async_task", {})
+                    if isinstance(async_task, dict):
                         tid = async_task.get("id", "")
                         if tid:
                             return tid
+
+                    # 方案3: 找 task_id 字段
+                    tid = ed.get("task_id", "") or ed.get("taskId", "")
+                    if tid:
+                        return tid
+
+                    # 方案4: message.content 里可能有 task_id
+                    msg = ed.get("message", {})
+                    content = msg.get("content", "")
+                    if isinstance(content, str):
+                        try:
+                            c = json.loads(content)
+                            if isinstance(c, dict):
+                                tid = c.get("task_id", "") or c.get("id", "")
+                                if tid:
+                                    return tid
+                        except json.JSONDecodeError:
+                            pass
+
+                    # 方案5: fin_reason 下直接找 id
+                    fin_reason = ed.get("fin_reason", {})
+                    if isinstance(fin_reason, dict):
+                        tid = fin_reason.get("id", "") or fin_reason.get("task_id", "")
+                        if tid:
+                            return tid
+                        # 或 fin_reason.async_task 下找各种 id
+                        at = fin_reason.get("async_task", {})
+                        if isinstance(at, dict):
+                            for k in ("id", "task_id", "taskId"):
+                                tid = at.get(k, "")
+                                if tid:
+                                    return tid
+
                 except (json.JSONDecodeError, KeyError):
                     continue
+        _log.getLogger("doubao2api").warning("_extract_async_task_id: 所有方案均未找到 task_id")
+        # 保存原始响应到文件供调试
+        try:
+            import tempfile
+            dump_path = os.path.join(tempfile.gettempdir(), "doubao_video_raw_response.txt")
+            with open(dump_path, "w", encoding="utf-8") as f:
+                f.write(raw)
+            _log.getLogger("doubao2api").info("原始响应已保存到 %s", dump_path)
+        except Exception:
+            pass
         return None
 
     async def _poll_async_video(
