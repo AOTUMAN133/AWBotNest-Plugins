@@ -20,69 +20,46 @@ _CLIENT_MAP = {
 _NAME_MAP = {"netease": "网易云音乐", "qq": "QQ音乐", "kugou": "酷狗音乐", "kuwo": "酷我音乐", "migu": "咪咕音乐"}
 
 try:
-    from musicdl.modules.sources.netease import NeteaseMusicClient
-    from musicdl.modules.sources.qq import QQMusicClient
-    from musicdl.modules.sources.kugou import KugouMusicClient
-    from musicdl.modules.sources.kuwo import KuwoMusicClient
-    from musicdl.modules.sources.migu import MiguMusicClient
-    _CLIENTS = {
-        "NeteaseMusicClient": NeteaseMusicClient,
-        "QQMusicClient": QQMusicClient,
-        "KugouMusicClient": KugouMusicClient,
-        "KuwoMusicClient": KuwoMusicClient,
-        "MiguMusicClient": MiguMusicClient,
-    }
+    from musicdl.musicdl import MusicClient
     HAS_MUSICDL = True
 except Exception as e:
     _import_error = str(e)[:200]
+    HAS_MUSICDL = False
 
-
-def _build_client(client_class):
-    """构建单个音乐客户端"""
-    return client_class(
-        search_size_per_source=5, auto_set_proxies=False,
-        random_update_ua=False, max_retries=3, maintain_session=False,
-        disable_print=True, work_dir=str(_BASE_DIR / "musicdl_outputs"),
-        default_search_cookies={}, default_download_cookies={},
-        default_parse_cookies={},
-        search_size_per_page=10, strict_limit_search_size_per_page=True,
-        quark_parser_config={}, freeproxy_settings=None,
-        enable_download_curl_cffi=False, enable_parse_curl_cffi=False,
-        enable_search_curl_cffi=False,
-    )
+# ── 网易云 EAPI 降级方案 ──
 
 
 def search_via_musicdl(keyword: str, sources: list = None) -> list:
-    """使用 musicdl 搜索（仅导入中国音源，不依赖 pywidevine）"""
+    """使用 musicdl 搜索"""
     src_list = sources or list(_CLIENT_MAP.keys())
-    songs = []
+    client_names = [_CLIENT_MAP.get(s, s) for s in src_list]
     
     _old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     
     try:
-        for src in src_list:
-            client_name = _CLIENT_MAP.get(src)
-            if not client_name or client_name not in _CLIENTS:
-                continue
-            client_class = _CLIENTS[client_name]
-            client = _build_client(client_class)
-            result = client.search(keyword, 5)
-            if not result:
-                continue
-            for s in result:
-                songs.append({
-                    "song_name": s.song_name,
-                    "singers": [str(sg) for sg in (s.singers or [])],
-                    "album": s.album or "",
-                    "duration_s": s.duration_s or 0,
-                    "download_url": s.download_url or "",
-                    "ext": s.ext or "",
-                    "file_size": s.file_size or "",
-                    "source": s.source or client_name,
-                    "_source_key": src,
-                    "_source_name": _NAME_MAP.get(src, src),
-                })
+        client = MusicClient(
+            music_sources=client_names,
+            init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
+        )
+        result = client.search(keyword)
+        
+        songs = []
+        for src, src_songs in result.items():
+            if src in client_names:
+                for s in src_songs:
+                    songs.append({
+                        "song_name": s.song_name,
+                        "singers": [str(sg) for sg in (s.singers or [])],
+                        "album": s.album or "",
+                        "duration_s": s.duration_s or 0,
+                        "download_url": s.download_url or "",
+                        "ext": s.ext or "",
+                        "file_size": s.file_size or "",
+                        "source": s.source or src,
+                        "_source_key": next((k for k, v in _CLIENT_MAP.items() if v == src), src),
+                        "_source_name": _NAME_MAP.get(next((k for k, v in _CLIENT_MAP.items() if v == src), src), src),
+                    })
     finally:
         sys.stdout = _old_stdout
     

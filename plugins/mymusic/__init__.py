@@ -42,7 +42,7 @@ __plugin__ = {
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["yt-dlp>=2024.0.0", "aiohttp"],
+    "requirements": ["yt-dlp>=2024.0.0", "aiohttp", "pywidevine>=1.9.0"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
