@@ -133,14 +133,21 @@ async def setup(ctx):
                 capture_output=True, text=True, timeout=30
             )
             importlib.invalidate_caches()
-            # 重新加载引擎
-            importlib.reload(_musicdl_engine)
-            if _musicdl_engine.HAS_MUSICDL:
+            # 重新加载引擎（_musicdl_engine 是模块变量，需重新 import）
+            import _musicdl_engine as _me
+            importlib.reload(_me)
+            if _me.HAS_MUSICDL:
+                # 更新全局变量
+                globals()["HAS_MUSICDL"] = _me.HAS_MUSICDL
+                globals()["_musicdl_search_sync"] = _me.search
+                globals()["_musicdl_url_sync"] = _me.get_url
+                globals()["get_import_error"] = _me.get_import_error
                 ctx.log.info("pywidevine 修复成功，musicdl 引擎已可用")
             else:
-                ctx.log.warning(f"pywidevine 修复后仍不可用: {_musicdl_engine.get_import_error()}")
+                ctx.log.warning(f"pywidevine 修复后仍不可用: {_me.get_import_error()}")
         except Exception as e:
             ctx.log.warning(f"pywidevine 修复失败: {e}")
+            ctx.log.info("降级使用网易云 EAPI 搜索")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
