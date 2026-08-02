@@ -42,7 +42,7 @@ __plugin__ = {
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
     "scope": "user",
     "default_enabled": False,
-    "requirements": ["yt-dlp>=2024.0.0", "aiohttp", "musicdl"],
+    "requirements": ["yt-dlp>=2024.0.0", "aiohttp"],
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -103,30 +103,51 @@ def _yt_path() -> str:
 
 
 def _musicdl_search_sync(keyword: str, sources: list = None) -> list:
-    """通过 musicdl 搜索音乐"""
-    # 确保模块路径正确（平台通过 importlib 加载，可能不添加插件目录到 sys.path）
-    _base = str(_BASE_DIR)
-    if _base not in sys.path:
-        sys.path.insert(0, _base)
-    from _musicdl_wrapper import search, search_aggregate, SOURCES as _SRC
-    if sources:
-        # 单音源搜索
-        result = search(keyword, sources)
-        songs = result.get("songs", [])
-        src_key = sources[0] if sources else ""
-        src_name = _SRC.get(src_key, {}).get("name", src_key)
-        for s in songs:
-            s["_source_key"] = src_key
-            s["_source_name"] = src_name
+    """搜索网易云音乐（通过 _netease_api.py，纯 requests+pycryptodome）"""
+    import json
+    from _netease_api import search as _netease_search, get_song_url as _netease_url
+    
+    NAME_MAP = {"netease": "网易云音乐"}
+    target = sources[0] if sources else "netease"
+    
+    if target == "netease":
+        result = _netease_search(keyword, _SEARCH_COUNT)
+        songs = []
+        for s in result:
+            songs.append({
+                "song_name": s["name"],
+                "singers": [s["artist"]],
+                "album": s["album"],
+                "duration_s": s["duration"],
+                "download_url": "",
+                "ext": "mp3",
+                "file_size": "",
+                "source": "NeteaseMusicClient",
+                "url_id": s["id"],
+                "_source_key": "netease",
+                "_source_name": "网易云音乐",
+            })
+        # 获取第一个的下载 URL（预获取）
+        if songs:
+            try:
+                url = _netease_url(result[0]["id"])
+                if url:
+                    songs[0]["download_url"] = url
+            except Exception:
+                pass
         return songs
-    else:
-        # 聚合搜索全部
-        return search_aggregate(keyword)
+    
+    return []
 
 
 def _musicdl_url_sync(song_data: dict) -> str:
-    """获取 musicdl 歌曲的下载URL（song_data 已包含 download_url）"""
-    return song_data.get("download_url", "")
+    """获取网易云歌曲下载URL"""
+    url = song_data.get("download_url", "")
+    if url:
+        return url
+    # 如果预获取的URL为空，实时获取
+    from _netease_api import get_song_url
+    return get_song_url(song_data.get("url_id", ""))
 
 
 async def setup(ctx):
@@ -139,24 +160,6 @@ async def setup(ctx):
         ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
     except Exception:
         ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
-
-    # 检查 musicdl
-    try:
-        import musicdl
-        ctx.log.info(f"musicdl 已安装")
-    except ImportError:
-        ctx.log.info("musicdl 未安装，尝试安装...")
-        try:
-            # 尝试 uv 安装（平台推荐）
-            r = subprocess.run(["uv", "pip", "install", "musicdl", "-q"],
-                capture_output=True, text=True, timeout=120)
-            if r.returncode != 0:
-                # 回退到 pip
-                subprocess.run([sys.executable, "-m", "pip", "install", "musicdl", "-q"],
-                    capture_output=True, text=True, timeout=120)
-            ctx.log.info("musicdl 安装成功")
-        except Exception as e:
-            ctx.log.warning(f"musicdl 安装失败: {e}")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
