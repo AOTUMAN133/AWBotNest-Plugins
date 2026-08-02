@@ -1466,6 +1466,20 @@ class DoubaoChatClient:
 
         self._check_gateway_error(raw)
 
+        # 提取 conversation_id / thread_id
+        self._last_thread_id = ""
+        for line in raw.split("\n"):
+            if line.startswith("data:"):
+                try:
+                    ed = json.loads(line[5:].strip())
+                    if isinstance(ed, dict):
+                        cid = ed.get("event_data", {}).get("conversation_id", "") or ed.get("conversation_id", "")
+                        if cid and cid != "0":
+                            self._last_thread_id = cid
+                            break
+                except Exception:
+                    pass
+
         result = ImageGenerationResult(prompt=prompt)
         for block in raw.split("\n\n"):
             if not block.strip():
@@ -1511,13 +1525,14 @@ class DoubaoChatClient:
                 ori = item.get("image_ori", {}) or {}
                 raw = item.get("image_raw", {}) or {}
                 thumb = item.get("image_thumb", {}) or {}
-                # 尝试从嵌套的 image 字段提取原始无水印 URL
+                # 尝试从 event_data 中找 image_ori_raw（doubao 页面原始 URL）
                 clean_url = ""
                 img_field = item.get("image", {}) or {}
                 if isinstance(img_field, dict):
                     ori_raw = img_field.get("image_ori_raw", {}) or {}
                     clean_url = ori_raw.get("url", "")
-                if not clean_url:
+                if not clean_url and raw.get("url"):
+                    # raw_url 可能也有水印，但先尝试直接下载
                     clean_url = raw.get("url", "")
                 img = GeneratedImage(
                     key=item.get("key", ""),

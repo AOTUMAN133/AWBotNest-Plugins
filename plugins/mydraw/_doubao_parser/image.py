@@ -3,7 +3,7 @@ import re
 import aiohttp
 
 
-async def doubao_image_parse(url: str, return_raw: bool = False):
+async def doubao_image_parse(url: str, return_raw: bool = False, cookies: dict = None):
     """从豆包对话链接中提取无水印图片URL"""
     if "doubao.com/thread/" not in url:
         raise ValueError("链接格式不正确，请使用豆包对话链接（包含 /thread/）")
@@ -15,7 +15,7 @@ async def doubao_image_parse(url: str, return_raw: bool = False):
     }
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(cookies=cookies) as session:
             async with session.get(url, headers=headers) as response:
                 html_str = await response.text()
     except aiohttp.ClientError as e:

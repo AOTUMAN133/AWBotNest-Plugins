@@ -356,8 +356,26 @@ async def _handle_image(ctx, client, message, prompt):
         ctx.log.info("图片生成结果: %s images", len(result.images) if result else 0)
         if result.images:
             img = result.images[0]
-            # 优先使用无水印 URL（clean_url），其次 raw_url，最后 ori_url
-            img_url = img.clean_url or img.raw_url or img.ori_url
+            # 先用 clean_url，如果没有则尝试用 doubao_parser 从对话页提取
+            img_url = img.clean_url or ""
+            if not img_url:
+                ctx.log.info("尝试用 doubao_parser 提取无水印 URL...")
+                try:
+                    from _doubao_parser import doubao_image_parse
+                    thread_id = getattr(db, '_last_thread_id', '')
+                    if thread_id:
+                        page_url = f"https://www.doubao.com/thread/{thread_id}"
+                        # 复用客户端的 cookies
+                        cookies = getattr(db, 'cookies', {})
+                        parsed = await doubao_image_parse(page_url, cookies=cookies)
+                        if parsed and parsed[0].get("url"):
+                            img_url = parsed[0]["url"]
+                            ctx.log.info("doubao_parser 提取成功")
+                except Exception as e:
+                    ctx.log.warning("doubao_parser 提取失败: %s", e)
+            if not img_url:
+                # 降级：用 raw_url 或 ori_url
+                img_url = img.raw_url or img.ori_url
             _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
             filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
             import aiohttp
@@ -367,6 +385,29 @@ async def _handle_image(ctx, client, message, prompt):
                     r = await sess.get(img.ori_url)
                 if r.status == 200:
                     data = await r.read()
+                    # 用 OpenCV 去除水印（左上角 "AI生成" + 右下角 logo）
+                    try:
+                        import cv2
+                        import numpy as np
+                        img_arr = np.frombuffer(data, np.uint8)
+                        img_cv = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+                        if img_cv is not None:
+                            h, w = img_cv.shape[:2]
+                            # 右下角水印
+                            mw = max(w // 4, 200)
+                            mh = max(h // 12, 60)
+                            mask = np.zeros((h, w), dtype=np.uint8)
+                            mask[h-mh:h, w-mw:w] = 255
+                            # 左上角 "AI生成" 文字
+                            tl_w = max(w // 6, 120)
+                            tl_h = max(h // 20, 30)
+                            mask[0:tl_h, 0:tl_w] = 255
+                            cleaned = cv2.inpaint(img_cv, mask, 5, cv2.INPAINT_TELEA)
+                            _, buf = cv2.imencode(".png", cleaned)
+                            data = buf.tobytes()
+                            ctx.log.info("去水印: %dx%d, 区域 右下%d,%d 左上%d,%d", w, h, mw, mh, tl_w, tl_h)
+                    except ImportError:
+                        ctx.log.info("OpenCV 未安装，跳过图像去水印")
                     filepath.write_bytes(data)
                 else:
                     await wait.edit_text("❌ 图片下载失败")
