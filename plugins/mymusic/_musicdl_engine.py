@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# musicdl 引擎封装层 — 直接导入各源模块，绕过 sources/__init__.py（避免 pywidevine 依赖）
+# musicdl 引擎封装层 — 使用 vendored 包（无需 pip 安装，无 pywidevine 依赖）
 import sys
 import json
 import hashlib
@@ -8,11 +8,16 @@ from pathlib import Path
 
 _BASE_DIR = Path(__file__).parent
 
-# ── 直接导入各源模块（绕过 sources/__init__.py，避免触发 apple/soundcloud 的 pywidevine 依赖）──
+# 将 vendored 包加入路径
+_vendor_pkg = _BASE_DIR / "_vendor_pkg"
+if _vendor_pkg.exists():
+    _vendor_pkg_str = str(_vendor_pkg.resolve())
+    if _vendor_pkg_str not in sys.path:
+        sys.path.insert(0, _vendor_pkg_str)
+
 HAS_MUSICDL = False
 _import_error = ""
 
-_CLIENTS = {}
 _CLIENT_MAP = {
     "netease": "NeteaseMusicClient", "qq": "QQMusicClient",
     "kugou": "KugouMusicClient", "kuwo": "KuwoMusicClient", "migu": "MiguMusicClient",
