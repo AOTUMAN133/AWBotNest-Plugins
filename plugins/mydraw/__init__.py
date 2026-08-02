@@ -385,29 +385,31 @@ async def _handle_image(ctx, client, message, prompt):
                     r = await sess.get(img.ori_url)
                 if r.status == 200:
                     data = await r.read()
-                    # 用 OpenCV 去除水印（左上角 "AI生成" + 右下角 logo）
+                    # 用 Pillow 去除水印（左上角 "AI生成" + 右下角 logo）
                     try:
-                        import cv2
-                        import numpy as np
-                        img_arr = np.frombuffer(data, np.uint8)
-                        img_cv = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
-                        if img_cv is not None:
-                            h, w = img_cv.shape[:2]
-                            # 右下角水印
-                            mw = max(w // 4, 200)
-                            mh = max(h // 12, 60)
-                            mask = np.zeros((h, w), dtype=np.uint8)
-                            mask[h-mh:h, w-mw:w] = 255
-                            # 左上角 "AI生成" 文字
-                            tl_w = max(w // 6, 120)
-                            tl_h = max(h // 20, 30)
-                            mask[0:tl_h, 0:tl_w] = 255
-                            cleaned = cv2.inpaint(img_cv, mask, 5, cv2.INPAINT_TELEA)
-                            _, buf = cv2.imencode(".png", cleaned)
-                            data = buf.tobytes()
-                            ctx.log.info("去水印: %dx%d, 区域 右下%d,%d 左上%d,%d", w, h, mw, mh, tl_w, tl_h)
+                        from PIL import Image, ImageDraw
+                        import io
+                        img_pil = Image.open(io.BytesIO(data)).convert("RGB")
+                        w, h = img_pil.size
+                        # 右下角区域：用周围颜色填充
+                        mw = max(w // 4, 200)
+                        mh = max(h // 12, 60)
+                        # 用简单模糊覆盖
+                        crop = img_pil.crop((w-mw, h-mh, w, h))
+                        crop = crop.resize((mw//4, mh//4)).resize((mw, mh), Image.LANCZOS)
+                        img_pil.paste(crop, (w-mw, h-mh))
+                        # 左上角 "AI生成" 文字
+                        tl_w = max(w // 6, 120)
+                        tl_h = max(h // 20, 30)
+                        crop2 = img_pil.crop((0, 0, tl_w, tl_h))
+                        crop2 = crop2.resize((tl_w//4, tl_h//4)).resize((tl_w, tl_h), Image.LANCZOS)
+                        img_pil.paste(crop2, (0, 0))
+                        buf = io.BytesIO()
+                        img_pil.save(buf, "PNG")
+                        data = buf.getvalue()
+                        ctx.log.info("去水印: %dx%d, 区域 右下%d,%d 左上%d,%d", w, h, mw, mh, tl_w, tl_h)
                     except ImportError:
-                        ctx.log.info("OpenCV 未安装，跳过图像去水印")
+                        ctx.log.info("Pillow 未安装，跳过图像去水印")
                     filepath.write_bytes(data)
                 else:
                     await wait.edit_text("❌ 图片下载失败")
