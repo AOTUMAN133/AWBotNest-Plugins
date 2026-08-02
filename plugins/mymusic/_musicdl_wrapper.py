@@ -1,7 +1,8 @@
-# musicdl 封装层 - 聚合搜索+下载，支持多音源
+# musicdl 封装层 - 每次搜索启动独立子进程
 import sys
 import json
 import subprocess
+import time
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).parent
@@ -15,53 +16,56 @@ SOURCES = {
     "migu": {"name": "咪咕音乐", "client": "MiguMusicClient", "cmd": "mg"},
 }
 
-ALL_CLIENTS = [s["client"] for s in SOURCES.values()]
+_worker_script = str(_BASE_DIR / "_musicdl_worker.py")
 
 
-def _run_musicdl(action: str, sources: list, keyword: str = "", song_index: int = 0):
-    """通过子进程调用 musicdl 封装脚本"""
-    script = str(_BASE_DIR / "_musicdl_worker.py")
-    args = [sys.executable, script, action, json.dumps(sources)]
-    if keyword:
-        args.append(keyword)
-    if song_index:
-        args.append(str(song_index))
+def search(keyword: str, sources: list = None) -> dict:
+    """搜索音乐，返回 {songs: [{...}]}"""
+    srcs = sources or list(SOURCES.keys())
+    timeout = 90 if len(srcs) > 2 else 60
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            [sys.executable, _worker_script, "search", json.dumps(srcs), keyword],
+            capture_output=True, text=True, timeout=timeout
+        )
         if r.returncode != 0:
-            return {"error": r.stderr[:300]}
-        # musicdl 会输出进度条到 stdout，JSON 在最后一行
-        output = r.stdout.strip().split("\n")[-1]
-        return json.loads(output) if output else {"error": "空响应"}
+            return {"error": r.stderr[:500] or f"进程退出 (code={r.returncode})"}
+        # musicdl 输出进度条到 stdout，JSON 在最后一行
+        lines = [l.strip() for l in r.stdout.split("\n") if l.strip()]
+        if not lines:
+            return {"error": "空响应"}
+        # 找到最后一个 JSON 行
+        for line in reversed(lines):
+            if line.startswith("{"):
+                data = json.loads(line)
+                # 将 worker 的 {ClientName: [...]} 转为 {songs: [...]}
+                if isinstance(data, dict):
+                    songs = []
+                    for client_name, client_songs in data.items():
+                        if isinstance(client_songs, list):
+                            songs.extend(client_songs)
+                    if songs:
+                        return {"songs": songs}
+                return data
+        return {"error": f"未找到 JSON 输出: {lines[-1][:200]}"}
     except subprocess.TimeoutExpired:
-        return {"error": "搜索超时"}
+        return {"error": f"搜索超时 ({timeout}s)"}
     except Exception as e:
         return {"error": str(e)}
 
 
-def search(keyword: str, sources: list = None) -> dict:
-    """搜索音乐，返回 {source: [songs]}"""
-    srcs = sources or list(SOURCES.keys())
-    return _run_musicdl("search", srcs, keyword)
-
-
-def get_url(source: str, song_index: int = 0, keyword: str = "") -> dict:
-    """获取指定歌曲的下载URL"""
-    return _run_musicdl("url", [source], keyword, song_index)
-
-
 def search_aggregate(keyword: str) -> list:
-    """聚合搜索所有音源，返回扁平列表（每个音源单独搜索，避免慢音源阻塞）"""
+    """聚合搜索所有音源，返回扁平列表"""
     songs = []
-    for src_key, src_info in SOURCES.items():
+    # 逐个音源搜索，避免慢音源阻塞
+    for src_key in SOURCES:
         try:
             result = search(keyword, [src_key])
             if "error" in result:
                 continue
-            src_songs = result.get(src_info["client"], [])
-            for s in src_songs:
+            for s in result.get("songs", []):
                 s["_source_key"] = src_key
-                s["_source_name"] = src_info["name"]
+                s["_source_name"] = SOURCES[src_key]["name"]
                 songs.append(s)
         except Exception:
             continue

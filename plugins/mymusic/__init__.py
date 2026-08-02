@@ -103,9 +103,25 @@ def _yt_path() -> str:
 
 
 def _musicdl_search_sync(keyword: str, sources: list = None) -> list:
-    """通过 musicdl 搜索音乐（子进程）"""
-    from _musicdl_wrapper import search_aggregate
-    return search_aggregate(keyword)
+    """通过 musicdl 搜索音乐"""
+    # 确保模块路径正确（平台通过 importlib 加载，可能不添加插件目录到 sys.path）
+    _base = str(_BASE_DIR)
+    if _base not in sys.path:
+        sys.path.insert(0, _base)
+    from _musicdl_wrapper import search, search_aggregate, SOURCES as _SRC
+    if sources:
+        # 单音源搜索
+        result = search(keyword, sources)
+        songs = result.get("songs", [])
+        src_key = sources[0] if sources else ""
+        src_name = _SRC.get(src_key, {}).get("name", src_key)
+        for s in songs:
+            s["_source_key"] = src_key
+            s["_source_name"] = src_name
+        return songs
+    else:
+        # 聚合搜索全部
+        return search_aggregate(keyword)
 
 
 def _musicdl_url_sync(song_data: dict) -> str:
@@ -123,6 +139,24 @@ async def setup(ctx):
         ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
     except Exception:
         ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
+
+    # 检查 musicdl
+    try:
+        import musicdl
+        ctx.log.info(f"musicdl 已安装")
+    except ImportError:
+        ctx.log.info("musicdl 未安装，尝试安装...")
+        try:
+            # 尝试 uv 安装（平台推荐）
+            r = subprocess.run(["uv", "pip", "install", "musicdl", "-q"],
+                capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                # 回退到 pip
+                subprocess.run([sys.executable, "-m", "pip", "install", "musicdl", "-q"],
+                    capture_output=True, text=True, timeout=120)
+            ctx.log.info("musicdl 安装成功")
+        except Exception as e:
+            ctx.log.warning(f"musicdl 安装失败: {e}")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
@@ -216,8 +250,11 @@ async def setup(ctx):
         try:
             results = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, _musicdl_search_sync, keyword, sources),
-                timeout=60
+                timeout=120
             )
+        except asyncio.TimeoutError:
+            await msg.edit(f"❌ 搜索超时（部分音源响应慢，请重试）")
+            return
         except Exception as e:
             await msg.edit(f"❌ {e}")
             return

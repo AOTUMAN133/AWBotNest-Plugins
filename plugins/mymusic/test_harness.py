@@ -1,6 +1,8 @@
 """
 AWBotNest 插件测试框架
 模拟 PlatformContext，让插件在本地加载运行，无需真实 Telegram 账号。
+注意：本框架模拟平台的实际加载方式（importlib），
+不会自动添加插件目录到 sys.path。
 """
 import os, sys, json, asyncio, time, inspect, importlib
 from pathlib import Path
@@ -142,26 +144,31 @@ class PluginTester:
         self.client = _MockClient()
 
     def load(self):
-        """加载插件，调用 setup(ctx)"""
-        sys.path.insert(0, str(self.plugin_dir))
-        spec = importlib.util.spec_from_file_location(
-            self.plugin_path.stem, str(self.plugin_path)
-        )
-        self.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.module)
-
-        # 创建上下文
-        plugin_id = self.module.__plugin__.get("id", self.plugin_path.stem)
-        self.ctx = PlatformContext(plugin_id)
-
-        # 调用 setup
-        print(f"\n{'='*60}")
-        print(f"  加载插件: {self.module.__plugin__.get('name', plugin_id)} v{self.module.__plugin__.get('version', '?')}")
-        print(f"  插件 ID: {plugin_id}")
-        print(f"{'='*60}\n")
-        asyncio.get_event_loop().run_until_complete(self.module.setup(self.ctx))
-        print(f"\n  ✅ 加载完成 | handlers={len(self.ctx._handlers)} schedules={len(self.ctx._schedules)} actions={len(self.ctx._actions)}\n")
-        return self.ctx
+        """加载插件，调用 setup(ctx) - 模拟平台 importlib 方式"""
+        # 不添加插件目录到 sys.path（模拟平台行为）
+        # 如果插件需要导入同目录下的模块，必须自己处理 sys.path
+        original_path = sys.path.copy()
+        try:
+            spec = importlib.util.spec_from_file_location(
+                self.plugin_path.stem, str(self.plugin_path)
+            )
+            self.module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(self.module)
+            
+            # 创建上下文
+            plugin_id = self.module.__plugin__.get("id", self.plugin_path.stem)
+            self.ctx = PlatformContext(plugin_id)
+            
+            # 调用 setup
+            print(f"\n{'='*60}")
+            print(f"  加载插件: {self.module.__plugin__.get('name', plugin_id)} v{self.module.__plugin__.get('version', '?')}")
+            print(f"  插件 ID: {plugin_id}")
+            print(f"{'='*60}\n")
+            asyncio.get_event_loop().run_until_complete(self.module.setup(self.ctx))
+            print(f"\n  ✅ 加载完成 | handlers={len(self.ctx._handlers)} schedules={len(self.ctx._schedules)} actions={len(self.ctx._actions)}\n")
+            return self.ctx
+        finally:
+            sys.path = original_path
 
     def find_handler(self, cmd_text: str):
         """查找能处理指定命令的 handler"""
