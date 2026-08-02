@@ -374,7 +374,7 @@ async def _handle_image(ctx, client, message, prompt):
                 except Exception as e:
                     ctx.log.warning("doubao_parser 提取失败: %s", e)
             if not img_url:
-                # 降级：用 raw_url 或 ori_url
+                # 降级
                 img_url = img.raw_url or img.ori_url
             _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
             filepath = _DOWNLOAD_DIR / f"dt_{datetime.now(TZ).strftime('%Y%m%d_%H%M%S')}.png"
@@ -385,31 +385,6 @@ async def _handle_image(ctx, client, message, prompt):
                     r = await sess.get(img.ori_url)
                 if r.status == 200:
                     data = await r.read()
-                    # 用 Pillow 去除水印（左上角 "AI生成" + 右下角 logo）
-                    try:
-                        from PIL import Image, ImageDraw
-                        import io
-                        img_pil = Image.open(io.BytesIO(data)).convert("RGB")
-                        w, h = img_pil.size
-                        # 右下角区域：用周围颜色填充
-                        mw = max(w // 4, 200)
-                        mh = max(h // 12, 60)
-                        # 用简单模糊覆盖
-                        crop = img_pil.crop((w-mw, h-mh, w, h))
-                        crop = crop.resize((mw//4, mh//4)).resize((mw, mh), Image.LANCZOS)
-                        img_pil.paste(crop, (w-mw, h-mh))
-                        # 左上角 "AI生成" 文字
-                        tl_w = max(w // 6, 120)
-                        tl_h = max(h // 20, 30)
-                        crop2 = img_pil.crop((0, 0, tl_w, tl_h))
-                        crop2 = crop2.resize((tl_w//4, tl_h//4)).resize((tl_w, tl_h), Image.LANCZOS)
-                        img_pil.paste(crop2, (0, 0))
-                        buf = io.BytesIO()
-                        img_pil.save(buf, "PNG")
-                        data = buf.getvalue()
-                        ctx.log.info("去水印: %dx%d, 区域 右下%d,%d 左上%d,%d", w, h, mw, mh, tl_w, tl_h)
-                    except ImportError:
-                        ctx.log.info("Pillow 未安装，跳过图像去水印")
                     filepath.write_bytes(data)
                 else:
                     await wait.edit_text("❌ 图片下载失败")

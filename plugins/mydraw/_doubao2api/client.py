@@ -1525,14 +1525,15 @@ class DoubaoChatClient:
                 ori = item.get("image_ori", {}) or {}
                 raw = item.get("image_raw", {}) or {}
                 thumb = item.get("image_thumb", {}) or {}
-                # 尝试从 event_data 中找 image_ori_raw（doubao 页面原始 URL）
+                # 从 creation_block.creations[].image.image_ori_raw 提取无水印 URL
                 clean_url = ""
-                img_field = item.get("image", {}) or {}
-                if isinstance(img_field, dict):
-                    ori_raw = img_field.get("image_ori_raw", {}) or {}
-                    clean_url = ori_raw.get("url", "")
-                if not clean_url and raw.get("url"):
-                    # raw_url 可能也有水印，但先尝试直接下载
+                for cr in (content.get("creation_block", {}) or {}).get("creations", []) or []:
+                    if isinstance(cr, dict):
+                        ori_raw = (cr.get("image", {}) or {}).get("image_ori_raw", {}) or {}
+                        if ori_raw.get("url"):
+                            clean_url = ori_raw["url"]
+                            break
+                if not clean_url:
                     clean_url = raw.get("url", "")
                 img = GeneratedImage(
                     key=item.get("key", ""),
