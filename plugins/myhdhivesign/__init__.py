@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.7.1",
+    "version": "3.7.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -354,6 +354,21 @@ async def _do_sign(cookie_str: str, base_url: str, action_hash: str, gamble: boo
         return {"success": False, "message": str(e)}
 
 
+def _is_auth_error(message: str) -> bool:
+    """识别接口返回的认证失效，交给上层重新登录。"""
+    text = (message or "").lower()
+    return any(token in text for token in (
+        "invalid token",
+        "not a valid go or flask jwt token",
+        "jwt token",
+        "unauthorized",
+        "authentication failed",
+        "token expired",
+        "token has expired",
+        "http 401",
+    ))
+
+
 async def setup(ctx):
     _log_debug(ctx, "插件加载完成")
 
@@ -488,12 +503,25 @@ async def setup(ctx):
 
             r = await _sign_account(ctx, acc, base_url, action_hash)
 
-            # Cookie 失效时自动重新登录
-            if not r["success"] and "Cookie 失效" in r.get("message", "") and username and password:
-                _log_debug(ctx, f"{name}: Cookie 失效，尝试重新登录")
+            # Cookie / token 失效时自动重新登录
+            if (
+                not r["success"]
+                and username
+                and password
+                and (
+                    "Cookie 失效" in r.get("message", "")
+                    or _is_auth_error(r.get("message", ""))
+                )
+            ):
+                _log_debug(ctx, f"{name}: Cookie/token 失效，尝试重新登录")
                 new_cookie = await _login_with_playwright(base_url, username, password)
                 if new_cookie:
                     acc["cookie"] = new_cookie
+                    cookie = new_cookie
+                    try:
+                        ctx.update_config({"accounts": json.dumps(accounts, ensure_ascii=False)})
+                    except Exception as e:
+                        _log_debug(ctx, f"{name}: update_config 保存新Cookie失败: {e}")
                     ctx.kv.set(f"cookie:{acc.get('name', '')}", new_cookie)
                     _log_debug(ctx, f"{name}: 重新登录成功，重试签到")
                     r = await _sign_account(ctx, acc, base_url, action_hash)
