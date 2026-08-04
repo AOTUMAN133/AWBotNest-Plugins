@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -324,6 +324,13 @@ async def _process(client, cfg, message, ctx):
                 err = str(e) or e.__class__.__name__
                 ctx.log.warning("[115监控] Emby 查询失败: %r", e)
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
+                # Emby不可达时跳过转发并通知用户（每30分钟最多通知一次）
+                _emby_notify_key = "my115_emby_down_notified"
+                _notified_ts = ctx.kv.get(_emby_notify_key, 0) or 0
+                if time.time() - _notified_ts > 1800:
+                    ctx.notify(f"⚠️ 115频道监控：Emby 查询失败，请检查 Emby 状态\n({err[:80]})", level="warning")
+                    ctx.kv.set(_emby_notify_key, time.time())
+                return
         else:
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
     else:
