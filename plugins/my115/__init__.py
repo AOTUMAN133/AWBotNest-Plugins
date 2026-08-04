@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -60,7 +60,7 @@ _LINK_PATTERN = re.compile(
     re.IGNORECASE
 )
 _TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)|tmdb-(\d+)", re.IGNORECASE)
-_COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集")
+_COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集|\(完|（完")
 _GETMEDIA_TTL = 30
 
 
