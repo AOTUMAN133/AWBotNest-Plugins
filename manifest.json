@@ -86,6 +86,14 @@
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "path": "auto_changename.py"
   },
+  "fz": {
+    "name": "复读转发",
+    "version": "1.0.0",
+    "author": "凹凸曼",
+    "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。支持复制搬运模式。",
+    "path": "fz.py",
+    "icon": "https://raw.githubusercontent.com/AWdress/AWBotNest-Plugins/main/plugins/icons/family_relay.png"
+  },
   "myname": {
     "name": "自动报时昵称",
     "version": "1.1.3",
