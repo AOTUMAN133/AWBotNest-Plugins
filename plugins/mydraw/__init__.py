@@ -16,7 +16,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.1.3",
+    "version": "2.2.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -103,7 +103,7 @@ async def _get_client(ctx) -> object | None:
 
 
 async def setup(ctx):
-    ctx.log.info("豆包多模态 v2.1.0 已加载")
+    ctx.log.info("豆包多模态 v2.2.0 已加载")
 
     # 恢复登录状态
     session_path = ctx.data_dir / _SESSION_FILE
@@ -238,16 +238,36 @@ async def setup(ctx):
             return
 
         if text.startswith(".st "):
-            await _handle_image(ctx, client, message, text[4:])
+            prompt = text[4:].strip()
+            if message.reply_to_message:
+                await _handle_image_reply(ctx, client, message, prompt)
+            else:
+                await _handle_image(ctx, client, message, prompt)
+        elif text == ".st":
+            if message.reply_to_message:
+                await _handle_image_reply(ctx, client, message, "")
+            else:
+                # 无回复直接 .st，提示用法
+                msg = await message.reply("🎨 请回复文字或图片后使用 <code>.st</code>\n或直接 <code>.st 提示词</code> 文生图")
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                await asyncio.sleep(10)
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
         elif text.startswith(".ssp "):
             await _handle_video(ctx, client, message, text[5:])
         elif text.startswith(".sy "):
             await _handle_music(ctx, client, message, text[5:])
         elif text == ".st help":
             help_text = (
-                "🎨 <b>豆包多模态 v2.1.1</b>\n\n"
+                "🎨 <b>豆包多模态 v2.2.0</b>\n\n"
                 "📝 <b>生成图片</b>\n"
-                "  <code>.st 一只柴犬</code> — 文生图\n\n"
+                "  <code>.st 一只柴犬</code> — 文生图\n"
+                "  <code>.st</code> 回复文字 — 用被回复文字作提示词\n\n"
                 "🎬 <b>生成视频</b>\n"
                 "  <code>.ssp 一只柴犬奔跑</code> — 文生视频（⚠️ 暂不可用）\n\n"
                 "🎵 <b>生成音乐</b>\n"
@@ -275,8 +295,9 @@ async def setup(ctx):
                 "   打开插件配置页 → 点「扫码登录豆包」\n"
                 "   用豆包 App 扫码即可\n\n"
                 "2️⃣ <b>生成图片</b>\n"
-                "   <code>.st 一只柴犬</code>\n"
-                "   <code>.st 一只猫 --ratio 16:9</code>\n\n"
+                "   <code>.st 一只柴犬</code> — 文生图\n"
+                "   <code>.st 一只猫 --ratio 16:9</code> — 自定义比例\n"
+                "   <code>.st</code> 回复文字 — 用被回复文字文生图\n\n"
                 "3️⃣ <b>生成音乐</b>\n"
                 "   <code>.sy 一首轻快的歌</code>\n"
                 "   <code>.sy 星空之歌 --lyric 星光洒满夜空</code>\n"
@@ -301,7 +322,7 @@ async def setup(ctx):
             except Exception:
                 pass
 
-    ctx.log.info("豆包多模态 v2.1.0 已就绪")
+    ctx.log.info("豆包多模态 v2.2.0 已就绪")
 
 
 async def _handle_image(ctx, client, message, prompt):
@@ -375,6 +396,32 @@ async def _handle_image(ctx, client, message, prompt):
         import traceback
         ctx.log.error("图片生成异常: %s", traceback.format_exc())
         await wait.edit_text(f"❌ 生成失败: {e}")
+
+
+async def _handle_image_reply(ctx, client, message, prompt):
+    """处理回复消息的 .st 命令。
+    
+    回复文字消息 → 用被回复文字作提示词，文生图
+    回复图片消息 → 无操作（豆包不支持图生图）
+    """
+    reply = message.reply_to_message
+    if not reply:
+        await _handle_image(ctx, client, message, prompt)
+        return
+
+    reply_text = (reply.text or reply.caption or "").strip()
+
+    # 回复文字消息 → 文生图
+    if reply_text and not reply.photo and not reply.document:
+        final_prompt = prompt if prompt else reply_text
+        await _handle_image(ctx, client, message, final_prompt)
+        return
+
+    # 回复图片消息 → 无操作，静默删除命令消息
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 
 async def _handle_video(ctx, client, message, prompt):
