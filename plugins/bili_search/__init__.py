@@ -7,7 +7,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -17,7 +16,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.5",
+    "version": "1.2.6",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -227,8 +226,10 @@ async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
 
 def _youtube_search(keyword: str, count: int = 5) -> list:
     try:
+        # 使用 yt-dlp 二进制而非 python -m yt_dlp（避免模块不可用问题）
+        yt_bin = os.environ.get("YT_DLP_PATH", "yt-dlp")
         cmd = [
-            sys.executable, "-m", "yt_dlp",
+            yt_bin,
             f"ytsearch{count}:{keyword}",
             "--dump-json",
             "--no-download",
@@ -256,6 +257,18 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
         return results
     except Exception:
         return []
+
+
+def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -> subprocess.CompletedProcess:
+    """使用 yt-dlp 二进制下载视频/音频"""
+    yt_bin = os.environ.get("YT_DLP_PATH", "yt-dlp")
+    if is_audio:
+        cmd = [yt_bin, "-x", "--audio-format", "mp3", "--audio-quality", "0",
+               "-o", output_path, "--no-playlist", "--no-warnings", video_url]
+    else:
+        cmd = [yt_bin, "-f", "best[ext=mp4]/best", "-o", output_path,
+               "--no-playlist", "--no-warnings", video_url]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
 
 # ═══════════════════════════════════════════════
@@ -571,17 +584,9 @@ async def setup(ctx):
 
         try:
             if is_audio:
-                r = subprocess.run(
-                    [sys.executable, "-m", "yt_dlp", "-x", "--audio-format", "mp3", "--audio-quality", "0",
-                     "-o", str(dl_path), "--no-playlist", "--no-warnings", video_url],
-                    capture_output=True, text=True, timeout=600,
-                )
+                r = _yt_dlp_download(video_url, str(dl_path), is_audio=True)
             else:
-                r = subprocess.run(
-                    [sys.executable, "-m", "yt_dlp", "-f", "best[ext=mp4]/best", "-o", str(dl_path),
-                     "--no-playlist", "--no-warnings", video_url],
-                    capture_output=True, text=True, timeout=600,
-                )
+                r = _yt_dlp_download(video_url, str(dl_path), is_audio=False)
         except Exception as e:
             await msg.edit(f"❌ 下载异常: {e}")
             return
