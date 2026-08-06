@@ -3,10 +3,8 @@
 
 import asyncio
 import httpx
-import json
 import os
 import re
-import subprocess
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -16,7 +14,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.6",
+    "version": "1.2.7",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -226,49 +224,66 @@ async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
 
 def _youtube_search(keyword: str, count: int = 5) -> list:
     try:
-        # 使用 yt-dlp 二进制而非 python -m yt_dlp（避免模块不可用问题）
-        yt_bin = os.environ.get("YT_DLP_PATH", "yt-dlp")
-        cmd = [
-            yt_bin,
-            f"ytsearch{count}:{keyword}",
-            "--dump-json",
-            "--no-download",
-            "--flat-playlist",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            return []
-        results = []
-        for line in result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
+        # 使用 yt-dlp 的 Python API 直接调用（避免子进程/PATH问题）
+        import yt_dlp
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "skip_download": True,
+            "playlistend": count,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{count}:{keyword}", download=False)
+            if not info or not info.get("entries"):
+                return []
+            results = []
+            for entry in info["entries"][:count]:
+                if not entry:
+                    continue
                 results.append({
-                    "title": data.get("title", ""),
-                    "id": data.get("id", ""),
-                    "duration": data.get("duration") or 0,
-                    "channel": data.get("channel", "") or data.get("uploader", ""),
-                    "view_count": data.get("view_count", 0),
-                    "url": f"https://www.youtube.com/watch?v={data.get('id', '')}",
+                    "title": entry.get("title", ""),
+                    "id": entry.get("id", ""),
+                    "duration": entry.get("duration") or 0,
+                    "channel": entry.get("channel", "") or entry.get("uploader", ""),
+                    "view_count": entry.get("view_count", 0),
+                    "url": f"https://www.youtube.com/watch?v={entry.get('id', '')}",
                 })
-            except json.JSONDecodeError:
-                continue
-        return results
+            return results
     except Exception:
         return []
 
 
-def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -> subprocess.CompletedProcess:
-    """使用 yt-dlp 二进制下载视频/音频"""
-    yt_bin = os.environ.get("YT_DLP_PATH", "yt-dlp")
-    if is_audio:
-        cmd = [yt_bin, "-x", "--audio-format", "mp3", "--audio-quality", "0",
-               "-o", output_path, "--no-playlist", "--no-warnings", video_url]
-    else:
-        cmd = [yt_bin, "-f", "best[ext=mp4]/best", "-o", output_path,
-               "--no-playlist", "--no-warnings", video_url]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -> bool:
+    """使用 yt-dlp 下载视频/音频，成功返回 True"""
+    try:
+        import yt_dlp
+        if is_audio:
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "0",
+                }],
+                "outtmpl": str(output_path).rsplit(".", 1)[0] + ".%(ext)s",
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+            }
+        else:
+            ydl_opts = {
+                "format": "best[ext=mp4]/best",
+                "outtmpl": str(output_path),
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+            }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+        return True
+    except Exception:
+        return False
 
 
 # ═══════════════════════════════════════════════
@@ -584,16 +599,15 @@ async def setup(ctx):
 
         try:
             if is_audio:
-                r = _yt_dlp_download(video_url, str(dl_path), is_audio=True)
+                success = _yt_dlp_download(video_url, str(dl_path), is_audio=True)
             else:
-                r = _yt_dlp_download(video_url, str(dl_path), is_audio=False)
+                success = _yt_dlp_download(video_url, str(dl_path), is_audio=False)
         except Exception as e:
             await msg.edit(f"❌ 下载异常: {e}")
             return
 
-        if r.returncode != 0:
-            err = r.stderr.strip()[:200] or "该内容无可用视频格式（可能是纯音频）"
-            await msg.edit(f"❌ 下载失败: {err}")
+        if not success:
+            await msg.edit(f"❌ 下载失败，请检查视频链接是否有效")
             return
 
         if not dl_path.exists():
