@@ -18,7 +18,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "115签到",
     "id": "my115sign",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg",
     "author": "凹凸曼",
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
@@ -270,6 +270,12 @@ async def _do_sign(ctx, cookie: str) -> str:
         message = pick_message(result)
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
 
+        # 先判断是否已签到（115 API 对重复签到也可能返回 state=True）
+        if any(x in str(message) for x in ("已签到", "已经签到", "重复签到", "signed")):
+            msg = f"⚠️ user_id={user_id} 今日已签到 ({message})"
+            _add_log(ctx, msg)
+            return msg
+
         if state in (True, 1) or code in (0, 200):
             continuous = (data.get("continuous_day") or data.get("continuous")
                           or data.get("sign_count") or data.get("days"))
@@ -282,11 +288,6 @@ async def _do_sign(ctx, cookie: str) -> str:
                 extra.append(f"奖励={points}")
             suffix = f" ({', '.join(extra)})" if extra else ""
             msg = f"✅ user_id={user_id} 签到成功{suffix}"
-            _add_log(ctx, msg)
-            return msg
-
-        if any(x in message for x in ("已签到", "已经签到", "重复签到", "signed")):
-            msg = f"⚠️ user_id={user_id} 今日已签到 ({message})"
             _add_log(ctx, msg)
             return msg
 
