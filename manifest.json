@@ -133,5 +133,13 @@
     "description": "AI 图片生成，免费免 Key（基于 pollinations.ai）。支持 .st 提示词 生成图片",
     "path": "plugins/mydraw/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg"
+  },
+  "my115sign": {
+    "name": "115签到",
+    "version": "1.2.0",
+    "author": "凹凸曼",
+    "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
+    "path": "plugins/my115sign/",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg"
   }
 }
