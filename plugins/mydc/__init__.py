@@ -11,7 +11,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
-    "version": "1.2.6",
+    "version": "1.2.7",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydc_v2.svg",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
@@ -233,20 +233,21 @@ async def setup(ctx):
         updatable = [c for c in filtered if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         if not updatable:
             return {"ok": True, "message": "没有需要更新的容器"}
-        updated = 0
+        updated_names = []
         for c in updatable:
             cid = c.get("id") or c.get("containerId") or c.get("name")
             if not cid:
                 continue
             r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
             if r:
-                updated += 1
+                updated_names.append(c.get("name", cid))
             await asyncio.sleep(2)
-        if ctx.config.get("delete_images", True) and updated > 0:
+        if ctx.config.get("delete_images", True) and updated_names:
             await _clean_images(ctx)
-        msg = f"更新完成: {updated}/{len(updatable)} 个容器"
+        msg = f"更新完成: {len(updated_names)}/{len(updatable)} 个容器"
         if ctx.config.get("auto_update_notify", True):
-            await ctx.notify(f"🔄 {msg}")
+            detail = "\n".join(f"  • {n}" for n in updated_names) if updated_names else "  (无)"
+            await ctx.notify(f"🔄 {msg}\n{detail}", level="success", category="DC助手")
         return {"ok": True, "message": msg}
 
     @ctx.action("backup_now")
@@ -294,18 +295,19 @@ async def setup(ctx):
         filtered = [c for c in containers if not include or c.get("name", "") in include]
 
         # 立即更新：每分钟检查，发现可更新容器就执行
-        imm_updated = 0
+        imm_names = []
         for c in filtered:
             if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
                     r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
-                        imm_updated += 1
+                        imm_names.append(c.get("name", cid))
                         ctx.log.info(f"立即更新: {c.get('name', cid)}")
                     await asyncio.sleep(2)
-        if imm_updated > 0 and ctx.config.get("auto_update_notify", True):
-            await ctx.notify(f"🔄 立即更新: {imm_updated} 个容器")
+        if imm_names and ctx.config.get("auto_update_notify", True):
+            detail = "\n".join(f"  • {n}" for n in imm_names)
+            await ctx.notify(f"🔄 立即更新: {len(imm_names)} 个容器\n{detail}", level="success", category="DC助手")
 
         # 定时更新：只在cron时间点执行
         now = datetime.now(TZ)
@@ -317,18 +319,19 @@ async def setup(ctx):
                     scheduled = [c for c in filtered if c.get("name", "") not in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update"))]
                     if not scheduled:
                         return
-                    updated = 0
+                    sched_names = []
                     for c in scheduled:
                         cid = c.get("id") or c.get("containerId") or c.get("name")
                         if cid:
                             r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                             if r:
-                                updated += 1
+                                sched_names.append(c.get("name", cid))
                             await asyncio.sleep(2)
-                    if ctx.config.get("delete_images", True) and updated > 0:
+                    if ctx.config.get("delete_images", True) and sched_names:
                         await _clean_images(ctx)
                     if ctx.config.get("auto_update_notify", True):
-                        await ctx.notify(f"🔄 定时更新: {updated} 个容器")
+                        detail = "\n".join(f"  • {n}" for n in sched_names) if sched_names else "  (无)"
+                        await ctx.notify(f"🔄 定时更新: {len(sched_names)} 个容器\n{detail}", level="success", category="DC助手")
             except Exception:
                 pass
 
