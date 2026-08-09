@@ -18,12 +18,13 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "115签到",
     "id": "my115sign",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg",
     "author": "凹凸曼",
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
     "scope": "user",
     "default_enabled": True,
+    "render_mode": "vue",
     "requirements": ["httpx"],
     "config_schema": {
         "cookies": {
@@ -132,10 +133,25 @@ QR_STATUS_LABELS = {
 }
 
 SCANNED_COOKIES_KV_KEY = "my115sign_scanned_cookies"
+LOGS_KV_KEY = "my115sign_logs"
 
 
 def _now() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _add_log(ctx, msg: str):
+    """记录运行日志到 KV（供前端 /logs 读取）"""
+    ctx.log.info("[115签到] %s", msg)
+    try:
+        logs = ctx.kv.get(LOGS_KV_KEY, []) or []
+        if isinstance(logs, str):
+            logs = json.loads(logs) if logs else []
+        entry = {"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg}
+        logs.append(entry)
+        ctx.kv.set(LOGS_KV_KEY, logs[-100:])
+    except Exception:
+        pass
 
 
 def parse_cookie_map(cookie: str) -> dict:
@@ -227,7 +243,7 @@ async def _do_sign(ctx, cookie: str) -> str:
         payload = build_sign_payload(user_id)
     except Exception as e:
         msg = f"❌ 参数准备失败: {e}"
-        ctx.log.info("[115签到] %s", msg)
+        _add_log(ctx, msg)
         return msg
 
     headers = {
@@ -244,10 +260,10 @@ async def _do_sign(ctx, cookie: str) -> str:
         try:
             result = response.json()
         except Exception:
-            ctx.log.info("[115签到] 解析 JSON 失败: %s", response.text[:200] or ("HTTP %s" % response.status_code))
+            _add_log(ctx, f"user_id={user_id} 解析 JSON 失败")
             return f"❌ user_id={user_id} 解析 JSON 失败"
 
-        ctx.log.info("[115签到] 返回: %s", json.dumps(result, ensure_ascii=False)[:300])
+        _add_log(ctx, f"返回: {json.dumps(result, ensure_ascii=False)[:300]}")
 
         state = result.get("state")
         code = result.get("code")
@@ -266,22 +282,22 @@ async def _do_sign(ctx, cookie: str) -> str:
                 extra.append(f"奖励={points}")
             suffix = f" ({', '.join(extra)})" if extra else ""
             msg = f"✅ user_id={user_id} 签到成功{suffix}"
-            ctx.log.info("[115签到] %s", msg)
+            _add_log(ctx, msg)
             return msg
 
         if any(x in message for x in ("已签到", "已经签到", "重复签到", "signed")):
             msg = f"⚠️ user_id={user_id} 今日已签到 ({message})"
-            ctx.log.info("[115签到] %s", msg)
+            _add_log(ctx, msg)
             return msg
 
         msg = f"⚠️ user_id={user_id} 签到失败 ({message})"
-        ctx.log.info("[115签到] %s", msg)
+        _add_log(ctx, msg)
         return msg
 
     except Exception as e:
         err_msg = str(e) or f"{type(e).__name__}"
         msg = f"❌ user_id={user_id} 网络请求异常: {err_msg}"
-        ctx.log.info("[115签到] %s", msg)
+        _add_log(ctx, msg)
         return msg
 
 
@@ -348,16 +364,17 @@ async def _do_sign_all(ctx, source="手动"):
     if _run_lock is None:
         _run_lock = asyncio.Lock()
     if _run_lock.locked():
-        ctx.log.info("[115签到] 已有签到任务在运行，跳过本次")
+        _add_log(ctx, "已有签到任务在运行，跳过本次")
         return {"ok": False, "message": "已有签到任务在运行，请稍候"}
 
     async with _run_lock:
         cookies = _load_cookies(ctx)
         if not cookies:
             msg = "未配置115 Cookie，请使用 .115login 扫码登录或手动配置 Cookie"
-            ctx.log.info("[115签到] %s", msg)
+            _add_log(ctx, msg)
             return {"ok": False, "message": msg}
 
+        _add_log(ctx, f"开始{source}签到，共 {len(cookies)} 个账号")
         results = []
         for index, cookie in enumerate(cookies, start=1):
             line = await _do_sign(ctx, cookie)
@@ -371,18 +388,20 @@ async def _do_sign_all(ctx, source="手动"):
         title = f"115签到({source})：成功{ok}/已签{signed}/失败{fail}"
         content = "\n".join(results)
 
+        # WxPusher 推送（受 notify_on_sign 控制）
         notify_enabled = ctx.config.get("notify_on_sign", False)
         notified = False
         if notify_enabled:
             notified = await _notify(ctx, title, content)
 
-        # 平台内通知（TG/飞书）
+        # 平台内通知（TG/飞书）- 无条件调用，不受 notify_on_sign 控制
         lines = []
         if ok: lines.append(f"✅ 成功 {ok} 个")
         if signed: lines.append(f"⚠️ 已签到 {signed} 个")
         if fail: lines.append(f"❌ 失败 {fail} 个")
         level = "error" if ok == 0 and fail > 0 else ("warning" if fail > 0 else "success")
         await ctx.notify(f"📋 {title}\n" + "\n".join(results), level=level, category="115签到")
+        _add_log(ctx, title)
 
         return {"ok": True, "message": title, "results": results, "wxpusher": notified}
 
@@ -734,7 +753,7 @@ async def setup(ctx):
     )
     ctx.log.info("[115签到] 已注册每日签到任务: %02d:%02d", checkin_hour, checkin_minute)
 
-    # 立即签到 action
+    # 立即签到 action（旧式 config_schema 按钮）
     @ctx.action("sign_now")
     async def _api_sign_now(req=None):
         return await _do_sign_all(ctx, "手动")
@@ -743,6 +762,67 @@ async def setup(ctx):
     @ctx.action("scan_now")
     async def _api_scan_now(req=None):
         return {"ok": False, "message": "扫码登录请使用命令 .115login 在聊天中操作"}
+
+    # ── Vue 前端 API ──
+
+    @ctx.on_api("/status", methods=["GET"])
+    async def _api_status(req):
+        """返回 Cookie 数量、扫码账号列表(UID)、签到时间配置"""
+        all_cookies = _load_cookies(ctx)
+        scanned = _load_scanned_cookies(ctx)
+        accounts = []
+        for c in scanned:
+            uid = parse_cookie_map(c).get("UID", "")
+            accounts.append({"uid": uid})
+        return {
+            "ok": True,
+            "cookie_count": len(all_cookies),
+            "scanned_count": len(scanned),
+            "accounts": accounts,
+            "checkin_hour": int(ctx.config.get("checkin_hour", 9) or 9),
+            "checkin_minute": int(ctx.config.get("checkin_minute", 0) or 0),
+        }
+
+    @ctx.on_api("/sign_now", methods=["POST"])
+    async def _api_sign_now_vue(req):
+        """立即签到（Vue 前端调用）"""
+        return await _do_sign_all(ctx, "手动")
+
+    @ctx.on_api("/cookies", methods=["GET"])
+    async def _api_get_cookies(req):
+        """获取扫码 Cookie 列表（仅返回 UID，不泄露完整 Cookie）"""
+        scanned = _load_scanned_cookies(ctx)
+        result = []
+        for c in scanned:
+            uid = parse_cookie_map(c).get("UID", "")
+            result.append({"uid": uid, "cookie": c})
+        return {"ok": True, "cookies": result}
+
+    @ctx.on_api("/delete_cookie", methods=["POST"])
+    async def _api_delete_cookie(req):
+        """删除指定扫码 Cookie (body: {uid: "xxx"})"""
+        body = req.json if hasattr(req, "json") else {}
+        target_uid = body.get("uid", "") if isinstance(body, dict) else ""
+        if not target_uid:
+            return {"ok": False, "message": "缺少 uid 参数"}
+        scanned = _load_scanned_cookies(ctx)
+        filtered = [c for c in scanned if parse_cookie_map(c).get("UID", "") != target_uid]
+        if len(filtered) == len(scanned):
+            return {"ok": False, "message": f"未找到 UID={target_uid} 的 Cookie"}
+        _save_scanned_cookies(ctx, filtered)
+        _add_log(ctx, f"已删除扫码账号 UID={target_uid}")
+        return {"ok": True, "message": f"已删除 UID={target_uid}", "count": len(filtered)}
+
+    @ctx.on_api("/logs", methods=["GET"])
+    async def _api_get_logs(req):
+        """获取运行日志"""
+        try:
+            logs = ctx.kv.get(LOGS_KV_KEY, []) or []
+            if isinstance(logs, str):
+                logs = json.loads(logs) if logs else []
+        except Exception:
+            logs = []
+        return {"ok": True, "logs": logs}
 
 
 async def teardown(ctx):

@@ -136,7 +136,7 @@
   },
   "my115sign": {
     "name": "115签到",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "author": "凹凸曼",
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
     "path": "plugins/my115sign/",
