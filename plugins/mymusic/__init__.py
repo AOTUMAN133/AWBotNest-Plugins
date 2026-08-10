@@ -37,7 +37,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -198,7 +198,7 @@ async def setup(ctx):
         if not results:
             await msg.edit(f"❌ YouTube 未找到相关结果")
             return
-        pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_music:{message.chat.id}"
         ctx.kv.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_YOUTUBE})
         await msg.edit(_build_result_page(results, 0, keyword))
 
@@ -252,7 +252,7 @@ async def setup(ctx):
         if not results:
             await msg.edit(f"❌ 未找到相关结果")
             return
-        pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_music:{message.chat.id}"
         ctx.kv.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_AGGREGATE})
         await msg.edit(_build_result_page(results, 0, keyword))
 
@@ -389,7 +389,7 @@ async def setup(ctx):
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
     async def select_handler(client, message):
         text = (message.text or "").strip().lower()
-        pending_key = f"pending_music:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_music:{message.chat.id}"
         pending = ctx.kv.get(pending_key, None)
         if not pending:
             return
