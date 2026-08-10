@@ -37,7 +37,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.1.3",
+    "version": "2.1.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -103,6 +103,15 @@ def _yt_path() -> str:
     return "yt-dlp"
 
 
+# 检查 yt-dlp Python 模块是否可用（优先用 Python API，不依赖二进制路径）
+HAS_YTDLP = False
+try:
+    import yt_dlp
+    HAS_YTDLP = True
+except Exception:
+    pass
+
+
 # 确保模块路径正确（平台通过 importlib 加载，可能不添加插件目录到 sys.path）
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
@@ -113,13 +122,17 @@ from _musicdl_engine import search as _musicdl_search_sync, get_url as _musicdl_
 async def setup(ctx):
     ctx.log.info("音乐搜索下载 v2.0.0 已加载")
 
-    # 检查 yt-dlp
-    yt_path = _yt_path()
-    try:
-        r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
-        ctx.log.info(f"yt-dlp 版本: {r.stdout.strip()}")
-    except Exception:
-        ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
+    # 检查 yt-dlp（优先 Python 模块，兜底二进制）
+    global HAS_YTDLP
+    if HAS_YTDLP:
+        ctx.log.info("yt-dlp Python 模块可用，YouTube 搜索可用")
+    else:
+        yt_path = _yt_path()
+        try:
+            r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
+            ctx.log.info(f"yt-dlp 二进制可用: {r.stdout.strip()}")
+        except Exception:
+            ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
 
     # 检查 musicdl 引擎状态
     if HAS_MUSICDL:
@@ -170,31 +183,66 @@ async def setup(ctx):
             await message.delete()
         except Exception:
             pass
-        try:
-            result = subprocess.run(
-                [_yt_path(), "--flat-playlist", "--dump-json", "--no-warnings", f"ytsearch{_SEARCH_COUNT}:{keyword}"],
-                capture_output=True, text=True, timeout=30,
-            )
-        except Exception as e:
-            await msg.edit(f"❌ 搜索失败: {e}")
-            return
+
         results = []
-        for line in result.stdout.strip().split("\n"):
-            if not line.strip():
-                continue
+        if HAS_YTDLP:
+            # 优先用 Python API（不依赖二进制路径）
+            def _search():
+                ydl_opts = {
+                    "quiet": True, "no_warnings": True,
+                    "extract_flat": "in_playlist", "skip_download": True,
+                    "playlistend": _SEARCH_COUNT,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(f"ytsearch{_SEARCH_COUNT}:{keyword}", download=False)
+                if not info or not info.get("entries"):
+                    return []
+                out = []
+                for entry in info["entries"][:_SEARCH_COUNT]:
+                    if not entry:
+                        continue
+                    out.append({
+                        "title": entry.get("title", "未知"),
+                        "url": f"https://www.youtube.com/watch?v={entry.get('id', '')}",
+                        "duration": entry.get("duration") or 0,
+                        "uploader": entry.get("channel", "") or entry.get("uploader", "未知"),
+                        "id": entry.get("id", ""),
+                        "_source": SOURCE_YOUTUBE,
+                        "_source_name": "YouTube",
+                    })
+                return out
             try:
-                data = json.loads(line)
-                results.append({
-                    "title": data.get("title", "未知"),
-                    "url": f"https://www.youtube.com/watch?v={data.get('id', '')}",
-                    "duration": data.get("duration", 0),
-                    "uploader": data.get("uploader", "未知"),
-                    "id": data.get("id", ""),
-                    "_source": SOURCE_YOUTUBE,
-                    "_source_name": "YouTube",
-                })
-            except json.JSONDecodeError:
-                continue
+                results = await asyncio.get_event_loop().run_in_executor(None, _search)
+            except Exception as e:
+                await msg.edit(f"❌ YouTube 搜索失败: {e}")
+                return
+        else:
+            # 兜底用二进制
+            try:
+                result = subprocess.run(
+                    [_yt_path(), "--flat-playlist", "--dump-json", "--no-warnings", f"ytsearch{_SEARCH_COUNT}:{keyword}"],
+                    capture_output=True, text=True, timeout=30,
+                )
+            except Exception as e:
+                await msg.edit(f"❌ 搜索失败: {e}")
+                return
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    results.append({
+                        "title": data.get("title", "未知"),
+                        "url": f"https://www.youtube.com/watch?v={data.get('id', '')}",
+                        "duration": data.get("duration", 0),
+                        "uploader": data.get("uploader", "未知"),
+                        "id": data.get("id", ""),
+                        "_source": SOURCE_YOUTUBE,
+                        "_source_name": "YouTube",
+                    })
+                except json.JSONDecodeError:
+                    continue
+
         if not results:
             await msg.edit(f"❌ YouTube 未找到相关结果")
             return
@@ -207,14 +255,38 @@ async def setup(ctx):
         wait = await message.reply(f"⏳ 正在下载: {title}")
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         template = str(_DOWNLOAD_DIR / "%(title)s.%(ext)s")
-        try:
-            if shutil.which("ffmpeg"):
-                subprocess.run([_yt_path(), "-x", "--audio-format", "mp3", "--audio-quality", "0", "-o", template, "--no-playlist", "--no-warnings", url], capture_output=True, text=True, timeout=300)
-            else:
-                subprocess.run([_yt_path(), "-f", "bestaudio[ext=m4a]/bestaudio", "-o", template, "--no-playlist", "--no-warnings", url], capture_output=True, text=True, timeout=300)
-        except Exception as e:
-            await wait.edit_text(f"❌ 下载异常: {e}")
-            return
+
+        if HAS_YTDLP:
+            # 优先用 Python API
+            def _download():
+                if shutil.which("ffmpeg"):
+                    ydl_opts = {
+                        "format": "bestaudio/best",
+                        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "0"}],
+                        "outtmpl": template, "quiet": True, "no_warnings": True, "noplaylist": True,
+                    }
+                else:
+                    ydl_opts = {
+                        "format": "bestaudio[ext=m4a]/bestaudio",
+                        "outtmpl": template, "quiet": True, "no_warnings": True, "noplaylist": True,
+                    }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, _download)
+            except Exception as e:
+                await wait.edit_text(f"❌ 下载异常: {e}")
+                return
+        else:
+            # 兜底用二进制
+            try:
+                if shutil.which("ffmpeg"):
+                    subprocess.run([_yt_path(), "-x", "--audio-format", "mp3", "--audio-quality", "0", "-o", template, "--no-playlist", "--no-warnings", url], capture_output=True, text=True, timeout=300)
+                else:
+                    subprocess.run([_yt_path(), "-f", "bestaudio[ext=m4a]/bestaudio", "-o", template, "--no-playlist", "--no-warnings", url], capture_output=True, text=True, timeout=300)
+            except Exception as e:
+                await wait.edit_text(f"❌ 下载异常: {e}")
+                return
         audio_files = sorted(_DOWNLOAD_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
         audio_files = [f for f in audio_files if f.suffix in (".mp3", ".webm", ".m4a", ".opus")]
         if not audio_files:
