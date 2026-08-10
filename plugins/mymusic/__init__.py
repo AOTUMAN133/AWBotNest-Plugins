@@ -37,7 +37,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -241,7 +241,7 @@ async def setup(ctx):
         try:
             results = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, _musicdl_search_sync, keyword, sources),
-                timeout=120
+                timeout=30
             )
         except asyncio.TimeoutError:
             await msg.edit(f"❌ 搜索超时（部分音源响应慢，请重试）")

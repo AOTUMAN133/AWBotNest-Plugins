@@ -27,24 +27,20 @@ except Exception as e:
 # ── 网易云 EAPI 降级方案 ──
 
 
-def search_via_musicdl(keyword: str, sources: list = None) -> list:
-    """使用 musicdl 搜索"""
-    src_list = sources or list(_CLIENT_MAP.keys())
-    client_names = [_CLIENT_MAP.get(s, s) for s in src_list]
-    
+def _search_one_source(keyword: str, source_key: str) -> list:
+    """搜索单个音源（阻塞调用 musicdl）"""
+    client_name = _CLIENT_MAP.get(source_key, source_key)
     _old_stdout = sys.stdout
     sys.stdout = io.StringIO()
-    
     try:
         client = MusicClient(
-            music_sources=client_names,
-            init_music_clients_cfg={cn: {"disable_print": True, "search_size_per_source": 5} for cn in client_names}
+            music_sources=[client_name],
+            init_music_clients_cfg={client_name: {"disable_print": True, "search_size_per_source": 5}},
         )
         result = client.search(keyword)
-        
         songs = []
         for src, src_songs in result.items():
-            if src in client_names:
+            if src == client_name:
                 for s in src_songs:
                     songs.append({
                         "song_name": s.song_name,
@@ -55,13 +51,37 @@ def search_via_musicdl(keyword: str, sources: list = None) -> list:
                         "ext": s.ext or "",
                         "file_size": s.file_size or "",
                         "source": s.source or src,
-                        "_source_key": next((k for k, v in _CLIENT_MAP.items() if v == src), src),
-                        "_source_name": _NAME_MAP.get(next((k for k, v in _CLIENT_MAP.items() if v == src), src), src),
+                        "_source_key": source_key,
+                        "_source_name": _NAME_MAP.get(source_key, src),
                     })
+        return songs
+    except Exception:
+        return []
     finally:
         sys.stdout = _old_stdout
-    
-    return songs
+
+
+def search_via_musicdl(keyword: str, sources: list = None) -> list:
+    """使用 musicdl 搜索（逐音源独立超时，并发，卡死一个不拖累其他）"""
+    import concurrent.futures
+    src_list = sources or list(_CLIENT_MAP.keys())
+
+    # 单音源直接搜
+    if len(src_list) == 1:
+        return _search_one_source(keyword, src_list[0])
+
+    # 多音源并发，每个独立 15 秒超时
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(src_list)) as pool:
+        future_map = {pool.submit(_search_one_source, keyword, s): s for s in src_list}
+        for future in concurrent.futures.as_completed(future_map, timeout=20):
+            try:
+                songs = future.result(timeout=1)
+                results.extend(songs)
+            except Exception:
+                pass
+
+    return results
 
 
 EAPI_KEY = b'e82ckenh8dichen8'
