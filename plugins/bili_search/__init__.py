@@ -14,7 +14,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.7",
+    "version": "1.2.8",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -348,7 +348,7 @@ async def setup(ctx):
         else:
             lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_select:{message.chat.id}"
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── YouTube搜索 ──
@@ -375,7 +375,7 @@ async def setup(ctx):
         else:
             lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_select:{message.chat.id}"
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── 聚合搜索 ──
@@ -414,17 +414,17 @@ async def setup(ctx):
         lines.append(f"\n回复序号选择下载（30秒内）")
         lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_select:{message.chat.id}"
         ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── 处理用户选择回复 ──
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
     async def _select_handler(client, message):
         text = (message.text or "").strip().lower()
-        pending_key = f"pending_select:{message.chat.id}:{message.from_user.id}"
+        pending_key = f"pending_select:{message.chat.id}"
         pending = ctx.kv.get(pending_key, None)
         if not pending:
-            pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
+            pending_key = f"pending_oversize:{message.chat.id}"
             pending = ctx.kv.get(pending_key, None)
             if pending:
                 if not text.isdigit():
@@ -562,7 +562,7 @@ async def setup(ctx):
                     f"3 - 发送到收藏夹\n"
                     f"0 - 取消"
                 )
-                pending_key = f"pending_oversize:{message.chat.id}:{message.from_user.id}"
+                pending_key = f"pending_oversize:{message.chat.id}"
                 ctx.kv.set(pending_key, {"bvid": bvid, "url": urls[0]["url"], "title": title, "time": time.time(), "msg_id": msg.id})
                 return
         await msg.edit(f"⏳ 正在下载 {title}...")
