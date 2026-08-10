@@ -70,17 +70,21 @@ def search_via_musicdl(keyword: str, sources: list = None) -> list:
     if len(src_list) == 1:
         return _search_one_source(keyword, src_list[0])
 
-    # 多音源并发，每个独立 15 秒超时
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(src_list)) as pool:
-        future_map = {pool.submit(_search_one_source, keyword, s): s for s in src_list}
-        for future in concurrent.futures.as_completed(future_map, timeout=20):
-            try:
-                songs = future.result(timeout=1)
-                results.extend(songs)
-            except Exception:
-                pass
+    # 多音源并发，15 秒整体超时，超时的音源直接放弃
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(src_list))
+    future_map = {pool.submit(_search_one_source, keyword, s): s for s in src_list}
+    done, _not_done = concurrent.futures.wait(future_map, timeout=15)
 
+    results = []
+    for f in done:
+        try:
+            songs = f.result()
+            results.extend(songs)
+        except Exception:
+            pass
+
+    # 不等未完成的线程，直接 shutdown(wait=False) 放弃
+    pool.shutdown(wait=False)
     return results
 
 
