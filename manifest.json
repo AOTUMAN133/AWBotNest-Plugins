@@ -57,7 +57,7 @@
   },
   "mydc": {
     "name": "DC助手",
-    "version": "1.2.7",
+    "version": "1.2.8",
     "author": "凹凸曼",
     "description": "配合DockerCopilot实现容器自动更新、清理、备份",
     "path": "plugins/mydc/",
