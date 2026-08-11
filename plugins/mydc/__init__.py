@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import time
 import httpx
 from datetime import datetime, timezone, timedelta
 
@@ -296,14 +297,31 @@ async def setup(ctx):
 
         # 立即更新：每分钟检查，发现可更新容器就执行
         imm_names = []
+        now = time.time()
+        updating = ctx.kv.get("mydc_updating", {})  # {name: timestamp}
+        # 清理超过5分钟的过期标记（防止意外卡死）
+        stale = [k for k, v in updating.items() if now - v > 300]
+        for k in stale:
+            updating.pop(k, None)
+
         for c in filtered:
-            if c.get("name", "") in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
+            name = c.get("name", "")
+            if name in updating:
+                continue  # 正在更新中，跳过
+            if name in imm and (c.get("haveUpdate") or c.get("updatable") or c.get("can_update")):
                 cid = c.get("id") or c.get("containerId") or c.get("name")
                 if cid:
+                    # 先标记为正在更新
+                    updating[name] = now
+                    ctx.kv.set("mydc_updating", updating)
                     r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
-                        imm_names.append(c.get("name", cid))
-                        ctx.log.info(f"立即更新: {c.get('name', cid)}")
+                        imm_names.append(name)
+                        ctx.log.info(f"立即更新: {name}")
+                    else:
+                        # 更新失败，移除标记允许重试
+                        updating.pop(name, None)
+                        ctx.kv.set("mydc_updating", updating)
                     await asyncio.sleep(2)
         if imm_names and ctx.config.get("auto_update_notify", True):
             detail = "\n".join(f"  • {n}" for n in imm_names)
