@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.7.2",
+    "version": "3.7.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -63,7 +63,7 @@ _run_lock = None
 
 def _log_debug(ctx, msg: str):
     ctx.log.info("[影巢签到] %s", msg)
-    logs = ctx.kv.get(_KV_DEBUG, [])
+    logs = ctx.kv.get(_KV_DEBUG, []) or []
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
     _log_file(msg)
@@ -614,7 +614,7 @@ async def setup(ctx):
                         days = int(m.group(1))
                     # 检查签到状态：比较当前signin_days_total与上次记录
                     today_str = datetime.now(TZ).strftime("%Y-%m-%d")
-                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0)
+                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0) or 0
                     signed = days > last_days if last_days > 0 else False
                     # 如果signed_today记录存在也作为辅助判断
                     signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")

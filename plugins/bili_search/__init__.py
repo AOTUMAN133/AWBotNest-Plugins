@@ -14,7 +14,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.8",
+    "version": "1.2.9",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -100,7 +100,7 @@ _KV_LOGS = "bili_search_logs"
 
 def _log(ctx, msg: str):
     ctx.log.info("[B站搜索] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, [])
+    logs = ctx.kv.get(_KV_LOGS, []) or []
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-30:])
 
@@ -660,7 +660,7 @@ async def setup(ctx):
 
     @ctx.action("view_logs")
     async def _view_logs(req=None):
-        logs = ctx.kv.get(_KV_LOGS, [])
+        logs = ctx.kv.get(_KV_LOGS, []) or []
         if not logs:
             return {"ok": True, "message": "暂无日志"}
         lines = ["📋 最近日志:\n"]

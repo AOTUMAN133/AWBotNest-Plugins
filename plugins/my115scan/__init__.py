@@ -21,7 +21,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.25",
+    "version": "0.10.26",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan_v2.svg",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
@@ -609,7 +609,7 @@ async def setup(ctx):
 
     @ctx.on_api("/update_config", methods=["POST"])
     async def _api_update_config(req):
-        body = await req.json()
+        body = req.json if hasattr(req, 'json') else {}
         # shareswitch 从 enabled 推导
         body["shareswitch"] = body.get("shareswitch", True)
         ctx.update_config(body)
@@ -902,17 +902,25 @@ async def _do_scan(ctx, src):
         processed = 0
         offset = last_id if last_id > 0 else 0
         ids = []
-        from pyrogram.raw.functions.messages import GetHistory
         while True:
             ctx.log.info("[115扫描] DEBUG offset=%s", offset)
             if ctx.kv.get("my115scan_stop", False):
                 break
-            peer = await client.resolve_peer(src)
-            raw = await client.invoke(GetHistory(
-                peer=peer, offset_id=offset, offset_date=0,
-                add_offset=0, limit=100, max_id=0, min_id=0, hash=0,
-            ))
-            msgs = [m for m in raw.messages if hasattr(m, 'id')]
+            # 使用平台抽象 API 获取历史消息，避免直接 import pyrogram
+            try:
+                peer = await client.resolve_peer(src)
+                raw = await client.call({
+                    '_': 'messages.getHistory',
+                    'peer': peer, 'offset_id': offset, 'offset_date': 0,
+                    'add_offset': 0, 'limit': 100, 'max_id': 0, 'min_id': 0, 'hash': 0,
+                })
+                msgs = [m for m in raw.messages if hasattr(m, 'id')]
+            except Exception:
+                # 回退到 get_chat_history
+                msgs = []
+                async for m in client.get_chat_history(src, limit=100, offset_id=offset or 0):
+                    msgs.append(m)
+                msgs = msgs[:100]
             if not msgs:
                 ctx.log.info("[115扫描] 结束: API返回空消息")
                 break

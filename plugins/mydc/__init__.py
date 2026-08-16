@@ -12,7 +12,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
-    "version": "1.2.8",
+    "version": "1.2.9",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydc_v2.svg",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
@@ -91,7 +91,7 @@ def _now():
 
 def _log(ctx, msg: str):
     ctx.log.info("[DC助手] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, [])
+    logs = ctx.kv.get(_KV_LOGS, []) or []
     logs.append({"t": _now(), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-50:])
 
@@ -148,8 +148,8 @@ async def setup(ctx):
         if not data:
             return {"ok": False, "message": "获取失败"}
         containers = data.get("data") or data.get("containers") or []
-        include = ctx.kv.get("mydc_include", [])
-        immediate = ctx.kv.get("mydc_immediate", [])
+        include = ctx.kv.get("mydc_include", []) or []
+        immediate = ctx.kv.get("mydc_immediate", []) or []
         result = []
         for c in containers:
             name = c.get("name", "?")
@@ -206,8 +206,8 @@ async def setup(ctx):
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
         containers = data.get("data") or data.get("containers") or []
         # 检查可更新
-        include = ctx.kv.get("mydc_include", [])
-        imm = ctx.kv.get("mydc_immediate", [])
+        include = ctx.kv.get("mydc_include", []) or []
+        imm = ctx.kv.get("mydc_immediate", []) or []
         filtered = [c for c in containers if not include or c.get("name", "") in include]
         updatable = [c for c in filtered if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         has_imm = [c for c in updatable if c.get("name", "") in imm]
@@ -291,14 +291,14 @@ async def setup(ctx):
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
-        include = ctx.kv.get("mydc_include", [])
-        imm = ctx.kv.get("mydc_immediate", [])
+        include = ctx.kv.get("mydc_include", []) or []
+        imm = ctx.kv.get("mydc_immediate", []) or []
         filtered = [c for c in containers if not include or c.get("name", "") in include]
 
         # 立即更新：每分钟检查，发现可更新容器就执行
         imm_names = []
         now = time.time()
-        updating = ctx.kv.get("mydc_updating", {})  # {name: timestamp}
+        updating = ctx.kv.get("mydc_updating", {}) or {}  # {name: timestamp}
         # 清理超过5分钟的过期标记（防止意外卡死）
         stale = [k for k, v in updating.items() if now - v > 300]
         for k in stale:

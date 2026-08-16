@@ -28,14 +28,14 @@ _KV_MONITOR_STATE = "ai_monitor_state"
 
 def _log_debug(ctx, msg: str):
     ctx.log.info("[AI聊天] %s", msg)
-    logs = ctx.kv.get(_KV_DEBUG, [])
+    logs = ctx.kv.get(_KV_DEBUG, []) or []
     logs.append({"t": datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_DEBUG, logs[-50:])
 
 __plugin__ = {
     "name": "AI 助手",
     "id": "myai",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myai_v2.svg",
     "author": "凹凸曼",
     "description": "私聊/群@你时 AI 人形对话（带记忆，群聊可指定群组）；可选随机主动搭话开启话题；回复消息发 /ai 让 AI 解释或解答（支持图片）。支持 .sum 群消息总结。自带 Vue 配置界面 + 对话记忆管理。",
@@ -584,8 +584,8 @@ async def setup(ctx):
                 follow_min = int(cfg.get("follow_minutes", 0) or 0)
                 if follow_min <= 0:
                     return
-                last_ts = ctx.kv.get(f"trigger_ts:{chat_id}", None)
-                trigger_user = ctx.kv.get(f"trigger_user:{chat_id}", None)
+                last_ts = ctx.kv.get(f"trigger_ts:{chat_id}", None) or None
+                trigger_user = ctx.kv.get(f"trigger_user:{chat_id}", None) or None
                 if last_ts is None or (time.time() - last_ts) > follow_min * 60:
                     return
                 if trigger_user is None or fu.id != trigger_user:
@@ -596,7 +596,7 @@ async def setup(ctx):
                         return
                 # 没有回复 bot → 检查自然轮次窗口（45秒）
                 if not is_reply_to_me:
-                    bot_reply_ts = ctx.kv.get(f"bot_reply_ts:{chat_id}", None)
+                    bot_reply_ts = ctx.kv.get(f"bot_reply_ts:{chat_id}", None) or None
                     if bot_reply_ts is None or (time.time() - bot_reply_ts) > 45:
                         return
             text = message.text
@@ -613,7 +613,7 @@ async def setup(ctx):
             max_hist = int(cfg.get("max_history", 10) or 0)
             system_prompt = cfg.get("system_prompt") or "你是一个有用的助手。"
             # 取历史
-            history = ctx.kv.get(_hist_key(chat_id), []) if max_hist > 0 else []
+            history = (ctx.kv.get(_hist_key(chat_id), []) or []) if max_hist > 0 else []
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend(history)
             messages.append({"role": "user", "content": text})
@@ -745,7 +745,7 @@ async def setup(ctx):
         if not pids:
             return
         now = time.time()
-        next_ts = ctx.kv.get("proactive_next_ts", None)
+        next_ts = ctx.kv.get("proactive_next_ts", None) or None
         if next_ts is None:
             # 首次：排到未来某个随机时刻，不立即发
             ctx.kv.set("proactive_next_ts", now + _rand_gap_seconds(cfg))
@@ -792,7 +792,7 @@ async def setup(ctx):
             # 把这轮开场写进历史，群友回复后续聊时有上下文
             max_hist = int(cfg.get("max_history", 10) or 0)
             if max_hist > 0:
-                history = ctx.kv.get(_hist_key(chat_id), [])
+                history = ctx.kv.get(_hist_key(chat_id), []) or []
                 history.append({"role": "user", "content": target["text"]})
                 history.append({"role": "assistant", "content": opener})
                 if len(history) > max_hist:
@@ -873,7 +873,7 @@ async def setup(ctx):
             pass
 
         now = time.time()
-        next_ts = ctx.kv.get("auto_say_next_ts", None)
+        next_ts = ctx.kv.get("auto_say_next_ts", None) or None
         if next_ts is None:
             lo = max(1, int(cfg.get("auto_say_min_minutes", 5) or 5))
             hi = int(cfg.get("auto_say_max_minutes", 8) or 8)
@@ -907,7 +907,7 @@ async def setup(ctx):
                     sent = await client.send_message(chat_id, msg)
                     ctx.log.info("[AI] 自动发言 group=%s: %s", chat_id, msg[:30])
                     # 保存发言消息ID，用于检测答题奖励回复
-                    pending = ctx.kv.get("auto_say_pending_rewards", [])
+                    pending = ctx.kv.get("auto_say_pending_rewards", []) or []
                     pending.append({"chat_id": chat_id, "msg_id": sent.id, "time": time.time()})
                     ctx.kv.set("auto_say_pending_rewards", pending[-20:])
                 except Exception as e:  # noqa: BLE001
@@ -933,7 +933,7 @@ async def setup(ctx):
         if cids and message.chat.id not in cids:
             return
         _log_debug(ctx, f"记录消息: chat={message.chat.id} msg_id={message.id}")
-        pending = ctx.kv.get("auto_say_pending_rewards", [])
+        pending = ctx.kv.get("auto_say_pending_rewards", []) or []
         pending.append({"chat_id": message.chat.id, "msg_id": message.id, "time": time.time()})
         ctx.kv.set("auto_say_pending_rewards", pending[-20:])
 
@@ -962,7 +962,7 @@ async def setup(ctx):
                 _log_debug(ctx, f"非指定机器人 {sender_id}，跳过")
                 return
         # 检查是不是回复了我们的自动发言
-        pending = ctx.kv.get("auto_say_pending_rewards", [])
+        pending = ctx.kv.get("auto_say_pending_rewards", []) or []
         chat_id = message.chat.id
         _log_debug(ctx, f"pending={pending} chat={chat_id} reply_to={message.reply_to_message_id}")
         matched = [p for p in pending if p["chat_id"] == chat_id and p["msg_id"] == message.reply_to_message_id]
@@ -1062,7 +1062,7 @@ async def setup(ctx):
         if not first_reply and not triggers:
             return
 
-        state = ctx.kv.get(_KV_MONITOR_STATE, {})
+        state = ctx.kv.get(_KV_MONITOR_STATE, {}) or {}
         key = f"{sender_id}:{chat_id}"
         st = state.get(key, {})
 
@@ -1141,7 +1141,7 @@ async def setup(ctx):
         _log_debug(ctx, f"重置监控: user_id={user_id} chat_id={chat_id}")
         if not user_id or not chat_id:
             return {"ok": False, "message": "需要 user_id 和 chat_id"}
-        state = ctx.kv.get(_KV_MONITOR_STATE, {})
+        state = ctx.kv.get(_KV_MONITOR_STATE, {}) or {}
         key = f"{user_id}:{chat_id}"
         if key in state:
             del state[key]

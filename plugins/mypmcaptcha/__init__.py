@@ -5,19 +5,14 @@ import asyncio
 import random
 import time
 from datetime import datetime, timezone, timedelta
-import pyrogram
-from pyrogram.raw.functions.account import UpdateNotifySettings, ReportPeer
-from pyrogram.raw.functions.contacts import Block
-from pyrogram.raw.functions.folders import EditPeerFolders
-from pyrogram.raw.functions.messages import DeleteHistory
-from pyrogram.raw.types import InputNotifyPeer, InputPeerNotifySettings, InputFolderPeer, InputReportReasonSpam
 
+# 不使用 pyrogram 直接导入，全部通过 client.call() 字典格式调用平台抽象 API
 TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -267,16 +262,21 @@ async def _pass(client, user_id, ctx):
     for act in pass_acts:
         if act == "unmute":
             try:
-                await client.invoke(pyrogram.raw.functions.account.UpdateNotifySettings(
-                        peer=pyrogram.raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                        settings=pyrogram.raw.types.InputPeerNotifySettings(mute_until=0, show_previews=True, silent=False)))
+                await client.call({
+                    '_': 'account.updateNotifySettings',
+                    'peer': {'_': 'inputNotifyPeer', 'peer': await client.resolve_peer(user_id)},
+                    'settings': {'_': 'inputPeerNotifySettings', 'mute_until': 0,
+                                 'show_previews': True, 'silent': False}
+                })
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消静音失败 %d: %r", user_id, e)
         elif act == "unarchive":
             try:
-                await client.invoke(pyrogram.raw.functions.folders.EditPeerFolders(
-                        folder_peers=[pyrogram.raw.types.InputFolderPeer(
-                            peer=await client.resolve_peer(user_id), folder_id=0)]))
+                await client.call({
+                    '_': 'folders.editPeerFolders',
+                    'folder_peers': [{'_': 'inputFolderPeer',
+                                      'peer': await client.resolve_peer(user_id), 'folder_id': 0}]
+                })
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消归档失败 %d: %r", user_id, e)
         elif act == "wl":
@@ -336,23 +336,30 @@ async def _fail(client, user_id, ctx, reason: str):
     for act in fail_acts:
         if act == "block":
             try:
-                await client.invoke(Block(id=await client.resolve_peer(user_id)))
+                await client.call({
+                    '_': 'contacts.block',
+                    'id': await client.resolve_peer(user_id)
+                })
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
         elif act == "delete":
             try:
-                await client.invoke(pyrogram.raw.functions.messages.DeleteHistory(
-                        peer=await client.resolve_peer(user_id),
-                        revoke=True, max_id=0))
+                await client.call({
+                    '_': 'messages.deleteHistory',
+                    'peer': await client.resolve_peer(user_id),
+                    'revoke': True, 'max_id': 0
+                })
             except Exception as e:
                 ctx.log.warning("[人机验证] 删除对话失败 %d: %r", user_id, e)
         elif act == "report":
             try:
-                await client.invoke(pyrogram.raw.functions.account.ReportPeer(
-                        peer=await client.resolve_peer(user_id),
-                        reason=pyrogram.raw.types.InputReportReasonSpam(),
-                        message="spam"))
+                await client.call({
+                    '_': 'account.reportPeer',
+                    'peer': await client.resolve_peer(user_id),
+                    'reason': {'_': 'inputReportReasonSpam'},
+                    'message': 'spam'
+                })
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
 

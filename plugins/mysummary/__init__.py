@@ -130,7 +130,7 @@ _QA_PROMPT = (
 __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
     "author": "凹凸曼",
     "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
@@ -542,7 +542,7 @@ async def _handle_schedule(ctx, client, message, parts, cmd, chat_id):
             await message.reply("❌ 间隔格式无效")
             return
         c = int(parts[3]) if len(parts) > 3 else 50
-        tasks = ctx.kv.get("sum_tasks", [])
+        tasks = ctx.kv.get("sum_tasks", []) or []
         tasks.append({"chat_id": target, "interval": interval, "count": c, "id": len(tasks) + 1})
         ctx.kv.set("sum_tasks", tasks)
         parts_cron = interval.split()
