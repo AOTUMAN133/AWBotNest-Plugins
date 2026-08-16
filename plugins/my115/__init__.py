@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.5.2",
+    "version": "1.6.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -47,6 +47,7 @@ DEFAULTS = {
     "forward_to_saved": False,
     "pan115_cookie": "",
     "exclude_genres": "",
+    "emby_check_cache_hours": 6,
 }
 
 # ── 运行态 ──
@@ -313,11 +314,20 @@ async def _process(client, cfg, message, ctx):
         emby_url = cfg.get("emby_url")
         emby_key = cfg.get("emby_api_key")
         if emby_url and emby_key:
+            # ── KV 缓存：Emby 已确认有的 TMDB ID 不重复查（避免 13s+ 慢查询）──
+            _cache_hours = int(cfg.get("emby_check_cache_hours", 6) or 6)
+            _cache_key = f"my115_emby_has_{tmdb_id}"
+            _cached = ctx.kv.get(_cache_key, "") or ""
+            if _cached and time.time() - float(_cached) < _cache_hours * 3600:
+                ctx.log.info("[115监控] Emby 已有(缓存) %d，跳过", tmdb_id)
+                _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存)"})
+                return
             try:
                 has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
                 if has:
                     ctx.log.info("[115监控] Emby 已有 %d，跳过", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有"})
+                    ctx.kv.set(_cache_key, str(time.time()))  # 缓存正结果
                     return
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
             except Exception as e:  # noqa: BLE001

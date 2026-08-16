@@ -109,7 +109,8 @@ async def emby_has_tmdb_id(emby_server: str, emby_api: str, tmdb_id, media_type:
         params["IncludeItemTypes"] = item_types
     # Emby 多为自建/内网服务，必须直连、绕过平台出站代理（trust_env=False）。
     # 连接失败让异常冒泡，由上层决定「跳过转发」而非误判为不在库。
-    async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
+    # 注：Emby 4.9.x 的 /emby/Items 对大数据量媒体库可能非常慢（10s+），超时放宽到 60s。
+    async with httpx.AsyncClient(timeout=60, verify=False, trust_env=False) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         res = resp.json()
@@ -143,7 +144,8 @@ async def get_emby_tmdb_ids(emby_server: str, emby_api: str,
     if title:
         params["SearchTerm"] = title
     # Emby 直连、绕过平台出站代理；失败让异常冒泡给上层处理。
-    async with httpx.AsyncClient(timeout=30, verify=False, trust_env=False) as client:
+    # 注：大数据量媒体库 /emby/Items 可能很慢，超时放宽到 60s。
+    async with httpx.AsyncClient(timeout=60, verify=False, trust_env=False) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         res = resp.json()
