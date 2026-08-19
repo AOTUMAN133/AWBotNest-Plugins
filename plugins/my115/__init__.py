@@ -20,14 +20,25 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.6.0",
+    "version": "1.7.3",
+    "changelog": "v1.7.3 链接识别修复\n- 115/telegraph 链接正则支持引号和中文标点后链接截断，新增 magnet 链接识别\n- 无链接无TMDB消息记录chat来源日志（诊断辅助）",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
     "default_enabled": False,
     "render_mode": "vue",
-    "requirements": [],
+    "plugin_api_version": 1,
+    "min_platform_version": "1.1.4.0",
+    "instance_mode": "shared",
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 32,
+        "failure_threshold": 5,
+        "recovery_seconds": 60,
+    },
+    "requirements": ["httpx>=0.27"],
 }
 
 # ── 配置默认值 ──
@@ -55,9 +66,10 @@ _logs = deque(maxlen=200)
 
 # 链接匹配
 _LINK_PATTERN = re.compile(
-    r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]]】]+|"
+    r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]】\"'<>，]+|"
     r"ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|"
-    r"https?://telegra\.ph/[^\s\n]+",
+    r"https?://telegra\.ph/[^\s\n\"'<>，]+|"
+    r"magnet:\?xt=urn:[a-z0-9]+:[a-f0-9]+",
     re.IGNORECASE
 )
 _TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)|tmdb-(\d+)", re.IGNORECASE)
@@ -241,12 +253,62 @@ async def _resolve_by_search(cfg, title, year, ctx):
     return tmdb_id, media_type
 
 
+async def _emby_check_only(cfg, tmdb_id, media_type, text, ctx):
+    """只有TMDB ID没有链接时，仅查Emby状态并记录"""
+    if cfg.get("skip_emby_check", False):
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "已跳过查重(无链接)"})
+        return
+    emby_url = cfg.get("emby_url")
+    emby_key = cfg.get("emby_api_key")
+    if not emby_url or not emby_key:
+        return
+    # KV 缓存检查
+    _cache_hours = int(cfg.get("emby_check_cache_hours", 6) or 6)
+    _cache_key = f"my115_emby_has_{tmdb_id}"
+    _cached = ctx.kv.get(_cache_key, "") or ""
+    if _cached and time.time() - float(_cached) < _cache_hours * 3600:
+        ctx.log.info("[115监控] Emby 已有(缓存) %d（无链接情报）", tmdb_id)
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存/无链接)"})
+        return
+    try:
+        has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
+        if has:
+            ctx.log.info("[115监控] Emby 已有 %d（无链接情报）", tmdb_id)
+            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(无链接)"})
+            ctx.kv.set(_cache_key, str(time.time()))
+        else:
+            ctx.log.info("[115监控] ★ Emby 无 %d，需关注（无链接，无法自动转发）", tmdb_id)
+            _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中(无链接)"})
+    except Exception as e:
+        ctx.log.warning("[115监控] Emby 查询失败(无链接情报): %r", e)
+        _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby查询失败"})
+
 async def _process(client, cfg, message, ctx):
     links, telegraph_links = _extract_links(message)
-    if not links and not telegraph_links:
-        return
-    ctx.log.info("[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
     text = _msg_text(message)
+
+    # 先提取 TMDB ID（即使没有链接也能处理）
+    tmdb_id = _extract_tmdb_id(text)
+    media_type = _guess_type(text)
+
+    if not tmdb_id:
+        title, year = _extract_title_year(text)
+        tmdb_id, guessed_type = await _resolve_by_search(cfg, title, year, ctx)
+        if not media_type:
+            media_type = guessed_type
+
+    if not links and not telegraph_links:
+        # 没有链接但可能有 TMDB ID：只查 Emby 不转发
+        if tmdb_id:
+            ctx.log.info("[115监控] 无链接但有 TMDB=%d，仅查Emby状态", tmdb_id)
+            await _emby_check_only(cfg, tmdb_id, media_type, text, ctx)
+        else:
+            # 诊断：无链接无TMDB，记录消息来源辅助排查（只在监控频道内，不刷屏）
+            ctx.log.info("[115监控] 无链接消息: chat=%s text=%r",
+                         message.chat.id, text[:80])
+        return
+
+    ctx.log.info("[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
 
     # 爬取 Telegraph 页面获取实际链接
     if telegraph_links:
@@ -258,21 +320,13 @@ async def _process(client, cfg, message, ctx):
                     if r.status_code == 200:
                         html = r.text
                         # 提取 ed2k 和 115 链接
-                        page_links = re.findall(r'ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s<"\']+', html)
+                        page_links = re.findall(r"ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s<\"\\']+", html)
                         for pl in page_links:
                             if pl not in links:
                                 links.append(pl)
                         ctx.log.info("[115监控] Telegraph 页面提取到 %d 条链接", len(page_links))
             except Exception as e:
                 ctx.log.warning("[115监控] Telegraph 爬取失败: %r", e)
-    tmdb_id = _extract_tmdb_id(text)
-    media_type = _guess_type(text)
-
-    if not tmdb_id:
-        title, year = _extract_title_year(text)
-        tmdb_id, guessed_type = await _resolve_by_search(cfg, title, year, ctx)
-        if not media_type:
-            media_type = guessed_type
 
     if not tmdb_id:
         ctx.log.info("[115监控] 未识别 TMDB: %s", text[:50])
@@ -528,7 +582,7 @@ async def setup(ctx):
     # ───────── 监听 115 分享消息 ─────────
     _process_sem = asyncio.Semaphore(5)  # 最多5个并发处理
 
-    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7)
+    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7, target="both")
     async def monitor_channels(client, message):
         cfg = _effective_cfg(ctx)
         if not cfg.get("shareswitch", False):
@@ -541,6 +595,53 @@ async def setup(ctx):
                 await _process(client, cfg, message, ctx)
             except Exception as e:
                 ctx.log.error("[115监控] 处理消息异常: %r", e)
+
+    # ───────── 轮询兜底：每30秒检查监控频道是否有新消息 ─────────
+    async def _poll_channels():
+        """轮询读取监控频道最新消息，避免 on_message 收不到的问题"""
+        cfg = _effective_cfg(ctx)
+        if not cfg.get("shareswitch", False):
+            return
+        monitor_ids = _monitor_ids(cfg)
+        if not monitor_ids:
+            return
+        # 取用户账号发请求
+        user_clients = ctx.user_apps
+        if not user_clients:
+            return
+        client = user_clients[0]
+        import time as _time
+        for cid in monitor_ids:
+            try:
+                # 跳过已在冷却期内的频道（避免频繁请求）
+                poll_key = f"my115_poll_ts_{cid}"
+                last_poll = ctx.kv.get(poll_key, 0) or 0
+                if _time.time() - float(last_poll) < 25:
+                    continue
+                ctx.kv.set(poll_key, str(_time.time()))
+
+                # 从最后已知消息ID之后拉取新消息（limit=10 保证不遗漏多条）
+                last_msg_key = f"my115_last_msg_{cid}"
+                known_id = int(ctx.kv.get(last_msg_key, 0) or 0)
+                newest_id = known_id
+                async for msg in client.get_chat_history(cid, limit=10):
+                    if msg.id <= known_id:
+                        break
+                    newest_id = max(newest_id, msg.id)
+                    if msg.text or msg.caption:
+                        ctx.log.info("[115监控] 轮询发现新消息 chat=%s id=%s text=%s", cid, msg.id, (msg.text or msg.caption or "")[:60])
+                        async with _process_sem:
+                            try:
+                                await _process(client, cfg, msg, ctx)
+                            except Exception as e:
+                                ctx.log.error("[115监控] 轮询处理异常: %r", e)
+                if newest_id > known_id:
+                    ctx.kv.set(last_msg_key, str(newest_id))
+            except Exception as e:
+                # 可能 user 不在频道中，静默跳过
+                pass
+
+    ctx.schedule(_poll_channels, trigger="interval", seconds=30)
 
     # ───────── 命令：/getmedia 和 /find ─────────
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-9)
