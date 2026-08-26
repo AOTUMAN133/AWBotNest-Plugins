@@ -21,7 +21,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.27",
+    "version": "0.10.28",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan_v2.svg",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
@@ -909,14 +909,14 @@ async def _do_scan(ctx, src):
             ctx.log.info("[115扫描] DEBUG offset=%s", offset)
             if ctx.kv.get("my115scan_stop", False):
                 break
-            # 使用平台抽象 API 获取历史消息，避免直接 import pyrogram
+            # 使用 Pyrogram 原生 GetHistory（勿用不存在的 client.call）
+            from pyrogram.raw.functions.messages import GetHistory
             try:
                 peer = await client.resolve_peer(src)
-                raw = await client.call({
-                    '_': 'messages.getHistory',
-                    'peer': peer, 'offset_id': offset, 'offset_date': 0,
-                    'add_offset': 0, 'limit': 100, 'max_id': 0, 'min_id': 0, 'hash': 0,
-                })
+                raw = await client.invoke(GetHistory(
+                    peer=peer, offset_id=offset, offset_date=0,
+                    add_offset=0, limit=100, max_id=0, min_id=0, hash=0,
+                ))
                 msgs = [m for m in raw.messages if hasattr(m, 'id')]
             except Exception:
                 # 回退到 get_chat_history
