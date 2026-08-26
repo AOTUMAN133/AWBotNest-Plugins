@@ -6,13 +6,16 @@ import random
 import time
 from datetime import datetime, timezone, timedelta
 
-# 不使用 pyrogram 直接导入，全部通过 client.call() 字典格式调用平台抽象 API
+from pyrogram import raw
+
+# 平台 client 是裸 Pyrogram Client：block/delete/archive 用原生高级方法，
+# mute/report 用原生 invoke(raw.functions...)。勿用不存在的 client.call()。
 TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -262,21 +265,19 @@ async def _pass(client, user_id, ctx):
     for act in pass_acts:
         if act == "unmute":
             try:
-                await client.call({
-                    '_': 'account.updateNotifySettings',
-                    'peer': {'_': 'inputNotifyPeer', 'peer': await client.resolve_peer(user_id)},
-                    'settings': {'_': 'inputPeerNotifySettings', 'mute_until': 0,
-                                 'show_previews': True, 'silent': False}
-                })
+                await client.invoke(
+                    raw.functions.account.UpdateNotifySettings(
+                        peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                        settings=raw.types.InputPeerNotifySettings(
+                            show_previews=True, silent=False, mute_until=0
+                        ),
+                    )
+                )
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消静音失败 %d: %r", user_id, e)
         elif act == "unarchive":
             try:
-                await client.call({
-                    '_': 'folders.editPeerFolders',
-                    'folder_peers': [{'_': 'inputFolderPeer',
-                                      'peer': await client.resolve_peer(user_id), 'folder_id': 0}]
-                })
+                await client.unarchive_chats(user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消归档失败 %d: %r", user_id, e)
         elif act == "wl":
@@ -315,51 +316,42 @@ async def _fail(client, user_id, ctx, reason: str):
 
     # 默认静音+归档
     try:
-        peer = await client.resolve_peer(user_id)
-        await client.call({
-            '_': 'folders.editPeerFolders',
-            'folder_peers': [{'_': 'inputFolderPeer', 'peer': peer, 'folder_id': 1}]
-        })
+        await client.archive_chats(user_id)
     except Exception:
         pass
     try:
-        peer = await client.resolve_peer(user_id)
-        await client.call({
-            '_': 'account.updateNotifySettings',
-            'peer': {'_': 'inputNotifyPeer', 'peer': peer},
-            'settings': {'_': 'inputPeerNotifySettings', 'mute_until': 2147483647,
-                         'show_previews': False, 'silent': True}
-        })
+        await client.invoke(
+            raw.functions.account.UpdateNotifySettings(
+                peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                settings=raw.types.InputPeerNotifySettings(
+                    show_previews=False, silent=True, mute_until=2147483647
+                ),
+            )
+        )
     except Exception:
         pass
 
     for act in fail_acts:
         if act == "block":
             try:
-                await client.call({
-                    '_': 'contacts.block',
-                    'id': await client.resolve_peer(user_id)
-                })
+                await client.block_user(user_id)
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
         elif act == "delete":
             try:
-                await client.call({
-                    '_': 'messages.deleteHistory',
-                    'peer': await client.resolve_peer(user_id),
-                    'revoke': True, 'max_id': 0
-                })
+                await client.delete_chat_history(user_id, revoke=True)
             except Exception as e:
                 ctx.log.warning("[人机验证] 删除对话失败 %d: %r", user_id, e)
         elif act == "report":
             try:
-                await client.call({
-                    '_': 'account.reportPeer',
-                    'peer': await client.resolve_peer(user_id),
-                    'reason': {'_': 'inputReportReasonSpam'},
-                    'message': 'spam'
-                })
+                await client.invoke(
+                    raw.functions.account.ReportPeer(
+                        peer=await client.resolve_peer(user_id),
+                        reason=raw.types.InputReportReasonSpam(),
+                        message="spam",
+                    )
+                )
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
 
@@ -460,21 +452,18 @@ async def setup(ctx):
 
         # 静音+归档
         try:
-            peer = await client.resolve_peer(user_id)
-            await client.call({
-                '_': 'folders.editPeerFolders',
-                'folder_peers': [{'_': 'inputFolderPeer', 'peer': peer, 'folder_id': 1}]
-            })
+            await client.archive_chats(user_id)
         except Exception:
             pass
         try:
-            peer = await client.resolve_peer(user_id)
-            await client.call({
-                '_': 'account.updateNotifySettings',
-                'peer': {'_': 'inputNotifyPeer', 'peer': peer},
-                'settings': {'_': 'inputPeerNotifySettings', 'mute_until': 2147483647,
-                             'show_previews': False, 'silent': True}
-            })
+            await client.invoke(
+                raw.functions.account.UpdateNotifySettings(
+                    peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                    settings=raw.types.InputPeerNotifySettings(
+                        show_previews=False, silent=True, mute_until=2147483647
+                    ),
+                )
+            )
         except Exception:
             pass
 
