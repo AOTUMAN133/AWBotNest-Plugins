@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -314,23 +314,6 @@ async def _fail(client, user_id, ctx, reason: str):
     cfg = ctx.config
     fail_acts = _parse_actions(cfg.get("fail_actions", "block,report"))
 
-    # 默认静音+归档
-    try:
-        await client.archive_chats(user_id)
-    except Exception:
-        pass
-    try:
-        await client.invoke(
-            raw.functions.account.UpdateNotifySettings(
-                peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                settings=raw.types.InputPeerNotifySettings(
-                    show_previews=False, silent=True, mute_until=2147483647
-                ),
-            )
-        )
-    except Exception:
-        pass
-
     for act in fail_acts:
         if act == "block":
             try:
@@ -338,9 +321,23 @@ async def _fail(client, user_id, ctx, reason: str):
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
+        elif act == "mute":
+            try:
+                await client.invoke(
+                    raw.functions.account.UpdateNotifySettings(
+                        peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+                        settings=raw.types.InputPeerNotifySettings(
+                            show_previews=False, silent=True, mute_until=2147483647
+                        ),
+                    )
+                )
+                ctx.log.info("[人机验证] 已静音 %d", user_id)
+            except Exception as e:
+                ctx.log.warning("[人机验证] 静音失败 %d: %r", user_id, e)
         elif act == "delete":
             try:
                 await client.delete_chat_history(user_id, revoke=True)
+                ctx.log.info("[人机验证] 已删除对话 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 删除对话失败 %d: %r", user_id, e)
         elif act == "report":
@@ -352,8 +349,14 @@ async def _fail(client, user_id, ctx, reason: str):
                         message="spam",
                     )
                 )
+                ctx.log.info("[人机验证] 已举报 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
+        elif act == "archive":
+            try:
+                await client.archive_chats(user_id)
+            except Exception as e:
+                ctx.log.warning("[人机验证] 归档失败 %d: %r", user_id, e)
 
     # 记录失败
     try:
