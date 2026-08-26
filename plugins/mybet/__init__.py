@@ -10,7 +10,7 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.7.2",
+    "version": "0.7.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mybet_v2.svg",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
@@ -155,24 +155,23 @@ async def setup(ctx):
         except Exception as e:
             ctx.log.error("[下注] 异常: %r", e)
 
-    # 战绩推送
-    async def stats_pusher():
-        w = int(ctx.kv.get("mybet_wins", 0) or 0)
-        l = int(ctx.kv.get("mybet_losses", 0) or 0)
-        p = int(ctx.kv.get("mybet_profit", 0) or 0)
-        s = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
-        t = w + l
-        r = f"{w / t * 100:.1f}%" if t > 0 else "-"
-        recs = ctx.kv.get("mybet_records", []) or []
-        rt = ""
-        if recs:
-            lines = []
-            for r2 in recs[-10:]:
-                lines.append(f"{r2['t']} {r2['r']} {r2['a']} (累计{r2['p']})")
-            rt = "\n" + "\n".join(lines)
-        ctx.update_config({"_stats": f"连错{s} 总盈亏{_fmt(p)} 赢{w} 输{l} 胜率{r}\n━━━━━━━━━━━━━━\n{rt}"})
 
-    ctx.schedule(stats_pusher, "interval", seconds=30, id="mybet_stats")
+async def _push_stats(ctx):
+    """结算后推送战绩到配置页"""
+    w = int(ctx.kv.get("mybet_wins", 0) or 0)
+    l = int(ctx.kv.get("mybet_losses", 0) or 0)
+    p = int(ctx.kv.get("mybet_profit", 0) or 0)
+    s = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+    t = w + l
+    r = f"{w / t * 100:.1f}%" if t > 0 else "-"
+    recs = ctx.kv.get("mybet_records", []) or []
+    rt = ""
+    if recs:
+        lines = []
+        for r2 in recs[-10:]:
+            lines.append(f"{r2['t']} {r2['r']} {r2['a']} (累计{r2['p']})")
+        rt = "\n" + "\n".join(lines)
+    ctx.update_config({"_stats": f"连错{s} 总盈亏{_fmt(p)} 赢{w} 输{l} 胜率{r}\n━━━━━━━━━━━━━━\n{rt}"})
 
 
 async def _settle(ctx, matrix_str):
@@ -219,6 +218,7 @@ async def _settle(ctx, matrix_str):
         ctx.kv.set("mybet_locked", True)
     elif sl > 0 and profit <= -sl:
         ctx.kv.set("mybet_locked", True)
+    await _push_stats(ctx)
 
 
 async def _run_strategy(ctx, client, message, matrix_str):

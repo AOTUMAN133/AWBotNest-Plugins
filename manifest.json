@@ -17,7 +17,7 @@
   },
   "mybet": {
     "name": "自动下注",
-    "version": "0.7.2",
+    "version": "0.7.3",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，按追龙/斩龙/斐波那契等策略自动押大押小。",
     "path": "plugins/mybet/",
@@ -25,7 +25,7 @@
   },
   "my115scan": {
     "name": "115历史扫描",
-    "version": "0.10.26",
+    "version": "0.10.27",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
     "path": "plugins/my115scan/",
@@ -33,7 +33,7 @@
   },
   "mypmcaptcha": {
     "name": "私聊拦截",
-    "version": "1.0.5",
+    "version": "1.0.7",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
     "path": "plugins/mypmcaptcha/",

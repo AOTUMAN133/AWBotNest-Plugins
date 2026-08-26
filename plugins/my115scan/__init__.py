@@ -21,7 +21,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115历史扫描",
     "id": "my115scan",
-    "version": "0.10.26",
+    "version": "0.10.27",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115scan_v2.svg",
     "author": "凹凸曼",
     "description": "扫描指定频道的历史消息，识别115链接→TMDB→Emby查重→缺失转发到CMS入库。",
@@ -669,14 +669,6 @@ async def setup(ctx):
         ctx.update_config({"_scan_status": "已重置"})
         return {"ok": True, "message": "已重置"}
 
-    async def _scan_status_pusher():
-        total = int(ctx.kv.get("my115scan_total", 0) or 0)
-        fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
-        last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
-        ctx.update_config({"_scan_status": f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"})
-
-    ctx.schedule(_scan_status_pusher, "interval", seconds=300, id="my115scan_status")
-
     # ───────── 扫描 API ─────────
     @ctx.on_api("/start_scan", methods=["POST"])
     async def _api_start_scan(req):
@@ -875,6 +867,17 @@ async def _fetch_emby_ids(emby_url, emby_key, _log=None, _update_status=None) ->
     return set()
 
 
+def _push_scan_status(ctx, extra: str = ""):
+    """扫描进度变化时刷新配置页状态"""
+    total = int(ctx.kv.get("my115scan_total", 0) or 0)
+    fwd = int(ctx.kv.get("my115scan_forwarded", 0) or 0)
+    last = int(ctx.kv.get("my115scan_last_id", 0) or 0)
+    text = f"已扫描{total}条, 转发{fwd}条, 最后ID={last}"
+    if extra:
+        text += f" {extra}"
+    ctx.update_config({"_scan_status": text})
+
+
 async def _do_scan(ctx, src):
     """扫描历史消息"""
     try:
@@ -950,6 +953,7 @@ async def _do_scan(ctx, src):
             ctx.kv.set("my115scan_last_id", ids[-1])
             ctx.kv.set("my115scan_total", total)
             ctx.kv.set("my115scan_forwarded", forwarded)
+            _push_scan_status(ctx)
             ctx.log.info("[115扫描] 一批完成, offset=%s, %d条, 总计%d条", offset, len(ids), total)
             if len(ids) == 0:
                 break

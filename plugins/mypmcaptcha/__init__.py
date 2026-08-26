@@ -12,7 +12,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -404,11 +404,6 @@ async def _update_stats(ctx):
 
 
 async def setup(ctx):
-    # 定时更新统计
-    async def _stats_pusher():
-        await _update_stats(ctx)
-    ctx.schedule(_stats_pusher, "interval", seconds=30, id="mypm_stats")
-
     @ctx.on_message(ctx.filters.private & ~ctx.filters.outgoing, group=6, target="both")
     async def _pm_handler(client, message):
         if not ctx.config.get("enabled", True):
