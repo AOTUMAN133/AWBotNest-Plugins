@@ -23,7 +23,7 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.4.6",
+    "version": "2.4.7",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
@@ -65,7 +65,7 @@ _PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 def _log(ctx, msg: str):
     ctx.log.info("[聚合解析] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, []) or []
+    logs = ctx.kv.get(_KV_LOGS, [])
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
     ctx.kv.set(_KV_LOGS, logs[-30:])
 

@@ -96,7 +96,7 @@
   },
   "videodl": {
     "name": "聚合解析",
-    "version": "2.4.6",
+    "version": "2.4.7",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接，直接发送链接自动解析。支持抖音/B站/YouTube/小红书/Twitter/微博等20+平台。",
     "path": "plugins/videodl/",
@@ -133,5 +133,13 @@
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
     "path": "plugins/my115sign/",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg"
+  },
+  "ye_monitor": {
+    "name": "小叶对话监控",
+    "version": "1.1.1",
+    "author": "AWdress",
+    "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
+    "path": "ye_monitor.py",
+    "icon": "https://raw.githubusercontent.com/AWdress/AWBotNest-Plugins/main/plugins/icons/family_relay.png"
   }
 }
