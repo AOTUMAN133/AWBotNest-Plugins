@@ -20,8 +20,8 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.7.5",
-    "changelog": "v1.7.5 剧集完结自行判断（S结构）\n- 频道只标注 S01E01-E27 不写完结时：解析季/集范围对比 TMDB 总季数与每季集数，消息覆盖最后一季全部集数=完结（TMDB 状态滞后也能判）\n- TMDB 查不到该剧时：所有 S 范围从 E01 开始完整发布视为完结（整季合集频道模式）\n- 连载剧增量集数（如 S03E07-E12 起始集>1）不会被误判完结",
+    "version": "1.7.6",
+    "changelog": "v1.7.6 修复单集误判完结\n- 修复：S01E12 单集发布被误判为整季完结（TMDB 对比只查结束集编号未查起始集）\n- 最后一季必须存在「从 E01 开始且覆盖全部集数」的完整范围才算完结\n- 连载单集/增量集数（S01E12、S03E07-E12）不再被误转存",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -92,7 +92,8 @@ def _parse_season_ranges(text: str) -> list[tuple[int, int, int]]:
 
 def _complete_by_season_range(text: str, detail: dict) -> bool:
     """S 范围 vs TMDB：消息覆盖到最后一季的全部集数 → 视为完结。
-    解决「频道只标 S01E01-E27 不写完结、TMDB 状态滞后(Returning)」的场景。"""
+    解决「频道只标 S01E01-E27 不写完结、TMDB 状态滞后(Returning)」的场景。
+    必须存在从 E01 开始的完整范围（单集 S01E12 不算整季，连载中不判完结）。"""
     ranges = _parse_season_ranges(text)
     if not ranges:
         return False
@@ -105,8 +106,11 @@ def _complete_by_season_range(text: str, detail: dict) -> bool:
         return False  # 消息只覆盖部分季，剧还在更新
     last_season_eps = next(
         (int(s.get("episode_count") or 0) for s in seasons if s["season_number"] == max_season), 0)
-    max_ep = max(r[2] for r in ranges if r[0] == max_season)
-    return last_season_eps > 0 and max_ep >= last_season_eps
+    if last_season_eps <= 0:
+        return False
+    # 最后一季必须存在「从 E01 开始且覆盖全部集数」的完整范围；
+    # S01E12 这类单集发布（start=12）或 S03E07-E12 增量（start=7）都不算
+    return any(r[1] == 1 and r[2] >= last_season_eps for r in ranges if r[0] == max_season)
 
 
 def _complete_by_season_range_heuristic(text: str) -> bool:
