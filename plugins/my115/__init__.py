@@ -20,8 +20,8 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.7.4",
-    "changelog": "v1.7.4 监控模式重构：实时监听发布为主，轮询降级为低频兜底\n- on_message 实时收到频道发布时立即处理并推进轮询进度（不再重复处理）\n- 轮询冷却 25s→300s、limit 10→100：高频拉取会触发 Telegram 限流导致频道全部静默哑火（实测根因）\n- 轮询拉取失败不再静默吞掉，log.error 暴露具体原因（未加入频道/限流/403）",
+    "version": "1.7.5",
+    "changelog": "v1.7.5 剧集完结自行判断（S结构）\n- 频道只标注 S01E01-E27 不写完结时：解析季/集范围对比 TMDB 总季数与每季集数，消息覆盖最后一季全部集数=完结（TMDB 状态滞后也能判）\n- TMDB 查不到该剧时：所有 S 范围从 E01 开始完整发布视为完结（整季合集频道模式）\n- 连载剧增量集数（如 S03E07-E12 起始集>1）不会被误判完结",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -75,6 +75,47 @@ _LINK_PATTERN = re.compile(
 _TMDB_ID_PATTERN = re.compile(r"TMDB\s*(?:ID)?\s*[:：]\s*(\d+)|tmdb-(\d+)", re.IGNORECASE)
 _COMPLETE_PATTERN = re.compile(r"完结|全\s*\d+\s*[集話话]|全集|\(完|（完")
 _GETMEDIA_TTL = 30
+
+
+def _parse_season_ranges(text: str) -> list[tuple[int, int, int]]:
+    """解析 S01E01-E27 / S01E01-E06 S02E01-E12 等季/集范围标注。
+    返回 [(季号, 起始集, 结束集), ...]，无则空列表。
+    注意：频道不标注「完结」只给 S 范围时，用它自行判断完结。"""
+    ranges = []
+    for m in re.finditer(r"[Ss](\d{1,2})\s*[Ee](\d{1,3})\s*(?:-\s*[Ee]?(\d{1,3}))?", text):
+        s, e1 = int(m.group(1)), int(m.group(2))
+        e2 = int(m.group(3) or m.group(2))
+        if e2 >= e1:
+            ranges.append((s, e1, e2))
+    return ranges
+
+
+def _complete_by_season_range(text: str, detail: dict) -> bool:
+    """S 范围 vs TMDB：消息覆盖到最后一季的全部集数 → 视为完结。
+    解决「频道只标 S01E01-E27 不写完结、TMDB 状态滞后(Returning)」的场景。"""
+    ranges = _parse_season_ranges(text)
+    if not ranges:
+        return False
+    seasons = [s for s in (detail.get("seasons") or []) if s.get("season_number", 0) > 0]
+    if not seasons:
+        return False
+    total_seasons = max(int(s["season_number"]) for s in seasons)
+    max_season = max(r[0] for r in ranges)
+    if max_season < total_seasons:
+        return False  # 消息只覆盖部分季，剧还在更新
+    last_season_eps = next(
+        (int(s.get("episode_count") or 0) for s in seasons if s["season_number"] == max_season), 0)
+    max_ep = max(r[2] for r in ranges if r[0] == max_season)
+    return last_season_eps > 0 and max_ep >= last_season_eps
+
+
+def _complete_by_season_range_heuristic(text: str) -> bool:
+    """TMDB 查不到该剧时的兜底：所有 S 范围都从 E01 开始完整发布（整季合集）→ 视为完结。
+    连载剧一般只发增量集数（起始集 > 1，如 S03E07-E12），不会误判。"""
+    ranges = _parse_season_ranges(text)
+    if not ranges:
+        return False
+    return all(r[1] == 1 for r in ranges)
 
 
 def _effective_cfg(ctx) -> dict:
@@ -344,23 +385,30 @@ async def _process(client, cfg, message, ctx):
         if _COMPLETE_PATTERN.search(text):
             pass  # 文本明确写了完结
         else:
-            # 文本没写，查 TMDB 确认是否完结
+            # 文本没写完结：查 TMDB 确认；TMDB 状态滞后时用 S01E01-E27 结构自行判断
             detail = None
             try:
                 api = TmdbApi(cfg["tmdb_api_key"], cfg.get("tmdb_language", "zh-CN"))
                 detail = await api.get_details(tmdb_id, media_type)
+            except Exception:  # noqa: BLE001
+                detail = None
+            if detail:
                 if detail.get("status") in ("Ended", "Canceled", "Cancelled"):
                     pass  # TMDB 确认已完结
                 elif detail.get("in_production") is False:
                     pass  # 不再制作中=完结
+                elif _complete_by_season_range(text, detail):
+                    ctx.log.info("[115监控] 剧集完结(S范围对比TMDB): %d", tmdb_id)
                 else:
                     ctx.log.info("[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
-            except Exception:  # noqa: BLE001
-                # TMDB 查不到，按文本判断结果为准
-                if not _COMPLETE_PATTERN.search(text):
-                    ctx.log.info("[115监控] 剧集未完结(文本), 跳过: %d", tmdb_id)
+            else:
+                # TMDB 查不到：S01E01-E27 结构启发式判断（整季合集=完结）
+                if _complete_by_season_range_heuristic(text):
+                    ctx.log.info("[115监控] 剧集完结(S结构启发式,TMDB无数据): %d", tmdb_id)
+                else:
+                    ctx.log.info("[115监控] 剧集未完结(文本/S结构), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
 
