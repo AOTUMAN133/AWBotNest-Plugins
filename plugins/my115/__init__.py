@@ -20,8 +20,8 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.7.3",
-    "changelog": "v1.7.3 链接识别修复\n- 115/telegraph 链接正则支持引号和中文标点后链接截断，新增 magnet 链接识别\n- 无链接无TMDB消息记录chat来源日志（诊断辅助）",
+    "version": "1.7.4",
+    "changelog": "v1.7.4 监控模式重构：实时监听发布为主，轮询降级为低频兜底\n- on_message 实时收到频道发布时立即处理并推进轮询进度（不再重复处理）\n- 轮询冷却 25s→300s、limit 10→100：高频拉取会触发 Telegram 限流导致频道全部静默哑火（实测根因）\n- 轮询拉取失败不再静默吞掉，log.error 暴露具体原因（未加入频道/限流/403）",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -590,15 +590,25 @@ async def setup(ctx):
         monitor_ids = _monitor_ids(cfg)
         if monitor_ids and message.chat.id not in monitor_ids:
             return
+        # 实时监听发布：立即推进轮询进度，轮询兜底不会再重复处理本条
+        if monitor_ids:
+            last_msg_key = f"my115_last_msg_{message.chat.id}"
+            try:
+                known = int(ctx.kv.get(last_msg_key, 0) or 0)
+                if message.id > known:
+                    ctx.kv.set(last_msg_key, str(message.id))
+            except Exception as e:
+                ctx.log.warning("[115监控] 更新轮询进度失败: %r", e)
         async with _process_sem:
             try:
                 await _process(client, cfg, message, ctx)
             except Exception as e:
                 ctx.log.error("[115监控] 处理消息异常: %r", e)
 
-    # ───────── 轮询兜底：每30秒检查监控频道是否有新消息 ─────────
+    # ───────── 低频兜底轮询：每5分钟增量拉取（正常应走 on_message 实时监听发布）─────────
     async def _poll_channels():
-        """轮询读取监控频道最新消息，避免 on_message 收不到的问题"""
+        """低频增量兜底，避免 on_message 漏消息时完全失明。
+        高频轮询（30s）会触发 Telegram 限流导致频道静默哑火（v1.7.4 实测根因）。"""
         cfg = _effective_cfg(ctx)
         if not cfg.get("shareswitch", False):
             return
@@ -613,18 +623,18 @@ async def setup(ctx):
         import time as _time
         for cid in monitor_ids:
             try:
-                # 跳过已在冷却期内的频道（避免频繁请求）
+                # 低频轮询：每频道至少 300s 查一次，避免触发限流
                 poll_key = f"my115_poll_ts_{cid}"
                 last_poll = ctx.kv.get(poll_key, 0) or 0
-                if _time.time() - float(last_poll) < 25:
+                if _time.time() - float(last_poll) < 300:
                     continue
                 ctx.kv.set(poll_key, str(_time.time()))
 
-                # 从最后已知消息ID之后拉取新消息（limit=10 保证不遗漏多条）
+                # 从最后已知消息ID之后增量拉取（limit=100 防一次发布多条遗漏）
                 last_msg_key = f"my115_last_msg_{cid}"
                 known_id = int(ctx.kv.get(last_msg_key, 0) or 0)
                 newest_id = known_id
-                async for msg in client.get_chat_history(cid, limit=10):
+                async for msg in client.get_chat_history(cid, limit=100):
                     if msg.id <= known_id:
                         break
                     newest_id = max(newest_id, msg.id)
@@ -638,10 +648,10 @@ async def setup(ctx):
                 if newest_id > known_id:
                     ctx.kv.set(last_msg_key, str(newest_id))
             except Exception as e:
-                # 可能 user 不在频道中，静默跳过
-                pass
+                # 拉取失败必须可见：未加入频道 / 限流(FloodWait) / 403 等
+                ctx.log.error("[115监控] 轮询频道 %s 失败: %r", cid, e)
 
-    ctx.schedule(_poll_channels, trigger="interval", seconds=30)
+    ctx.schedule(_poll_channels, trigger="interval", seconds=300)
 
     # ───────── 命令：/getmedia 和 /find ─────────
     @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-9)
