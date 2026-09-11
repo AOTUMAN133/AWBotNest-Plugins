@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -632,8 +632,8 @@ async def setup(ctx):
     # ───────── 监听 115 分享消息 ─────────
     _process_sem = asyncio.Semaphore(5)  # 最多5个并发处理
 
-    # V2: incoming=True 监听所有入站消息, 内部按 monitor_ids 过滤
-    @ctx.on_message(incoming=True)
+    # V2: incoming+outgoing 双向监听(原 V1 target="both"), 内部按 monitor_ids 过滤
+    @ctx.on_message(incoming=True, outgoing=True)
     async def monitor_channels(event):
         cfg = _effective_cfg(ctx)
         if not cfg.get("shareswitch", False):
