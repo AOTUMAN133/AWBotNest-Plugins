@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 __plugin__ = {
     "name": "自动报时昵称",
     "id": "myname",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "scope": "user",
@@ -169,7 +169,12 @@ def _make_action(ctx):
                     kwargs["first_name"] = rendered
                 if not kwargs:
                     kwargs["last_name"] = rendered
-                await app.edit_profile(**kwargs)
+                # Telethon 1.44 无 edit_profile 高级方法, 直接用原生 UpdateProfileRequest
+                from telethon.tl.functions.account import UpdateProfileRequest
+                await app(UpdateProfileRequest(
+                    first_name=kwargs.get("first_name"),
+                    last_name=kwargs.get("last_name"),
+                ))
                 ctx.log.info("[自动报时] 已改名为: %s", rendered)
             except Exception as e:
                 ctx.log.warning("[自动报时] 改名失败: %r", e)

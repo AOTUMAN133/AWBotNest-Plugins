@@ -101,7 +101,7 @@
     },
     "myname": {
       "name": "自动报时昵称",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "author": "凹凸曼",
       "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
       "scope": "user",
