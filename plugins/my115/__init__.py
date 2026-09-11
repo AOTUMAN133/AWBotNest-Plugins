@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -353,21 +353,19 @@ async def _process(client, cfg, event, ctx):
 
     ctx.log.info("[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
 
-    # 爬取 Telegraph 页面获取实际链接
+    # 爬取 Telegraph 页面获取实际链接（V2: ctx.http 继承平台代理, telegra.ph 需代理访问）
     if telegraph_links:
         for tl in telegraph_links:
             try:
-                import httpx
-                async with httpx.AsyncClient(timeout=15, verify=False) as cli:
-                    r = await cli.get(tl)
-                    if r.status_code == 200:
-                        html = r.text
-                        # 提取 ed2k 和 115 链接
-                        page_links = re.findall(r"ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s<\"\\']+", html)
-                        for pl in page_links:
-                            if pl not in links:
-                                links.append(pl)
-                        ctx.log.info("[115监控] Telegraph 页面提取到 %d 条链接", len(page_links))
+                r = await ctx.http.get(tl, timeout=15)
+                if r.status_code == 200:
+                    html = r.text
+                    # 提取 ed2k 和 115 链接
+                    page_links = re.findall(r"ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s<\"\\']+", html)
+                    for pl in page_links:
+                        if pl not in links:
+                            links.append(pl)
+                    ctx.log.info("[115监控] Telegraph 页面提取到 %d 条链接", len(page_links))
             except Exception as e:
                 ctx.log.warning("[115监控] Telegraph 爬取失败: %r", e)
 
