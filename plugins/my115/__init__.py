@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -61,6 +61,19 @@ DEFAULTS = {
 
 # ── 运行态 ──
 _logs = deque(maxlen=200)
+
+
+def _log(ctx, level: str, msg: str, *args):
+    """插件内日志：只写入 _logs 队列（前端「运行日志」区显示），不刷平台运行日志。
+    level=error 时同时走 ctx.log.error 便于平台排查。"""
+    text = msg % args if args else msg
+    _logs.append({"time": datetime.now().strftime("%H:%M:%S"),
+                  "title": text[:30], "action": text[:160]})
+    if level == "error":
+        try:
+            ctx.log.error(text)
+        except Exception:
+            pass
 
 # 链接匹配
 _LINK_PATTERN = re.compile(
@@ -311,20 +324,20 @@ async def _emby_check_only(cfg, tmdb_id, media_type, text, ctx):
     _cache_key = f"my115_emby_has_{tmdb_id}"
     _cached = await ctx.storage.get(_cache_key, "") or ""
     if _cached and time.time() - float(_cached) < _cache_hours * 3600:
-        ctx.log.info("[115监控] Emby 已有(缓存) %d（无链接情报）", tmdb_id)
+        _log(ctx, "info", "[115监控] Emby 已有(缓存) %d（无链接情报）", tmdb_id)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存/无链接)"})
         return
     try:
         has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
         if has:
-            ctx.log.info("[115监控] Emby 已有 %d（无链接情报）", tmdb_id)
+            _log(ctx, "info", "[115监控] Emby 已有 %d（无链接情报）", tmdb_id)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(无链接)"})
             await ctx.storage.set(_cache_key, str(time.time()))
         else:
-            ctx.log.info("[115监控] ★ Emby 无 %d，需关注（无链接，无法自动转发）", tmdb_id)
+            _log(ctx, "info", "[115监控] ★ Emby 无 %d，需关注（无链接，无法自动转发）", tmdb_id)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中(无链接)"})
     except Exception as e:
-        ctx.log.warning("[115监控] Emby 查询失败(无链接情报): %r", e)
+        _log(ctx, "warning", "[115监控] Emby 查询失败(无链接情报): %r", e)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby查询失败"})
 
 async def _process(client, cfg, event, ctx):
@@ -344,15 +357,15 @@ async def _process(client, cfg, event, ctx):
     if not links and not telegraph_links:
         # 没有链接但可能有 TMDB ID：只查 Emby 不转发
         if tmdb_id:
-            ctx.log.info("[115监控] 无链接但有 TMDB=%d，仅查Emby状态", tmdb_id)
+            _log(ctx, "info", "[115监控] 无链接但有 TMDB=%d，仅查Emby状态", tmdb_id)
             await _emby_check_only(cfg, tmdb_id, media_type, text, ctx)
         else:
             # 诊断：无链接无TMDB，记录消息来源辅助排查（只在监控频道内，不刷屏）
-            ctx.log.info("[115监控] 无链接消息: chat=%s text=%r",
+            _log(ctx, "info", "[115监控] 无链接消息: chat=%s text=%r",
                          event.chat_id, text[:80])
         return
 
-    ctx.log.info("[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
+    _log(ctx, "info", "[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
 
     # 爬取 Telegraph 页面获取实际链接（V2: ctx.http 继承平台代理, telegra.ph 需代理访问）
     if telegraph_links:
@@ -366,18 +379,18 @@ async def _process(client, cfg, event, ctx):
                     for pl in page_links:
                         if pl not in links:
                             links.append(pl)
-                    ctx.log.info("[115监控] Telegraph 页面提取到 %d 条链接", len(page_links))
+                    _log(ctx, "info", "[115监控] Telegraph 页面提取到 %d 条链接", len(page_links))
             except Exception as e:
-                ctx.log.warning("[115监控] Telegraph 爬取失败: %r", e)
+                _log(ctx, "warning", "[115监控] Telegraph 爬取失败: %r", e)
 
     if not tmdb_id:
-        ctx.log.info("[115监控] 未识别 TMDB: %s", text[:50])
+        _log(ctx, "info", "[115监控] 未识别 TMDB: %s", text[:50])
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": None, "action": "跳过"})
         return
 
     allowed = cfg.get("media_types", ["movie", "tv"])
     if media_type and media_type not in allowed:
-        ctx.log.info("[115监控] 跳过类型 %s: %d", media_type, tmdb_id)
+        _log(ctx, "info", "[115监控] 跳过类型 %s: %d", media_type, tmdb_id)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过"})
         return
 
@@ -399,17 +412,17 @@ async def _process(client, cfg, event, ctx):
                 elif detail.get("in_production") is False:
                     pass  # 不再制作中=完结
                 elif _complete_by_season_range(text, detail):
-                    ctx.log.info("[115监控] 剧集完结(S范围对比TMDB): %d", tmdb_id)
+                    _log(ctx, "info", "[115监控] 剧集完结(S范围对比TMDB): %d", tmdb_id)
                 else:
-                    ctx.log.info("[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
+                    _log(ctx, "info", "[115监控] 剧集未完结(TMDB), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
             else:
                 # TMDB 查不到：S01E01-E27 结构启发式判断（整季合集=完结）
                 if _complete_by_season_range_heuristic(text):
-                    ctx.log.info("[115监控] 剧集完结(S结构启发式,TMDB无数据): %d", tmdb_id)
+                    _log(ctx, "info", "[115监控] 剧集完结(S结构启发式,TMDB无数据): %d", tmdb_id)
                 else:
-                    ctx.log.info("[115监控] 剧集未完结(文本/S结构), 跳过: %d", tmdb_id)
+                    _log(ctx, "info", "[115监控] 剧集未完结(文本/S结构), 跳过: %d", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "跳过(未完结)"})
                     return
 
@@ -422,20 +435,20 @@ async def _process(client, cfg, event, ctx):
             _cache_key = f"my115_emby_has_{tmdb_id}"
             _cached = await ctx.storage.get(_cache_key, "") or ""
             if _cached and time.time() - float(_cached) < _cache_hours * 3600:
-                ctx.log.info("[115监控] Emby 已有(缓存) %d，跳过", tmdb_id)
+                _log(ctx, "info", "[115监控] Emby 已有(缓存) %d，跳过", tmdb_id)
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存)"})
                 return
             try:
                 has = await emby_has_tmdb_id(emby_url, emby_key, tmdb_id)
                 if has:
-                    ctx.log.info("[115监控] Emby 已有 %d，跳过", tmdb_id)
+                    _log(ctx, "info", "[115监控] Emby 已有 %d，跳过", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有"})
                     await ctx.storage.set(_cache_key, str(time.time()))  # 缓存正结果
                     return
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
             except Exception as e:  # noqa: BLE001
                 err = str(e) or e.__class__.__name__
-                ctx.log.warning("[115监控] Emby 查询失败: %r", e)
+                _log(ctx, "warning", "[115监控] Emby 查询失败: %r", e)
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
                 # Emby不可达时跳过转发并通知用户（每30分钟最多通知一次）
                 _emby_notify_key = "my115_emby_down_notified"
@@ -486,7 +499,7 @@ async def _process(client, cfg, event, ctx):
                         break
 
                 if skip:
-                    ctx.log.info("[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
+                    _log(ctx, "info", "[115监控] 排除类型 %s: %d", exclude_raw, tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "排除类型跳过"})
                     return
             except Exception:  # noqa: BLE001
@@ -500,12 +513,12 @@ async def _process(client, cfg, event, ctx):
         last_ts = await ctx.storage.get(dedup_key, 0) or 0
         now = time.time()
         if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
-            ctx.log.info("[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
+            _log(ctx, "info", "[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
             return
         await ctx.storage.set(dedup_key, now)
     await _send_links(client, cfg, links, label, ctx)
-    ctx.log.info("[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
+    _log(ctx, "info", "[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
 
 
@@ -606,7 +619,7 @@ async def setup(ctx):
                 msgs.append("Emby: ✅")
             except Exception as e:  # noqa: BLE001
                 err = str(e) or e.__class__.__name__
-                ctx.log.warning("[115监控] Emby测试失败: %r", e)
+                _log(ctx, "warning", "[115监控] Emby测试失败: %r", e)
                 msgs.append(f"Emby: ❌ {err}")
         else:
             msgs.append("Emby: 未配置")
@@ -648,7 +661,7 @@ async def setup(ctx):
                 if event.id > known:
                     await ctx.storage.set(last_msg_key, str(event.id))
             except Exception as e:
-                ctx.log.warning("[115监控] 更新轮询进度失败: %r", e)
+                _log(ctx, "warning", "[115监控] 更新轮询进度失败: %r", e)
         async with _process_sem:
             try:
                 await _process(event.client, cfg, event, ctx)
@@ -690,7 +703,7 @@ async def setup(ctx):
                         break
                     newest_id = max(newest_id, msg.id)
                     if msg.text or msg.caption:
-                        ctx.log.info("[115监控] 轮询发现新消息 chat=%s id=%s text=%s", cid, msg.id, (msg.text or msg.caption or "")[:60])
+                        _log(ctx, "info", "[115监控] 轮询发现新消息 chat=%s id=%s text=%s", cid, msg.id, (msg.text or msg.caption or "")[:60])
                         async with _process_sem:
                             try:
                                 # 构造轻量 event 兼容 _process（仅用 text/chat_id/id/message.entities）
