@@ -26,6 +26,7 @@ __plugin__ = {
     "version": "2.0.5",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
+    "tags": ["监控", "关键词", "自动回复"],
     "scope": "user",
     "requirements": [],
     "plugin_api_version": 2,

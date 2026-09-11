@@ -24,7 +24,13 @@
       "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
       "scope": "user",
       "path": "plugins/my115/",
-      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg"
+      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
+      "tags": [
+        "115网盘",
+        "监控",
+        "影视入库",
+        "TMDB"
+      ]
     },
     "my115scan": {
       "name": "115历史扫描",
@@ -104,7 +110,12 @@
       "author": "凹凸曼",
       "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
       "scope": "user",
-      "path": "plugins/myname.py"
+      "path": "plugins/myname.py",
+      "tags": [
+        "改名",
+        "天气",
+        "定时"
+      ]
     },
     "mypmcaptcha": {
       "name": "私聊拦截",
@@ -148,7 +159,12 @@
       "author": "AWdress",
       "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
       "scope": "user",
-      "path": "ye_monitor.py"
+      "path": "ye_monitor.py",
+      "tags": [
+        "监控",
+        "关键词",
+        "自动回复"
+      ]
     }
   }
 }

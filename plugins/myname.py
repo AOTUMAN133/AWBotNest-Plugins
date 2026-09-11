@@ -16,6 +16,7 @@ __plugin__ = {
     "version": "2.0.2",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
+    "tags": ["改名", "天气", "定时"],
     "scope": "user",
     "requirements": [],
     "plugin_api_version": 2,
