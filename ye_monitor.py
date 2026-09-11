@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "scope": "user",
@@ -109,16 +109,16 @@ async def _is_recent(ctx, fingerprint: str) -> bool:
     return False
 
 
-def _target_match(chat, target: str) -> bool:
-    """target 为纯数字 → 匹配 chat_id；否则匹配 @username（不区分大小写）。"""
+def _target_match(chat, chat_id, target: str) -> bool:
+    """target 为纯数字 → 匹配 chat_id；否则匹配 @username（不区分大小写）。
+    chat 可能为 None（Telethon 未解析实体），此时用 chat_id 兜底。"""
     if not target:
         return False
-    chat_id = getattr(chat, "id", None)
     if target.isdigit():
         return chat_id is not None and chat_id == int(target)
     username = getattr(chat, "username", None)
     username = username.lower() if username else ""
-    return username == target.lower().lstrip("@")
+    return bool(username) and username == target.lower().lstrip("@")
 
 
 def _chat_label(chat) -> str:
@@ -134,26 +134,31 @@ def _chat_label(chat) -> str:
 async def setup(ctx):
     """注册监控 handler 和命令 handler（V2: Telethon 单事件参数）。"""
 
-    # ── 监控 handler：只监听 target_chat 指定会话（V2 chats= 过滤，不监听所有频道）──
-    target_cfg = str(ctx.config.get("target_chat", "") or "").strip()
-    # chats= 接受: 数字 chat_id / @username 字符串; None=不限制(代码内仍做 _target_match 双保险)
-    monitor_chats = None
-    if target_cfg:
-        monitor_chats = int(target_cfg) if target_cfg.isdigit() else target_cfg
-
-    @ctx.on_message(incoming=True, chats=monitor_chats)
+    # ── 监控 handler：监听 target_chat 指定会话的全部消息(双向) ──
+    # 用户自己发的消息是 outgoing, 机器人/别人发的是 incoming —— 都要监听
+    # chats= 参数对 @username 解析不可靠(会静默失效), 故用代码内 _target_match 精确过滤
+    @ctx.on_message(incoming=True, outgoing=True)
     async def _monitor(event):
         try:
+            # event.chat 可能为 None(Telethon 未解析), 用 chat_id 兜底匹配
+            chat = event.chat
+            chat_id = event.chat_id
             ctx.log.info("[小叶监控] 收到消息 chat_id=%s chat_username=%s text=%r",
-                         getattr(event.chat, "id", None),
-                         getattr(event.chat, "username", None),
+                         chat_id,
+                         getattr(chat, "username", None),
                          (event.text or "")[:50])
             if not ctx.config.get("enable", False):
                 ctx.log.info("[小叶监控] enable=False, 跳过")
                 return
             target = str(ctx.config.get("target_chat", "") or "").strip()
-            ctx.log.info("[小叶监控] target=%r 匹配=%s", target, _target_match(event.chat, target))
-            if not target or not _target_match(event.chat, target):
+            # chat 为 None 时尝试异步解析实体, 仍失败则仅用 chat_id 匹配数字型 target
+            if chat is None and not target.isdigit():
+                try:
+                    chat = await event.get_chat()
+                except Exception:
+                    chat = None
+            ctx.log.info("[小叶监控] target=%r 匹配=%s", target, _target_match(chat, chat_id, target))
+            if not target or not _target_match(chat, chat_id, target):
                 return
 
             text = (event.text or "").strip()
