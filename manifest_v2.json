@@ -154,7 +154,7 @@
     },
     "ye_monitor": {
       "name": "小叶对话监控",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "AWdress",
       "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
       "scope": "user",
