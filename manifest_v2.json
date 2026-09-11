@@ -19,13 +19,12 @@
     },
     "my115": {
       "name": "115频道监控",
-      "version": "1.7.6",
+      "version": "2.0.0",
       "author": "凹凸曼",
       "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
       "scope": "user",
       "path": "plugins/my115/",
-      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
-      "changelog": "v1.7.6 修复单集误判完结\n- 修复：S01E12 单集发布被误判为整季完结（TMDB 对比只查结束集编号未查起始集）\n- 最后一季必须存在「从 E01 开始且覆盖全部集数」的完整范围才算完结\n- 连载单集/增量集数（S01E12、S03E07-E12）不再被误转存"
+      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg"
     },
     "my115scan": {
       "name": "115历史扫描",

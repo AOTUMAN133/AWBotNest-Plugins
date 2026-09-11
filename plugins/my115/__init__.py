@@ -1,5 +1,5 @@
 # =============================================================================
-# AWBotNest 插件：115 频道监控（movie_monitor_115）
+# AWBotNest V2 插件：115 频道监控（my115）
 #
 # 通用监控：监听会话里的 115 分享消息，不依赖固定频道格式——
 #   1) 优先直接读取消息里写好的「TMDB ID」；
@@ -20,16 +20,13 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "1.7.6",
-    "changelog": "v1.7.6 修复单集误判完结\n- 修复：S01E12 单集发布被误判为整季完结（TMDB 对比只查结束集编号未查起始集）\n- 最后一季必须存在「从 E01 开始且覆盖全部集数」的完整范围才算完结\n- 连载单集/增量集数（S01E12、S03E07-E12）不再被误转存",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
     "scope": "user",
-    "default_enabled": False,
     "render_mode": "vue",
-    "plugin_api_version": 1,
-    "min_platform_version": "1.1.4.0",
+    "plugin_api_version": 2,
     "instance_mode": "shared",
     "resources": {
         "timeout_seconds": 120,
@@ -66,7 +63,7 @@ _logs = deque(maxlen=200)
 
 # 链接匹配
 _LINK_PATTERN = re.compile(
-    r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]】\"'<>，]+|"
+    r"https?://(?:[\w-]*115[\w-]*\.(?:com|cn)|anxia\.com|115cdn\.com)/s/[^\s)\]}】\"'<>，]+|"
     r"ed2k://\|file\|[^|]+\|[^|]+\|[^|]+\|/|"
     r"https?://telegra\.ph/[^\s\n\"'<>，]+|"
     r"magnet:\?xt=urn:[a-z0-9]+:[a-f0-9]+",
@@ -178,12 +175,13 @@ def _pan115_id(cfg):
         return None
 
 
-def _msg_text(message) -> str:
-    return (message.text or message.caption or "").strip()
+def _msg_text(event) -> str:
+    # V2: Telethon event.text 已含文本/caption
+    return (event.text or "").strip()
 
 
-def _extract_links(message) -> list[str]:
-    text = _msg_text(message)
+def _extract_links(event) -> list[str]:
+    text = _msg_text(event)
     found = list(_LINK_PATTERN.finditer(text))
     links = []
     telegraph_links = []
@@ -193,10 +191,10 @@ def _extract_links(message) -> list[str]:
             telegraph_links.append(link)
         else:
             links.append(link)
-    # 处理实体中的链接
+    # 处理实体中的链接（Telethon message.entities 同时覆盖文本和 caption）
+    message = getattr(event, "message", None)
     ents = getattr(message, "entities", []) or []
-    cap_ents = getattr(message, "caption_entities", []) or []
-    for e in ents + cap_ents:
+    for e in ents:
         url = getattr(e, "url", None)
         if url and _LINK_PATTERN.match(url):
             if "telegra.ph" not in url:
@@ -254,8 +252,8 @@ async def _resolve_target(client, target, ctx):
         return "me"
     if target.startswith("@"):
         try:
-            chat = await client.get_chat(target)
-            return chat.id
+            entity = await client.get_entity(target)
+            return entity.id
         except Exception as e:  # noqa: BLE001
             ctx.log.error("[115监控] 解析转发目标失败 %s: %r", target, e)
             return None
@@ -310,7 +308,7 @@ async def _emby_check_only(cfg, tmdb_id, media_type, text, ctx):
     # KV 缓存检查
     _cache_hours = int(cfg.get("emby_check_cache_hours", 6) or 6)
     _cache_key = f"my115_emby_has_{tmdb_id}"
-    _cached = ctx.kv.get(_cache_key, "") or ""
+    _cached = await ctx.storage.get(_cache_key, "") or ""
     if _cached and time.time() - float(_cached) < _cache_hours * 3600:
         ctx.log.info("[115监控] Emby 已有(缓存) %d（无链接情报）", tmdb_id)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存/无链接)"})
@@ -320,7 +318,7 @@ async def _emby_check_only(cfg, tmdb_id, media_type, text, ctx):
         if has:
             ctx.log.info("[115监控] Emby 已有 %d（无链接情报）", tmdb_id)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(无链接)"})
-            ctx.kv.set(_cache_key, str(time.time()))
+            await ctx.storage.set(_cache_key, str(time.time()))
         else:
             ctx.log.info("[115监控] ★ Emby 无 %d，需关注（无链接，无法自动转发）", tmdb_id)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中(无链接)"})
@@ -328,9 +326,9 @@ async def _emby_check_only(cfg, tmdb_id, media_type, text, ctx):
         ctx.log.warning("[115监控] Emby 查询失败(无链接情报): %r", e)
         _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby查询失败"})
 
-async def _process(client, cfg, message, ctx):
-    links, telegraph_links = _extract_links(message)
-    text = _msg_text(message)
+async def _process(client, cfg, event, ctx):
+    links, telegraph_links = _extract_links(event)
+    text = _msg_text(event)
 
     # 先提取 TMDB ID（即使没有链接也能处理）
     tmdb_id = _extract_tmdb_id(text)
@@ -350,7 +348,7 @@ async def _process(client, cfg, message, ctx):
         else:
             # 诊断：无链接无TMDB，记录消息来源辅助排查（只在监控频道内，不刷屏）
             ctx.log.info("[115监控] 无链接消息: chat=%s text=%r",
-                         message.chat.id, text[:80])
+                         event.chat_id, text[:80])
         return
 
     ctx.log.info("[115监控] 检测到 %d 条链接, %d 个 Telegraph 页面", len(links), len(telegraph_links))
@@ -423,7 +421,7 @@ async def _process(client, cfg, message, ctx):
             # ── KV 缓存：Emby 已确认有的 TMDB ID 不重复查（避免 13s+ 慢查询）──
             _cache_hours = int(cfg.get("emby_check_cache_hours", 6) or 6)
             _cache_key = f"my115_emby_has_{tmdb_id}"
-            _cached = ctx.kv.get(_cache_key, "") or ""
+            _cached = await ctx.storage.get(_cache_key, "") or ""
             if _cached and time.time() - float(_cached) < _cache_hours * 3600:
                 ctx.log.info("[115监控] Emby 已有(缓存) %d，跳过", tmdb_id)
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有(缓存)"})
@@ -433,7 +431,7 @@ async def _process(client, cfg, message, ctx):
                 if has:
                     ctx.log.info("[115监控] Emby 已有 %d，跳过", tmdb_id)
                     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby已有"})
-                    ctx.kv.set(_cache_key, str(time.time()))  # 缓存正结果
+                    await ctx.storage.set(_cache_key, str(time.time()))  # 缓存正结果
                     return
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未命中"})
             except Exception as e:  # noqa: BLE001
@@ -442,10 +440,10 @@ async def _process(client, cfg, message, ctx):
                 _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": f"Emby查询失败({err[:30]})"})
                 # Emby不可达时跳过转发并通知用户（每30分钟最多通知一次）
                 _emby_notify_key = "my115_emby_down_notified"
-                _notified_ts = ctx.kv.get(_emby_notify_key, 0) or 0
+                _notified_ts = await ctx.storage.get(_emby_notify_key, 0) or 0
                 if time.time() - _notified_ts > 1800:
-                    ctx.notify(f"⚠️ 115频道监控：Emby 查询失败，请检查 Emby 状态\n({err[:80]})", level="warning")
-                    ctx.kv.set(_emby_notify_key, time.time())
+                    await ctx.notify(f"⚠️ 115频道监控：Emby 查询失败，请检查 Emby 状态\n({err[:80]})", level="warning")
+                    await ctx.storage.set(_emby_notify_key, time.time())
                 return
         else:
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "Emby未配置跳过查重"})
@@ -500,20 +498,20 @@ async def _process(client, cfg, message, ctx):
     dedup_hours = int(cfg.get("dedup_hours", 24) or 24)
     if tmdb_id and dedup_hours > 0:
         dedup_key = f"my115_dedup_{tmdb_id}"
-        last_ts = ctx.kv.get(dedup_key, 0) or 0
+        last_ts = await ctx.storage.get(dedup_key, 0) or 0
         now = time.time()
         if last_ts > 0 and (now - last_ts) < dedup_hours * 3600:
             ctx.log.info("[115监控] TMDB %d 在冷却期内(%sh)，跳过重复转发", tmdb_id, dedup_hours)
             _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "重复跳过"})
             return
-        ctx.kv.set(dedup_key, now)
+        await ctx.storage.set(dedup_key, now)
     await _send_links(client, cfg, links, label, ctx)
     ctx.log.info("[115监控] 已转发 TMDB %d: %s", tmdb_id, text[:30])
     _logs.append({"time": datetime.now().strftime("%H:%M:%S"), "title": text[:30], "tmdb_id": tmdb_id, "action": "转发"})
 
 
-async def _cmd_getmedia(client, message, ctx):
-    text = message.text or ""
+async def _cmd_getmedia(event, ctx):
+    text = event.text or ""
     parts = text.split(maxsplit=2)
     if len(parts) < 2:
         return
@@ -529,18 +527,18 @@ async def _cmd_getmedia(client, message, ctx):
     except Exception as e:  # noqa: BLE001
         summary = f"❌ 查询失败：{e}"
     try:
-        await message.edit(f"```\n{summary}\n```")
+        await event.edit(f"```\n{summary}\n```")
     except Exception:
         pass
     await asyncio.sleep(_GETMEDIA_TTL)
     try:
-        await message.delete()
+        await event.delete()
     except Exception:
         pass
 
 
-async def _cmd_find(client, message, ctx):
-    text = message.text or ""
+async def _cmd_find(event, ctx):
+    text = event.text or ""
     m = re.search(r".find\s+(\d+)", text, re.IGNORECASE)
     if not m:
         return
@@ -556,12 +554,12 @@ async def _cmd_find(client, message, ctx):
     except Exception as e:  # noqa: BLE001
         reply = f"❌ 查询失败：{e}"
     try:
-        await message.edit(reply)
+        await event.edit(reply)
     except Exception:
         pass
     await asyncio.sleep(_GETMEDIA_TTL)
     try:
-        await message.delete()
+        await event.delete()
     except Exception:
         pass
 
@@ -634,26 +632,27 @@ async def setup(ctx):
     # ───────── 监听 115 分享消息 ─────────
     _process_sem = asyncio.Semaphore(5)  # 最多5个并发处理
 
-    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7, target="both")
-    async def monitor_channels(client, message):
+    # V2: incoming=True 监听所有入站消息, 内部按 monitor_ids 过滤
+    @ctx.on_message(incoming=True)
+    async def monitor_channels(event):
         cfg = _effective_cfg(ctx)
         if not cfg.get("shareswitch", False):
             return
         monitor_ids = _monitor_ids(cfg)
-        if monitor_ids and message.chat.id not in monitor_ids:
+        if monitor_ids and event.chat_id not in monitor_ids:
             return
         # 实时监听发布：立即推进轮询进度，轮询兜底不会再重复处理本条
         if monitor_ids:
-            last_msg_key = f"my115_last_msg_{message.chat.id}"
+            last_msg_key = f"my115_last_msg_{event.chat_id}"
             try:
-                known = int(ctx.kv.get(last_msg_key, 0) or 0)
-                if message.id > known:
-                    ctx.kv.set(last_msg_key, str(message.id))
+                known = int(await ctx.storage.get(last_msg_key, 0) or 0)
+                if event.id > known:
+                    await ctx.storage.set(last_msg_key, str(event.id))
             except Exception as e:
                 ctx.log.warning("[115监控] 更新轮询进度失败: %r", e)
         async with _process_sem:
             try:
-                await _process(client, cfg, message, ctx)
+                await _process(event.client, cfg, event, ctx)
             except Exception as e:
                 ctx.log.error("[115监控] 处理消息异常: %r", e)
 
@@ -668,7 +667,7 @@ async def setup(ctx):
         if not monitor_ids:
             return
         # 取用户账号发请求
-        user_clients = ctx.user_apps
+        user_clients = ctx.users
         if not user_clients:
             return
         client = user_clients[0]
@@ -677,16 +676,17 @@ async def setup(ctx):
             try:
                 # 低频轮询：每频道至少 300s 查一次，避免触发限流
                 poll_key = f"my115_poll_ts_{cid}"
-                last_poll = ctx.kv.get(poll_key, 0) or 0
+                last_poll = await ctx.storage.get(poll_key, 0) or 0
                 if _time.time() - float(last_poll) < 300:
                     continue
-                ctx.kv.set(poll_key, str(_time.time()))
+                await ctx.storage.set(poll_key, str(_time.time()))
 
                 # 从最后已知消息ID之后增量拉取（limit=100 防一次发布多条遗漏）
                 last_msg_key = f"my115_last_msg_{cid}"
-                known_id = int(ctx.kv.get(last_msg_key, 0) or 0)
+                known_id = int(await ctx.storage.get(last_msg_key, 0) or 0)
                 newest_id = known_id
-                async for msg in client.get_chat_history(cid, limit=100):
+                # V2: Telethon get_messages
+                async for msg in client.iter_messages(cid, limit=100):
                     if msg.id <= known_id:
                         break
                     newest_id = max(newest_id, msg.id)
@@ -694,25 +694,34 @@ async def setup(ctx):
                         ctx.log.info("[115监控] 轮询发现新消息 chat=%s id=%s text=%s", cid, msg.id, (msg.text or msg.caption or "")[:60])
                         async with _process_sem:
                             try:
-                                await _process(client, cfg, msg, ctx)
+                                # 构造轻量 event 兼容 _process（仅用 text/chat_id/id/message.entities）
+                                from types import SimpleNamespace
+                                msg_obj = SimpleNamespace(
+                                    text=msg.text or "",
+                                    chat_id=cid,
+                                    id=msg.id,
+                                    message=msg,
+                                )
+                                await _process(client, cfg, msg_obj, ctx)
                             except Exception as e:
                                 ctx.log.error("[115监控] 轮询处理异常: %r", e)
                 if newest_id > known_id:
-                    ctx.kv.set(last_msg_key, str(newest_id))
+                    await ctx.storage.set(last_msg_key, str(newest_id))
             except Exception as e:
                 # 拉取失败必须可见：未加入频道 / 限流(FloodWait) / 403 等
                 ctx.log.error("[115监控] 轮询频道 %s 失败: %r", cid, e)
 
-    ctx.schedule(_poll_channels, trigger="interval", seconds=300)
+    # V2: schedule_interval(id, callback, seconds=)
+    ctx.schedule_interval("my115_poll", _poll_channels, seconds=300)
 
     # ───────── 命令：/getmedia 和 /find ─────────
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-9)
-    async def commands(client, message):
-        text = message.text or ""
+    @ctx.on_message(outgoing=True)
+    async def commands(event):
+        text = event.text or ""
         if re.match(r"^[/\.]getmedia(?:\s|$)", text, re.IGNORECASE):
-            await _cmd_getmedia(client, message, ctx)
+            await _cmd_getmedia(event, ctx)
         elif re.match(r"^[/\.]find(?:\s|$)", text, re.IGNORECASE):
-            await _cmd_find(client, message, ctx)
+            await _cmd_find(event, ctx)
 
 
 async def teardown(ctx):
