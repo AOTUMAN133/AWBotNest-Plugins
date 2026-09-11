@@ -1,23 +1,30 @@
 # =============================================================================
-# AWBotNest 插件：自动报时昵称（myname）
+# AWBotNest V2 插件：自动报时昵称（myname）
 #
 # 定时把你的用户账号昵称改成当前时间+天气（按模板渲染）。
 # 支持特殊字体数字（𝟏𝟔:𝟓𝟏）、天气图标、温度。
 # 天气数据来源：wttr.in（免费，无需API Key）
 # =============================================================================
 
+import asyncio
 import random
-import httpx
 from datetime import datetime, timedelta, timezone
 
 __plugin__ = {
     "name": "自动报时昵称",
     "id": "myname",
-    "version": "1.0.1",
+    "version": "2.0.0",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "scope": "user",
-    "default_enabled": False,
+    "requirements": [],
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 60,
+        "max_concurrency": 4,
+        "max_background_tasks": 8,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "interval_min": {
             "type": "slider", "default": 5, "label": "改名间隔(分钟)",
@@ -60,6 +67,7 @@ _BOLD_DIGITS = str.maketrans("0123456789", "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖
 
 
 def _to_bold(s: str) -> str:
+    """将字符串中的数字转为特殊字体"""
     return s.translate(_BOLD_DIGITS)
 
 
@@ -67,34 +75,36 @@ def _to_bold(s: str) -> str:
 _WEATHER_CACHE = {"data": None, "time": 0}
 
 
-async def _get_weather(location: str, cache_minutes: int = 30) -> dict:
+async def _get_weather(ctx, location: str, cache_minutes: int = 30) -> dict:
+    """获取天气数据（带缓存）。V2: 用 ctx.http 走平台代理"""
+    global _WEATHER_CACHE
     now = datetime.now(_TZ8).timestamp()
     if _WEATHER_CACHE["data"] and now - _WEATHER_CACHE["time"] < cache_minutes * 60:
         return _WEATHER_CACHE["data"]
 
     url = f"https://wttr.in/{location}?format=j1"
     try:
-        async with httpx.AsyncClient(timeout=10) as cli:
-            r = await cli.get(url)
-            if r.status_code == 200:
-                data = r.json()
-                current = data.get("current_condition", [{}])[0]
-                result = {
-                    "temp": current.get("temp_C", "?"),
-                    "desc": current.get("weatherDesc", [{}])[0].get("value", ""),
-                    "icon": _weather_code_to_icon(current.get("weatherCode", 0)),
-                    "humidity": current.get("humidity", "?"),
-                    "wind": current.get("windspeedKmph", "?"),
-                }
-                _WEATHER_CACHE["data"] = result
-                _WEATHER_CACHE["time"] = now
-                return result
+        resp = await ctx.http.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            current = data.get("current_condition", [{}])[0]
+            result = {
+                "temp": current.get("temp_C", "?"),
+                "desc": current.get("weatherDesc", [{}])[0].get("value", ""),
+                "icon": _weather_code_to_icon(current.get("weatherCode", 0)),
+                "humidity": current.get("humidity", "?"),
+                "wind": current.get("windspeedKmph", "?"),
+            }
+            _WEATHER_CACHE["data"] = result
+            _WEATHER_CACHE["time"] = now
+            return result
     except Exception:
         pass
     return {"temp": "?", "desc": "", "icon": "🌤", "humidity": "?", "wind": "?"}
 
 
 def _weather_code_to_icon(code: int) -> str:
+    """wttr.in weatherCode 转 emoji 图标"""
     icons = {
         113: "☀️", 116: "⛅", 119: "☁️", 122: "☁️",
         143: "🌫", 176: "🌦", 179: "🌧", 182: "🌧",
@@ -113,6 +123,7 @@ def _weather_code_to_icon(code: int) -> str:
 
 
 def _render_name(fmt: str, now: datetime, weather: dict) -> str:
+    """按模板渲染昵称"""
     return (
         fmt.replace("{emoji}", random.choice(_EMOJIS))
         .replace("{H}", now.strftime("%H"))
@@ -134,8 +145,8 @@ def _render_name(fmt: str, now: datetime, weather: dict) -> str:
 
 def _make_action(ctx):
     async def _action():
-        user_apps = ctx.user_apps
-        if not user_apps:
+        users = ctx.users
+        if not users:
             return
 
         cfg = ctx.config
@@ -145,9 +156,10 @@ def _make_action(ctx):
         weather_interval = int(cfg.get("weather_interval", 30) or 30)
         now = datetime.now(_TZ8)
 
-        weather = await _get_weather(location, weather_interval)
+        # 获取天气
+        weather = await _get_weather(ctx, location, weather_interval)
 
-        for app in user_apps:
+        for app in users:
             try:
                 rendered = _render_name(fmt, now, weather)
                 kwargs = {}
@@ -172,7 +184,8 @@ async def setup(ctx):
         interval = 5
     interval = max(1, min(interval, 60))
 
-    ctx.schedule(_make_action(ctx), "interval", minutes=interval, id="自动报时昵称")
+    # V2: schedule_interval(id, callback, seconds=), 停用自动移除
+    ctx.schedule_interval("myname", _make_action(ctx), seconds=interval * 60)
     ctx.log.info("[自动报时] 已启用，每 %d 分钟，城市: %s", interval, ctx.config.get("location", "Guangzhou"))
 
 
