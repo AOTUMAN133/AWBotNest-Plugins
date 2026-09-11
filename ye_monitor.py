@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "scope": "user",
@@ -169,24 +169,21 @@ async def setup(ctx):
                     chat = None
             if not target or not _target_match(chat, chat_id, target):
                 return
-            ctx.log.info("[小叶监控] 命中会话 chat_id=%s 消息=%r", chat_id, (event.text or "")[:80])
 
             text = (event.text or "").strip()
             keyword = str(ctx.config.get("keyword", "") or "").strip()
             mode = str(ctx.config.get("match_mode", "contains") or "contains")
-            ctx.log.info("[小叶监控] keyword=%r mode=%s 命中=%s", keyword, mode, _match_keyword(text, keyword, mode))
             if not _match_keyword(text, keyword, mode):
                 return
 
             fp = _make_fingerprint(event.chat_id, event.id, text)
             if await _is_recent(ctx, fp):
-                ctx.log.info("[小叶监控] 去重命中, 跳过")
                 return
 
             reply_text = str(ctx.config.get("reply_text", "") or "").strip()
             if not reply_text:
                 return
-            ctx.log.info("[小叶监控] 将回复: %r", reply_text)
+            ctx.log.info("[小叶监控] 已回复: %r → %s", reply_text, text[:80])
 
             # 延迟回复（默认 10 秒，可配置）。去重已在上方完成，等待期间不重复触发。
             import asyncio as _asyncio
