@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "tags": ["监控", "关键词", "自动回复"],

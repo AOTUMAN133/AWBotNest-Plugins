@@ -19,7 +19,7 @@
     },
     "my115": {
       "name": "115频道监控",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "凹凸曼",
       "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
       "scope": "user",
@@ -106,7 +106,7 @@
     },
     "myname": {
       "name": "自动报时昵称",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "author": "凹凸曼",
       "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
       "scope": "user",
@@ -155,7 +155,7 @@
     },
     "ye_monitor": {
       "name": "小叶对话监控",
-      "version": "2.0.5",
+      "version": "2.0.6",
       "author": "AWdress",
       "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
       "scope": "user",
