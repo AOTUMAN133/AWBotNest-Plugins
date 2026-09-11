@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "scope": "user",
@@ -134,8 +134,14 @@ def _chat_label(chat) -> str:
 async def setup(ctx):
     """注册监控 handler 和命令 handler（V2: Telethon 单事件参数）。"""
 
-    # ── 监控 handler：只收对方消息，命中关键词自动回复 ──
-    @ctx.on_message(incoming=True)
+    # ── 监控 handler：只监听 target_chat 指定会话（V2 chats= 过滤，不监听所有频道）──
+    target_cfg = str(ctx.config.get("target_chat", "") or "").strip()
+    # chats= 接受: 数字 chat_id / @username 字符串; None=不限制(代码内仍做 _target_match 双保险)
+    monitor_chats = None
+    if target_cfg:
+        monitor_chats = int(target_cfg) if target_cfg.isdigit() else target_cfg
+
+    @ctx.on_message(incoming=True, chats=monitor_chats)
     async def _monitor(event):
         try:
             ctx.log.info("[小叶监控] 收到消息 chat_id=%s chat_username=%s text=%r",
