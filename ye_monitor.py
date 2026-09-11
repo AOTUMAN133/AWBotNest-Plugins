@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "scope": "user",
@@ -134,21 +134,31 @@ def _chat_label(chat) -> str:
 async def setup(ctx):
     """注册监控 handler 和命令 handler（V2: Telethon 单事件参数）。"""
 
-    # ── 监控 handler：监听 target_chat 指定会话的全部消息(双向) ──
-    # 用户自己发的消息是 outgoing, 机器人/别人发的是 incoming —— 都要监听
-    # chats= 参数对 @username 解析不可靠(会静默失效), 故用代码内 _target_match 精确过滤
-    @ctx.on_message(incoming=True, outgoing=True)
+    # ── 监控 handler：只监听 target_chat 指定会话(双向) ──
+    # 关键: 用 ctx.user 把 @username 解析成 chat_id, 再传给 chats=[id] 数字过滤
+    # Telethon chats= 对数字 chat_id 过滤可靠; 对 @username 字符串会静默失效(所以必须预解析)
+    monitor_chats = None
+    target_cfg = str(ctx.config.get("target_chat", "") or "").strip()
+    try:
+        if target_cfg:
+            if target_cfg.isdigit():
+                monitor_chats = int(target_cfg)
+            else:
+                client = ctx.user or ctx.bot
+                if client is not None:
+                    entity = await client.get_entity(target_cfg)
+                    monitor_chats = entity.id
+                    ctx.log.info("[小叶监控] 目标会话解析: %s → chat_id=%s", target_cfg, entity.id)
+    except Exception as e:
+        ctx.log.warning("[小叶监控] 目标会话解析失败 %s: %r, 退化为代码内过滤", target_cfg, e)
+
+    @ctx.on_message(incoming=True, outgoing=True, chats=monitor_chats)
     async def _monitor(event):
         try:
             # event.chat 可能为 None(Telethon 未解析), 用 chat_id 兜底匹配
             chat = event.chat
             chat_id = event.chat_id
-            ctx.log.info("[小叶监控] 收到消息 chat_id=%s chat_username=%s text=%r",
-                         chat_id,
-                         getattr(chat, "username", None),
-                         (event.text or "")[:50])
             if not ctx.config.get("enable", False):
-                ctx.log.info("[小叶监控] enable=False, 跳过")
                 return
             target = str(ctx.config.get("target_chat", "") or "").strip()
             # chat 为 None 时尝试异步解析实体, 仍失败则仅用 chat_id 匹配数字型 target
@@ -157,9 +167,9 @@ async def setup(ctx):
                     chat = await event.get_chat()
                 except Exception:
                     chat = None
-            ctx.log.info("[小叶监控] target=%r 匹配=%s", target, _target_match(chat, chat_id, target))
             if not target or not _target_match(chat, chat_id, target):
                 return
+            ctx.log.info("[小叶监控] 命中会话 chat_id=%s 消息=%r", chat_id, (event.text or "")[:80])
 
             text = (event.text or "").strip()
             keyword = str(ctx.config.get("keyword", "") or "").strip()
