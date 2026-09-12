@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.7",
+    "version": "2.0.8",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -30,7 +30,7 @@ __plugin__ = {
     "plugin_api_version": 2,
     "instance_mode": "shared",
     "resources": {
-        "timeout_seconds": 120,
+        "timeout_seconds": 600,
         "max_concurrency": 8,
         "max_background_tasks": 32,
         "failure_threshold": 5,
@@ -694,12 +694,12 @@ async def setup(ctx):
                     continue
                 await ctx.storage.set(poll_key, str(_time.time()))
 
-                # 从最后已知消息ID之后增量拉取（limit=100 防一次发布多条遗漏）
+                # 从最后已知消息ID之后增量拉取（limit=30 防一次发布多条遗漏+单轮超时）
                 last_msg_key = f"my115_last_msg_{cid}"
                 known_id = int(await ctx.storage.get(last_msg_key, 0) or 0)
                 newest_id = known_id
                 # V2: Telethon get_messages
-                async for msg in client.iter_messages(cid, limit=100):
+                async for msg in client.iter_messages(cid, limit=30):
                     if msg.id <= known_id:
                         break
                     newest_id = max(newest_id, msg.id)
