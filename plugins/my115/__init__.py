@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.6",
+    "version": "2.0.7",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -686,10 +686,11 @@ async def setup(ctx):
         import time as _time
         for cid in monitor_ids:
             try:
-                # 低频轮询：每频道至少 60s 查一次（准实时兜底；30s 会触发限流哑火）
+                # 低频兜底轮询：每频道至少 300s 查一次（on_message 实时监控为主, 轮询只防漏）
+                # 高频轮询会超时被治理层杀掉(>120s)并刷屏, 且与实时监控重复处理
                 poll_key = f"my115_poll_ts_{cid}"
                 last_poll = await ctx.storage.get(poll_key, 0) or 0
-                if _time.time() - float(last_poll) < 60:
+                if _time.time() - float(last_poll) < 300:
                     continue
                 await ctx.storage.set(poll_key, str(_time.time()))
 
@@ -723,8 +724,8 @@ async def setup(ctx):
                 # 拉取失败必须可见：未加入频道 / 限流(FloodWait) / 403 等
                 ctx.log.error("[115监控] 轮询频道 %s 失败: %r", cid, e)
 
-    # V2: schedule_interval(id, callback, seconds=) — 60s 准实时兜底, id 用中文
-    ctx.schedule_interval("115频道轮询", _poll_channels, seconds=60)
+    # V2: schedule_interval(id, callback, seconds=) — 300s 低频兜底(实时监控为主), id 用中文
+    ctx.schedule_interval("115频道轮询", _poll_channels, seconds=300)
 
     # ───────── 命令：/getmedia 和 /find ─────────
     @ctx.on_message(outgoing=True)
