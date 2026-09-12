@@ -1,26 +1,33 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：私聊拦截 (mypmcaptcha)
+# AWBotNest V2 插件：私聊拦截 (mypmcaptcha)
 
 import asyncio
 import random
 import time
 from datetime import datetime, timezone, timedelta
 
-from pyrogram import raw
+from telethon.tl import functions, types
 
-# 平台 client 是裸 Pyrogram Client：block/delete/archive 用原生高级方法，
-# mute/report 用原生 invoke(raw.functions...)。勿用不存在的 client.call()。
+# V2: Telethon client — block/delete/archive/mute/report 用原生 TL 函数
 TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "1.0.9",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
+    "tags": ["私聊", "验证", "拦截"],
     "scope": "user",
     "requirements": [],
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 32,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "enabled": {
             "type": "boolean", "default": True, "label": "启用插件",
@@ -82,7 +89,7 @@ DEFAULTS = {
 # { user_id: {"question": str, "answer": str, "tries": int, "msg_id": int, "task": asyncio.Task} }
 _pending = {}
 
-# 验证记录（存 ctx.kv）
+# 验证记录（存 ctx.storage）
 _KV_VERIFIED = "mypm_verified"
 _KV_FAILED = "mypm_failed"
 _KV_WHITELIST = "mypm_whitelist"
@@ -124,26 +131,40 @@ def _parse_actions(s: str) -> list:
     return result
 
 
-def _is_whitelisted(ctx, user_id: int) -> bool:
-    raw = ctx.config.get("whitelist", "") or ctx.kv.get(_KV_WHITELIST, "") or ""
+async def _get_whitelist_raw(ctx) -> str:
+    try:
+        kv = await ctx.storage.get(_KV_WHITELIST, "") or ""
+    except Exception:
+        kv = ""
+    return str(ctx.config.get("whitelist", "") or kv or "")
+
+
+async def _is_whitelisted(ctx, user_id: int) -> bool:
+    raw = await _get_whitelist_raw(ctx)
     return user_id in _parse_ids(raw)
 
 
-def _add_whitelist(ctx, user_id: int):
-    raw = ctx.config.get("whitelist", "") or ctx.kv.get(_KV_WHITELIST, "") or ""
+async def _add_whitelist(ctx, user_id: int):
+    raw = await _get_whitelist_raw(ctx)
     ids = _parse_ids(raw)
     ids.add(user_id)
     new = ",".join(str(x) for x in sorted(ids))
-    ctx.kv.set(_KV_WHITELIST, new)
+    try:
+        await ctx.storage.set(_KV_WHITELIST, new)
+    except Exception:
+        pass
     ctx.update_config({"whitelist": new})
 
 
-def _del_whitelist(ctx, user_id: int):
-    raw = ctx.config.get("whitelist", "") or ctx.kv.get(_KV_WHITELIST, "") or ""
+async def _del_whitelist(ctx, user_id: int):
+    raw = await _get_whitelist_raw(ctx)
     ids = _parse_ids(raw)
     ids.discard(user_id)
     new = ",".join(str(x) for x in sorted(ids))
-    ctx.kv.set(_KV_WHITELIST, new)
+    try:
+        await ctx.storage.set(_KV_WHITELIST, new)
+    except Exception:
+        pass
     ctx.update_config({"whitelist": new})
 
 
@@ -253,6 +274,58 @@ async def _send_captcha(client, cfg, user_id, ctx):
     }
 
 
+# ─── Telethon 操作封装 ────────────────────────────────────────────────────────
+
+
+async def _mute_user(client, user_id: int):
+    """静音（mute_until=2147483647 永久）"""
+    await client(functions.account.UpdateNotifySettingsRequest(
+        peer=types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+        settings=types.InputPeerNotifySettings(
+            show_previews=False, silent=True, mute_until=2147483647
+        ),
+    ))
+
+
+async def _unmute_user(client, user_id: int):
+    """取消静音"""
+    await client(functions.account.UpdateNotifySettingsRequest(
+        peer=types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+        settings=types.InputPeerNotifySettings(
+            show_previews=True, silent=False, mute_until=0
+        ),
+    ))
+
+
+async def _report_user(client, user_id: int):
+    """举报为垃圾信息"""
+    await client(functions.account.ReportPeerRequest(
+        peer=await client.resolve_peer(user_id),
+        reason=types.InputReportReasonSpam(),
+        message="spam",
+    ))
+
+
+async def _block_user(client, user_id: int):
+    """屏蔽"""
+    await client(functions.contacts.BlockRequest(id=await client.resolve_peer(user_id)))
+
+
+async def _delete_chat(client, user_id: int):
+    """删除对话（连同历史消息）"""
+    await client(functions.messages.DeleteHistoryRequest(
+        peer=await client.resolve_peer(user_id),
+        max_id=0,
+        revoke=True,
+        just_clear=False,
+    ))
+
+
+async def _archive_chat(client, user_id: int, archive: bool = True):
+    """归档/取消归档（Telethon edit_folder: folder=1 归档, 0 取消）"""
+    await client.edit_folder(user_id, folder=1 if archive else 0)
+
+
 # ─── 验证通过/失败 ─────────────────────────────────────────────────────────────
 
 
@@ -265,23 +338,16 @@ async def _pass(client, user_id, ctx):
     for act in pass_acts:
         if act == "unmute":
             try:
-                await client.invoke(
-                    raw.functions.account.UpdateNotifySettings(
-                        peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                        settings=raw.types.InputPeerNotifySettings(
-                            show_previews=True, silent=False, mute_until=0
-                        ),
-                    )
-                )
+                await _unmute_user(client, user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消静音失败 %d: %r", user_id, e)
         elif act == "unarchive":
             try:
-                await client.unarchive_chats(user_id)
+                await _archive_chat(client, user_id, archive=False)
             except Exception as e:
                 ctx.log.warning("[人机验证] 取消归档失败 %d: %r", user_id, e)
         elif act == "wl":
-            _add_whitelist(ctx, user_id)
+            await _add_whitelist(ctx, user_id)
 
     # 记录通过
     try:
@@ -290,17 +356,20 @@ async def _pass(client, user_id, ctx):
     except Exception:
         my_name = str(user_id)
     try:
-        u = await client.get_users(user_id)
+        u = await client.get_entity(user_id)
         name = u.first_name or str(user_id)
         uname = u.username or ""
     except Exception:
         name = str(user_id)
         uname = ""
 
-    verified = _get_records(ctx, _KV_VERIFIED)
+    verified = await _get_records(ctx, _KV_VERIFIED)
     entry = {"id": user_id, "name": name, "username": uname, "time": _now()}
     verified = [e for e in verified if e.get("id") != user_id] + [entry]
-    ctx.kv.set(_KV_VERIFIED, verified)
+    try:
+        await ctx.storage.set(_KV_VERIFIED, verified)
+    except Exception:
+        pass
 
     try:
         await client.send_message(user_id, "✅ 验证通过，欢迎！")
@@ -317,61 +386,51 @@ async def _fail(client, user_id, ctx, reason: str):
     for act in fail_acts:
         if act == "block":
             try:
-                await client.block_user(user_id)
+                await _block_user(client, user_id)
                 ctx.log.info("[人机验证] 已屏蔽 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 屏蔽失败 %d: %r", user_id, e)
         elif act == "mute":
             try:
-                await client.invoke(
-                    raw.functions.account.UpdateNotifySettings(
-                        peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                        settings=raw.types.InputPeerNotifySettings(
-                            show_previews=False, silent=True, mute_until=2147483647
-                        ),
-                    )
-                )
+                await _mute_user(client, user_id)
                 ctx.log.info("[人机验证] 已静音 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 静音失败 %d: %r", user_id, e)
         elif act == "delete":
             try:
-                await client.delete_chat_history(user_id, revoke=True)
+                await _delete_chat(client, user_id)
                 ctx.log.info("[人机验证] 已删除对话 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 删除对话失败 %d: %r", user_id, e)
         elif act == "report":
             try:
-                await client.invoke(
-                    raw.functions.account.ReportPeer(
-                        peer=await client.resolve_peer(user_id),
-                        reason=raw.types.InputReportReasonSpam(),
-                        message="spam",
-                    )
-                )
+                await _report_user(client, user_id)
                 ctx.log.info("[人机验证] 已举报 %d", user_id)
             except Exception as e:
                 ctx.log.warning("[人机验证] 举报失败 %d: %r", user_id, e)
         elif act == "archive":
             try:
-                await client.archive_chats(user_id)
+                await _archive_chat(client, user_id, archive=True)
             except Exception as e:
                 ctx.log.warning("[人机验证] 归档失败 %d: %r", user_id, e)
 
     # 记录失败
     try:
-        u = await client.get_users(user_id)
+        u = await client.get_entity(user_id)
         name = u.first_name or str(user_id)
         uname = u.username or ""
     except Exception:
         name = str(user_id)
         uname = ""
 
-    failed = _get_records(ctx, _KV_FAILED)
+    failed = await _get_records(ctx, _KV_FAILED)
     entry = {"id": user_id, "name": name, "username": uname,
              "time": _now(), "reason": reason}
     failed = [e for e in failed if e.get("id") != user_id] + [entry]
-    ctx.kv.set(_KV_FAILED, failed)
+    try:
+        await ctx.storage.set(_KV_FAILED, failed)
+    except Exception:
+        pass
 
     try:
         rl = {"timeout": "⏰ 超时", "max_tries": "❌ 次数耗尽"}
@@ -380,17 +439,20 @@ async def _fail(client, user_id, ctx, reason: str):
         pass
 
 
-def _get_records(ctx, key: str) -> list:
-    raw = ctx.kv.get(key, [])
-    if isinstance(raw, list):
-        return raw
-    return []
+async def _get_records(ctx, key: str) -> list:
+    try:
+        raw = await ctx.storage.get(key, [])
+        if isinstance(raw, list):
+            return raw
+        return []
+    except Exception:
+        return []
 
 
 async def _update_stats(ctx):
     """更新统计信息"""
-    verified = len(_get_records(ctx, _KV_VERIFIED))
-    failed = len(_get_records(ctx, _KV_FAILED))
+    verified = len(await _get_records(ctx, _KV_VERIFIED))
+    failed = len(await _get_records(ctx, _KV_FAILED))
     pending = len(_pending)
     ctx.update_config({"_stats": f"✅通过{verified} ❌失败{failed} ⏳待验证{pending}"})
 
@@ -399,19 +461,26 @@ async def _update_stats(ctx):
 
 
 async def setup(ctx):
-    @ctx.on_message(ctx.filters.private & ~ctx.filters.outgoing, group=6, target="both")
-    async def _pm_handler(client, message):
+    # V2: 双向监听私聊, 代码内判断 is_private
+    @ctx.on_message(incoming=True, outgoing=True)
+    async def _pm_handler(event):
         if not ctx.config.get("enabled", True):
             return
-        user_id = message.from_user.id if message.from_user else 0
+        # 仅私聊
+        if not getattr(event, "is_private", False):
+            return
+        user_id = event.sender_id or 0
         if not user_id:
             return
-        # 跳过机器人自己
-        if message.from_user and (message.from_user.is_self or message.from_user.is_bot):
+        # 跳过自己
+        sender = await event.get_sender()
+        if sender is None or getattr(sender, "is_self", False) or getattr(sender, "bot", False):
             return
 
+        client = event.client
+
         # 检查是否是命令消息
-        text = (message.text or "").strip()
+        text = (event.text or "").strip()
         if text.startswith("/") or text.startswith("."):
             return
 
@@ -421,11 +490,11 @@ async def setup(ctx):
             return
 
         # 白名单直接放行
-        if _is_whitelisted(ctx, user_id):
+        if await _is_whitelisted(ctx, user_id):
             return
 
         # 已通过验证的放行
-        verified = _get_records(ctx, _KV_VERIFIED)
+        verified = await _get_records(ctx, _KV_VERIFIED)
         if any(v.get("id") == user_id for v in verified):
             return
 
@@ -455,18 +524,11 @@ async def setup(ctx):
 
         # 静音+归档
         try:
-            await client.archive_chats(user_id)
+            await _archive_chat(client, user_id, archive=True)
         except Exception:
             pass
         try:
-            await client.invoke(
-                raw.functions.account.UpdateNotifySettings(
-                    peer=raw.types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
-                    settings=raw.types.InputPeerNotifySettings(
-                        show_previews=False, silent=True, mute_until=2147483647
-                    ),
-                )
-            )
+            await _mute_user(client, user_id)
         except Exception:
             pass
 
@@ -475,9 +537,14 @@ async def setup(ctx):
 
     @ctx.on_api("/pass_user", methods=["POST"])
     async def _api_pass(req):
-        import json
-        data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
-        uid = int(data.get("user_id", 0))
+        data = req.json if hasattr(req, 'json') and req.json else (req or {})
+        if isinstance(data, str):
+            import json as _json
+            try:
+                data = _json.loads(data)
+            except Exception:
+                data = {}
+        uid = int(data.get("user_id", 0) or 0)
         if not uid:
             return {"ok": False, "message": "需要user_id"}
         apps = list(ctx.user_apps or [])
@@ -488,9 +555,14 @@ async def setup(ctx):
 
     @ctx.on_api("/fail_user", methods=["POST"])
     async def _api_fail(req):
-        import json
-        data = json.loads(req.body) if hasattr(req, 'body') else (req or {})
-        uid = int(data.get("user_id", 0))
+        data = req.json if hasattr(req, 'json') and req.json else (req or {})
+        if isinstance(data, str):
+            import json as _json
+            try:
+                data = _json.loads(data)
+            except Exception:
+                data = {}
+        uid = int(data.get("user_id", 0) or 0)
         if not uid:
             return {"ok": False, "message": "需要user_id"}
         apps = list(ctx.user_apps or [])
@@ -501,21 +573,27 @@ async def setup(ctx):
 
     @ctx.on_api("/clear_verified", methods=["POST"])
     async def _api_clear_verified(req):
-        ctx.kv.set(_KV_VERIFIED, [])
+        try:
+            await ctx.storage.set(_KV_VERIFIED, [])
+        except Exception:
+            pass
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空通过记录"}
 
     @ctx.on_api("/clear_failed", methods=["POST"])
     async def _api_clear_failed(req):
-        ctx.kv.set(_KV_FAILED, [])
+        try:
+            await ctx.storage.set(_KV_FAILED, [])
+        except Exception:
+            pass
         await _update_stats(ctx)
         return {"ok": True, "message": "已清空失败记录"}
 
     @ctx.on_api("/get_records", methods=["GET"])
     async def _api_get_records(req):
         return {
-            "verified": _get_records(ctx, _KV_VERIFIED),
-            "failed": _get_records(ctx, _KV_FAILED),
+            "verified": await _get_records(ctx, _KV_VERIFIED),
+            "failed": await _get_records(ctx, _KV_FAILED),
             "pending": len(_pending),
         }
 
