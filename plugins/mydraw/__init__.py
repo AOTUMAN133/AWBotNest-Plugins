@@ -14,7 +14,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -152,7 +152,7 @@ async def setup(ctx):
         qr_path.write_bytes(qr.qrcode_data)
         # 发送二维码到聊天（通过平台 Bot 通知）
         try:
-            await ctx.bot.send_photo(ctx.owner_id, str(qr_path))
+            await ctx.bot.send_file(ctx.owner_id, str(qr_path))
             ctx.update_config({"_login_status": "📱 二维码已发送，请用豆包 App 扫码"})
         except Exception as e:
             ctx.update_config({"_login_status": f"📱 二维码已生成（{qr_path}），但发送失败: {e}"})
@@ -385,7 +385,7 @@ async def _handle_image(ctx, event, prompt):
                     await wait.edit("❌ 图片下载失败")
                     return
             await wait.delete()
-            await client.send_photo(event.chat_id, str(filepath))
+            await client.send_file(event.chat_id, str(filepath))
             filepath.unlink(missing_ok=True)
         else:
             await wait.edit("❌ 图片生成失败")
@@ -454,7 +454,7 @@ async def _handle_video(ctx, event, prompt):
                     if r.status == 200:
                         filepath.write_bytes(await r.read())
             await wait.delete()
-            await client.send_video(event.chat_id, str(filepath), caption=f"🎬 {prompt}\n{v.duration}s")
+            await client.send_file(event.chat_id, str(filepath), caption=f"🎬 {prompt}\n{v.duration}s")
             filepath.unlink(missing_ok=True)
         else:
             await wait.edit("❌ 视频生成失败")
@@ -518,7 +518,12 @@ async def _handle_music(ctx, event, cmd):
                         filepath.write_bytes(await r.read())
             await wait.delete()
             caption = f"🎵 {track.title}\n{genre} | {mood} | {gender}\n时长: {track.duration:.0f}s"
-            await client.send_audio(event.chat_id, str(filepath), caption=caption)
+            # Telethon: 音频用 send_file + DocumentAttributeAudio 标记为音频
+            from telethon.tl.types import DocumentAttributeAudio
+            await client.send_file(
+                event.chat_id, str(filepath), caption=caption,
+                attributes=[DocumentAttributeAudio(duration=int(track.duration), title=track.title, performer=genre, voice=False)],
+            )
             filepath.unlink(missing_ok=True)
         else:
             await wait.edit("❌ 音乐生成失败")
