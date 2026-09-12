@@ -24,7 +24,7 @@
     },
     "my115": {
       "name": "115频道监控",
-      "version": "2.0.5",
+      "version": "2.0.6",
       "author": "凹凸曼",
       "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
       "scope": "user",
@@ -48,7 +48,7 @@
     },
     "my115sign": {
       "name": "115签到",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "凹凸曼",
       "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
       "scope": "user",
@@ -125,7 +125,7 @@
     },
     "myname": {
       "name": "自动报时昵称",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "凹凸曼",
       "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
       "scope": "user",

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 __plugin__ = {
     "name": "自动报时昵称",
     "id": "myname",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "tags": ["改名", "天气", "定时"],
@@ -190,8 +190,8 @@ async def setup(ctx):
         interval = 5
     interval = max(1, min(interval, 60))
 
-    # V2: schedule_interval(id, callback, seconds=), 停用自动移除
-    ctx.schedule_interval("myname", _make_action(ctx), seconds=interval * 60)
+    # V2: schedule_interval(id, callback, seconds=) — id 用中文(平台定时任务卡片显示)
+    ctx.schedule_interval("定时改昵称", _make_action(ctx), seconds=interval * 60)
     ctx.log.info("[自动报时] 已启用，每 %d 分钟，城市: %s", interval, ctx.config.get("location", "Guangzhou"))
 
 

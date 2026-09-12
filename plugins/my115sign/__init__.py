@@ -18,7 +18,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "115签到",
     "id": "my115sign",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg",
     "author": "凹凸曼",
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
@@ -784,8 +784,8 @@ async def setup(ctx):
         await _add_log_async(ctx, "定时任务已触发")
         await _do_sign_all(ctx, "定时")
 
-    # V2: schedule_cron(id, fn, hour=, minute=)
-    ctx.schedule_cron("my115sign-daily", _scheduled_sign, hour=checkin_hour, minute=checkin_minute)
+    # V2: schedule_cron(id, fn, hour=, minute=), id 用中文
+    ctx.schedule_cron("每日签到", _scheduled_sign, hour=checkin_hour, minute=checkin_minute)
     await _add_log_async(ctx, f"已注册每日签到任务: {checkin_hour:02d}:{checkin_minute:02d}")
 
     # 立即签到 action（旧式 config_schema 按钮）
