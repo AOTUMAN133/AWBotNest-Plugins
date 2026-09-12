@@ -1,5 +1,5 @@
 # =============================================================================
-# AWBotNest 插件：复读转发（fz）
+# AWBotNest V2 插件：复读转发（fz）
 #
 # 由 /zf 或 .zf 触发：把你回复的那条消息，在当前会话里转发/复读 N 次。
 #   回复某条消息 + /zf       —— 转发 1 次
@@ -12,13 +12,18 @@ import asyncio
 __plugin__ = {
     "name": "复读转发",
     "id": "fz",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "author": "AOTUMAN133",
     "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。支持复制搬运模式。",
-    "icon": "https://raw.githubusercontent.com/AWdress/AWBotNest-Plugins/main/plugins/icons/family_relay.png",
-    "changelog": "v1.0.0 初始版本\n- 基于 zf 改造，增加复制搬运开关",
+    "tags": ["转发", "复读"],
     "scope": "user",
-    "default_enabled": False,
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 60,
+        "max_concurrency": 4,
+        "max_background_tasks": 8,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "copy_mode": {
             "type": "boolean", "default": False, "label": "复制搬运（不标注转发来源）",
@@ -47,18 +52,19 @@ def _bare(command: str) -> str:
 
 
 async def setup(ctx):
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-15)
-    async def forward_to_group(client, message):
+    # V2: Telethon 单参 event, outgoing=True
+    @ctx.on_message(outgoing=True)
+    async def forward_to_group(event):
         cfg = ctx.config
         bare = _bare(cfg.get("command", ".fz"))
-        text = message.text or ""
+        text = event.text or ""
         head = text.split(maxsplit=1)[0].lower() if text else ""
         if head not in (f"/{bare}", f".{bare}"):
             return
 
-        reply = message.reply_to_message
+        reply = await event.get_reply_message()
         if not reply:
-            return await message.edit("请先回复一条要转发的消息")
+            return await event.edit("请先回复一条要转发的消息")
 
         # 解析次数
         parts = text.split()
@@ -70,20 +76,24 @@ async def setup(ctx):
 
         interval = float(cfg.get("interval", 0.3) or 0)
         copy_mode = bool(cfg.get("copy_mode", False))
+        client = event.client
+        chat_id = event.chat_id
 
         for _ in range(re_times):
             try:
                 if interval > 0:
                     await asyncio.sleep(interval)
                 if copy_mode:
-                    await reply.copy(reply.chat.id, message_thread_id=message.message_thread_id)
+                    # Telethon: 复制消息(不带来源标注)
+                    await client.copy_messages(chat_id, from_peer=reply.chat_id, message_ids=[reply.id])
                 else:
-                    await reply.forward(reply.chat.id, message_thread_id=reply.message_thread_id)
+                    # Telethon: 原生转发(带来源标注)
+                    await client.forward_messages(chat_id, [reply.id], from_peer=reply.chat_id)
             except Exception as e:  # noqa: BLE001 - 单次失败不中断整体
                 ctx.log.debug("[复读转发] 单次失败: %r", e)
 
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
 

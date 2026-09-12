@@ -130,12 +130,19 @@ _QA_PROMPT = (
 __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
-    "version": "2.0.6",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
     "author": "凹凸曼",
     "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
+    "tags": ["AI", "总结"],
     "scope": "user",
-    "default_enabled": False,
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 16,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "enable_summary": {
             "type": "boolean", "default": True, "label": "开启总结",
@@ -185,35 +192,39 @@ async def setup(ctx):
         ctx.log.error(f"数据库初始化失败: {e}")
 
     # ── 消息存储 ──
-    @ctx.on_message(ctx.filters.text & ctx.filters.group, group=999)
-    async def store_handler(client, message):
+    @ctx.on_message(incoming=True)
+    async def store_handler(event):
         if not ctx.config.get("enable_store", True):
             return
         try:
-            gid = str(message.chat.id)
+            if not getattr(event, "is_group", False):
+                return
+            gid = str(event.chat_id)
             # 检查是否在监控列表中
             monitored = ctx.config.get("monitored_groups", "").strip()
             if monitored:
                 allowed = [g.strip() for g in monitored.split(",") if g.strip()]
                 if allowed and gid not in allowed:
                     return
-            gname = message.chat.title or ""
-            uname = message.from_user.first_name if message.from_user else ""
-            content = (message.text or "")[:2000]
-            mid = message.id
-            ts = int(message.date.timestamp()) if message.date else int(datetime.now().timestamp())
+            gname = getattr(event.chat, "title", "") or ""
+            sender = await event.get_sender()
+            uname = sender.first_name if sender else ""
+            content = (event.text or "")[:2000]
+            mid = event.id
+            ts = int(event.date.timestamp()) if event.date else int(datetime.now().timestamp())
             _store_msg(gid, gname, uname, content, mid, ts)
         except Exception:
             pass
 
     # ── 命令处理 ──
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
-    async def cmd_handler(client, message):
-        text = (message.text or "").strip()
+    @ctx.on_message(outgoing=True)
+    async def cmd_handler(event):
+        text = (event.text or "").strip()
         if not text.startswith("."):
             return
 
-        chat_id = str(message.chat.id)
+        chat_id = str(event.chat_id)
+        client = event.client
 
         # .sumsm — 帮助（不受 enable_summary 限制）
         if text == ".sumsm":
@@ -233,9 +244,9 @@ async def setup(ctx):
                 "  <code>.sum del 1</code> — 删除任务\n\n"
                 "⚙️ 可在插件配置中开启自动存储和定时总结"
             )
-            msg = await message.reply(help_text)
+            msg = await event.reply(help_text)
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             await asyncio.sleep(30)
@@ -252,14 +263,14 @@ async def setup(ctx):
         m = re.match(r"^\.sum\s*(\d+)?$", text)
         if m:
             count = int(m.group(1)) if m.group(1) else 50
-            wait = await message.reply("⏳ 正在总结...")
+            wait = await event.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, count)
             if result["success"]:
-                await wait.edit_text(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
+                await wait.edit(f"📊 {result['title']} · {_now()}\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await wait.edit(f"❌ {result['error']}")
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
@@ -268,14 +279,14 @@ async def setup(ctx):
         m = re.match(r"^\.sum\s+h\s*(\d+)$", text)
         if m:
             hours = int(m.group(1))
-            wait = await message.reply("⏳ 正在总结...")
+            wait = await event.reply("⏳ 正在总结...")
             result = await _summarize_from_db(ctx, client, chat_id, 500, hours)
             if result["success"]:
-                await wait.edit_text(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
+                await wait.edit(f"📊 {result['title']} · 最近{hours}小时\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await wait.edit(f"❌ {result['error']}")
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
@@ -284,14 +295,14 @@ async def setup(ctx):
         m = re.match(r"^\.ask\s+(.+)$", text)
         if m:
             question = m.group(1).strip()
-            wait = await message.reply("⏳ 正在思考...")
+            wait = await event.reply("⏳ 正在思考...")
             result = await _ask_question(ctx, client, chat_id, question)
             if result["success"]:
-                await wait.edit_text(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
+                await wait.edit(f"🤔 <b>问题:</b> {question}\n\n{result['result']}")
             else:
-                await wait.edit_text(f"❌ {result['error']}")
+                await wait.edit(f"❌ {result['error']}")
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
@@ -302,9 +313,9 @@ async def setup(ctx):
             keyword = m.group(1).strip()
             results = _search_msgs(chat_id, keyword)
             if not results:
-                await message.reply(f"🔍 未找到包含「{keyword}」的消息")
+                await event.reply(f"🔍 未找到包含「{keyword}」的消息")
                 try:
-                    await message.delete()
+                    await event.delete()
                 except Exception:
                     pass
                 return
@@ -314,9 +325,9 @@ async def setup(ctx):
                 lines.append(f"[{_fmt_ts(r['ts'])}] {r['user']}: {r['text'][:80]}\n<a href=\"{link}\">🔗</a>")
             if len(results) > 15:
                 lines.append(f"\n...还有{len(results)-15}条")
-            await message.reply("\n".join(lines))
+            await event.reply("\n".join(lines))
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
@@ -339,7 +350,7 @@ async def setup(ctx):
                 "  <code>.sum del 1</code> — 删除任务\n\n"
                 "⚙️ 可在插件配置中开启自动存储和定时总结"
             )
-            msg = await message.reply(help_text)
+            msg = await event.reply(help_text)
             await asyncio.sleep(30)
             try:
                 await msg.delete()
@@ -351,7 +362,7 @@ async def setup(ctx):
         cmd = text[len(".sum"):].strip()
         parts = cmd.split()
         if parts and parts[0] in ("add", "list", "run", "del"):
-            await _handle_schedule(ctx, client, message, parts, cmd, chat_id)
+            await _handle_schedule(ctx, client, event, parts, cmd, chat_id)
 
     # ── 定时自动总结 ──
     async def _auto_summary():
@@ -370,7 +381,7 @@ async def setup(ctx):
             for gid, gname in groups:
                 result = await _summarize_from_db(ctx, None, gid, count)
                 if result["success"]:
-                    apps = list(ctx.user_apps or [])
+                    apps = list(ctx.users or [])
                     if apps:
                         header = f"📊 定时总结\n{result['title']} · {_now()}\n\n"
                         try:
@@ -380,13 +391,13 @@ async def setup(ctx):
         except Exception:
             pass
 
-    ctx.schedule(_auto_summary, "interval", seconds=300, id="mysummary_auto")
+    ctx.schedule_interval("自动总结", _auto_summary, seconds=300)
 
     # ── 每日清理 ──
     async def _daily_cleanup():
         _cleanup_old()
 
-    ctx.schedule(_daily_cleanup, "cron", hour=3, minute=0, id="mysummary_cleanup")
+    ctx.schedule_cron("每日清理", _daily_cleanup, hour=3, minute=0)
 
     ctx.log.info("AI总结 v2.0 已就绪")
 
@@ -438,16 +449,16 @@ async def _summarize_from_api(ctx, client, chat_id: str, count: int, hours: int 
     """从 Telegram API 拉取消息并总结（原有逻辑）"""
     try:
         peer = int(chat_id) if chat_id.lstrip("-").isdigit() else chat_id
-        entity = await client.get_chat(peer)
+        entity = await client.get_entity(peer)
         username = getattr(entity, "username", "") or ""
         title = getattr(entity, "title", "") or chat_id
     except Exception:
         username = ""
         title = chat_id
 
-    from pyrogram.raw.functions.messages import GetHistory
+    from telethon.tl.functions.messages import GetHistoryRequest
     try:
-        peer = await client.resolve_peer(int(chat_id) if chat_id.lstrip("-").isdigit() else chat_id)
+        peer = await client.get_input_entity(int(chat_id) if chat_id.lstrip("-").isdigit() else chat_id)
     except Exception:
         return {"success": False, "error": "无法解析群组"}
 
@@ -455,7 +466,7 @@ async def _summarize_from_api(ctx, client, chat_id: str, count: int, hours: int 
     offset = 0
     while len(all_msgs) < count:
         try:
-            raw = await client.invoke(GetHistory(
+            raw = await client(GetHistoryRequest(
                 peer=peer, offset_id=offset, offset_date=0,
                 add_offset=0, limit=min(count - len(all_msgs), 100),
                 max_id=0, min_id=0, hash=0,
@@ -529,9 +540,9 @@ async def _ask_question(ctx, client, chat_id: str, question: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-async def _handle_schedule(ctx, client, message, parts, cmd, chat_id):
+async def _handle_schedule(ctx, client, event, parts, cmd, chat_id):
     """处理定时任务命令（原有逻辑）"""
-    text = message.text or ""
+    text = event.text or ""
     if parts[0] == "add":
         # .sum add 群组 2h 100
         if len(parts) < 3:
@@ -539,56 +550,58 @@ async def _handle_schedule(ctx, client, message, parts, cmd, chat_id):
         target = _parse_chat(parts[1])
         interval = _parse_interval(parts[2])
         if not interval:
-            await message.reply("❌ 间隔格式无效")
+            await event.reply("❌ 间隔格式无效")
             return
         c = int(parts[3]) if len(parts) > 3 else 50
-        tasks = ctx.kv.get("sum_tasks", []) or []
+        tasks = await ctx.storage.get("sum_tasks", []) or []
         tasks.append({"chat_id": target, "interval": interval, "count": c, "id": len(tasks) + 1})
-        ctx.kv.set("sum_tasks", tasks)
+        await ctx.storage.set("sum_tasks", tasks)
         parts_cron = interval.split()
         if len(parts_cron) == 5:
             parts_cron = ["0"] + parts_cron
         try:
-            ctx.schedule(lambda: _do_sum_task(ctx, client, target, c), "cron",
-                        minute=parts_cron[0], hour=parts_cron[1],
-                        day=parts_cron[2], month=parts_cron[3], day_of_week=parts_cron[4],
-                        id=f"sum_task_{len(tasks)}")
+            ctx.schedule_cron(
+                f"总结任务{tasks[-1]['id']}",
+                lambda: _do_sum_task(ctx, client, target, c),
+                minute=parts_cron[0], hour=parts_cron[1],
+                day=parts_cron[2], month=parts_cron[3], day_of_week=parts_cron[4],
+            )
         except Exception:
             pass
-        await message.reply(f"✅ 已添加定时总结: {target} 每{parts[2]} 总结{c}条")
+        await event.reply(f"✅ 已添加定时总结: {target} 每{parts[2]} 总结{c}条")
     elif parts[0] == "list":
-        tasks = ctx.kv.get("sum_tasks", [])
+        tasks = await ctx.storage.get("sum_tasks", [])
         if not tasks:
-            await message.reply("📋 暂无定时总结任务")
+            await event.reply("📋 暂无定时总结任务")
             return
         lines = ["📋 <b>定时总结任务</b>\n"]
         for t in tasks:
             lines.append(f"<b>{t['id']}.</b> {t['chat_id']} 每{t['interval']} 总结{t['count']}条")
-        await message.reply("\n".join(lines))
+        await event.reply("\n".join(lines))
     elif parts[0] == "run":
         if len(parts) < 2:
             return
-        tasks = ctx.kv.get("sum_tasks", [])
+        tasks = await ctx.storage.get("sum_tasks", [])
         tid = int(parts[1])
         task = next((t for t in tasks if t["id"] == tid), None)
         if not task:
             return
-        wait = await message.reply("⏳ 正在执行...")
+        wait = await event.reply("⏳ 正在执行...")
         result = await _summarize_from_db(ctx, client, task["chat_id"], task["count"])
         if result["success"]:
             header = f"📊 定时总结\n{result['title']} · {_now()}\n\n"
-            await client.send_message(message.chat.id, header + result["result"])
+            await client.send_message(event.chat_id, header + result["result"])
             await wait.delete()
         else:
-            await wait.edit_text(f"❌ {result['error']}")
+            await wait.edit(f"❌ {result['error']}")
     elif parts[0] == "del":
         if len(parts) < 2:
             return
-        tasks = ctx.kv.get("sum_tasks", [])
+        tasks = await ctx.storage.get("sum_tasks", [])
         tid = int(parts[1])
         tasks = [t for t in tasks if t["id"] != tid]
-        ctx.kv.set("sum_tasks", tasks)
-        await message.reply(f"✅ 已删除任务 {tid}")
+        await ctx.storage.set("sum_tasks", tasks)
+        await event.reply(f"✅ 已删除任务 {tid}")
 
 
 def _parse_chat(s: str) -> str:
@@ -625,7 +638,7 @@ def _parse_interval(s: str) -> str | None:
 async def _do_sum_task(ctx, client, chat_id, count):
     result = await _summarize_from_db(ctx, client, chat_id, count)
     if result["success"]:
-        apps = list(ctx.user_apps or [])
+        apps = list(ctx.users or [])
         if apps:
             header = f"📊 定时总结\n{result['title']} · {_now()}\n\n"
             try:

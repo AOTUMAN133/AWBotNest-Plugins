@@ -16,11 +16,15 @@
     },
     "fz": {
       "name": "复读转发",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "author": "AOTUMAN133",
       "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。支持复制搬运模式。",
       "scope": "user",
-      "path": "fz.py"
+      "path": "fz.py",
+      "tags": [
+        "转发",
+        "复读"
+      ]
     },
     "my115": {
       "name": "115频道监控",
@@ -152,21 +156,29 @@
     },
     "mysummary": {
       "name": "AI总结",
-      "version": "2.0.6",
+      "version": "2.0.0",
       "author": "凹凸曼",
       "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
       "scope": "user",
       "path": "plugins/mysummary/",
-      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg"
+      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
+      "tags": [
+        "AI",
+        "总结"
+      ]
     },
     "myzhijiao": {
       "name": "掷筊",
-      "version": "1.1.4",
+      "version": "2.0.0",
       "author": "凹凸曼",
       "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
       "scope": "user",
       "path": "plugins/myzhijiao/",
-      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao_v2.svg"
+      "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao_v2.svg",
+      "tags": [
+        "占卜",
+        "掷筊"
+      ]
     },
     "videodl": {
       "name": "聚合解析",

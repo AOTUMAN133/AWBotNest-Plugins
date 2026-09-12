@@ -6,12 +6,19 @@ import random
 __plugin__ = {
     "name": "掷筊",
     "id": "myzhijiao",
-    "version": "1.1.4",
-    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myzhijiao_v2.svg",
+    "version": "2.0.0",
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "scope": "user",
     "requirements": [],
+    "tags": ["占卜", "掷筊"],
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 30,
+        "max_concurrency": 4,
+        "max_background_tasks": 4,
+        "failure_threshold": 5,
+    },
 }
 
 TOSS_OPTIONS = ["圣杯", "笑杯", "阴杯"]
@@ -25,14 +32,13 @@ RESULT_MAP = {
 
 
 async def setup(ctx):
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=-18)
-    async def _zj_handler(client, message):
-        text = (message.text or "").strip()
+    @ctx.on_message(outgoing=True)
+    async def _zj_handler(event):
+        text = (event.raw_text or "").strip()
         if text not in (".zj", ".zhijiao"):
             return
 
-        results = [random.choice(TOSS_OPTIONS)]
-        result = results[0]
+        result = random.choice(TOSS_OPTIONS)
         symbol = TOSS_SYMBOLS[result]
         divination = RESULT_MAP.get(result, f"{result}：此卦无解，随缘即可。")
 
@@ -43,9 +49,9 @@ async def setup(ctx):
         )
 
         try:
-            await client.send_message(message.chat.id, reply)
-        except Exception:
-            await client.send_message(message.chat.id, reply)
+            await event.reply(reply)
+        except Exception as e:
+            ctx.log.error(f"掷筊回复失败: {e}")
 
 
 async def teardown(ctx):
