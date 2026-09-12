@@ -14,7 +14,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -122,8 +122,8 @@ async def setup(ctx):
             pass
 
     # ── 扫码登录 ──
-    @ctx.action("qr_login")
-    async def _qr_login(req=None):
+    async def _do_qr_login(ctx, chat_id=None):
+        """扫码登录核心: 生成二维码, 有 chat_id 则发送图片到聊天"""
         from ._doubao2api.qr_login import QRLogin, QRStatus
 
         qr = QRLogin()
@@ -150,12 +150,20 @@ async def setup(ctx):
         # 保存二维码到本地
         qr_path = ctx.data_dir / "doubao_qr.png"
         qr_path.write_bytes(qr.qrcode_data)
-        # 发送二维码到聊天（通过平台 Bot 通知）
-        try:
-            await ctx.bot.send_file(ctx.owner_id, str(qr_path))
+
+        # 发送二维码到聊天（V2: 用 chat_id, 无 owner_id）
+        sent = False
+        if chat_id is not None:
+            try:
+                bot = ctx.bot
+                if bot is not None:
+                    await bot.send_file(chat_id, str(qr_path))
+                    sent = True
+            except Exception as e:
+                ctx.update_config({"_login_status": f"📱 二维码已生成（{qr_path}），但发送失败: {e}"})
+
+        if sent:
             ctx.update_config({"_login_status": "📱 二维码已发送，请用豆包 App 扫码"})
-        except Exception as e:
-            ctx.update_config({"_login_status": f"📱 二维码已生成（{qr_path}），但发送失败: {e}"})
 
         # 后台等待扫码结果（ctx.create_task：停用自动取消）
         async def _wait_scan():
@@ -168,15 +176,23 @@ async def setup(ctx):
                 ctx.update_config({"_login_status": "✅ 已登录"})
                 global _CLIENT_INSTANCE
                 _CLIENT_INSTANCE = None
-                try:
-                    await ctx.bot.send(ctx.owner_id, "✅ 豆包登录成功！")
-                except Exception:
-                    pass
+                if chat_id is not None:
+                    try:
+                        bot = ctx.bot
+                        if bot is not None:
+                            await bot.send_message(chat_id, "✅ 豆包登录成功！")
+                    except Exception:
+                        pass
             else:
                 ctx.update_config({"_login_status": "❌ 登录失败"})
 
         ctx.create_task(_wait_scan(), name="mydraw-qr-wait-scan")
         return {"ok": True, "message": f"📱 二维码已生成（{qr_path}），请用豆包 App 扫码"}
+
+    # Vue action: 无聊天上下文, 引导用命令 .dylogin
+    @ctx.action("qr_login")
+    async def _qr_login(req=None):
+        return {"ok": False, "message": "📱 扫码登录请在聊天中发送 <code>.dylogin</code> 获取二维码"}
 
     @ctx.action("check_login")
     async def _check_login(req=None):
@@ -261,6 +277,15 @@ async def setup(ctx):
             await _handle_video(ctx, event, text[5:])
         elif text.startswith(".sy "):
             await _handle_music(ctx, event, text[5:])
+        elif text == ".dylogin":
+            # 扫码登录（聊天命令触发, 有 event.chat_id 才能发二维码图片）
+            reply = await event.reply("📱 正在生成二维码，请稍候...")
+            result = await _do_qr_login(ctx, event.chat_id)
+            try:
+                await reply.delete()
+            except Exception:
+                pass
+            await event.reply(result.get("message", ""))
         elif text == ".st help":
             help_text = (
                 "🎨 <b>豆包多模态 v2.0.0</b>\n\n"
