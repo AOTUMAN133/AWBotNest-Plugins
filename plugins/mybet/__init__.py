@@ -10,12 +10,19 @@ from ._strategy import analyze_trend
 __plugin__ = {
     "name": "自动下注",
     "id": "mybet",
-    "version": "0.7.3",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mybet_v2.svg",
     "author": "凹凸曼",
     "description": "监听彩票开奖结果，顺势下注。平常500，连错N次后下大注反击。",
     "scope": "user",
-    "default_enabled": False,
+    "plugin_api_version": 2,
+    "tags": ["下注", "自动"],
+    "resources": {
+        "timeout_seconds": 60,
+        "max_concurrency": 4,
+        "max_background_tasks": 8,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "enable_bet": {
             "type": "boolean", "default": False, "label": "启用自动下注",
@@ -100,22 +107,22 @@ async def setup(ctx):
     # 重置动作
     @ctx.action("reset_bet")
     async def _reset_bet(req=None):
-        ctx.kv.set("mybet_locked", False)
-        ctx.kv.set("mybet_betted", False)
-        ctx.kv.set("mybet_lose_streak", 0)
-        ctx.kv.set("mybet_wins", 0)
-        ctx.kv.set("mybet_losses", 0)
-        ctx.kv.set("mybet_profit", 0)
-        ctx.kv.set("mybet_last_matrix", "")
-        ctx.kv.set("mybet_last_target", "")
-        ctx.kv.set("mybet_last_amount", 0)
-        ctx.kv.set("mybet_records", [])
+        await ctx.storage.set("mybet_locked", False)
+        await ctx.storage.set("mybet_betted", False)
+        await ctx.storage.set("mybet_lose_streak", 0)
+        await ctx.storage.set("mybet_wins", 0)
+        await ctx.storage.set("mybet_losses", 0)
+        await ctx.storage.set("mybet_profit", 0)
+        await ctx.storage.set("mybet_last_matrix", "")
+        await ctx.storage.set("mybet_last_target", "")
+        await ctx.storage.set("mybet_last_amount", 0)
+        await ctx.storage.set("mybet_records", [])
         ctx.update_config({"_stats": "已重置"})
         return {"ok": True, "message": "已重置"}
 
     # 消息监听（先注册，再定义内部函数）
-    @ctx.on_message(ctx.filters.text | ctx.filters.caption, group=7)
-    async def monitor_bet(client, message):
+    @ctx.on_message(incoming=True, outgoing=True)
+    async def monitor_bet(event):
         try:
             cfg = ctx.config
             if not cfg.get("enable_bet", False):
@@ -123,11 +130,11 @@ async def setup(ctx):
             tc = int(cfg.get("target_chat", 0) or 0)
             if not tc:
                 return
-            if message.chat.id != tc:
+            if event.chat_id != tc:
                 return
-            if ctx.kv.get("mybet_locked", False):
+            if await ctx.storage.get("mybet_locked", False):
                 return
-            text = (message.text or message.caption or "").strip()
+            text = (event.text or "" or "").strip()
             if not text:
                 return
             if "[近 40 次结果]" not in text:
@@ -143,28 +150,28 @@ async def setup(ctx):
             if not ms:
                 return
             # 处理矩阵
-            last = ctx.kv.get("mybet_last_matrix", "")
+            last = await ctx.storage.get("mybet_last_matrix", "")
             if ms == last:
                 return
-            ctx.kv.set("mybet_last_matrix", ms)
+            await ctx.storage.set("mybet_last_matrix", ms)
             # 结算上局
-            if ctx.kv.get("mybet_betted", False):
+            if await ctx.storage.get("mybet_betted", False):
                 await _settle(ctx, ms)
             # 下注
-            await _run_strategy(ctx, client, message, ms)
+            await _run_strategy(ctx, event.client, event, ms)
         except Exception as e:
             ctx.log.error("[下注] 异常: %r", e)
 
 
 async def _push_stats(ctx):
     """结算后推送战绩到配置页"""
-    w = int(ctx.kv.get("mybet_wins", 0) or 0)
-    l = int(ctx.kv.get("mybet_losses", 0) or 0)
-    p = int(ctx.kv.get("mybet_profit", 0) or 0)
-    s = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+    w = int(await ctx.storage.get("mybet_wins", 0) or 0)
+    l = int(await ctx.storage.get("mybet_losses", 0) or 0)
+    p = int(await ctx.storage.get("mybet_profit", 0) or 0)
+    s = int(await ctx.storage.get("mybet_lose_streak", 0) or 0)
     t = w + l
     r = f"{w / t * 100:.1f}%" if t > 0 else "-"
-    recs = ctx.kv.get("mybet_records", []) or []
+    recs = await ctx.storage.get("mybet_records", []) or []
     rt = ""
     if recs:
         lines = []
@@ -178,36 +185,36 @@ async def _settle(ctx, matrix_str):
     """结算上一局"""
     cfg = ctx.config
     latest = matrix_str[0]
-    target = ctx.kv.get("mybet_last_target", "")
-    amount = int(ctx.kv.get("mybet_last_amount", 0) or 0)
+    target = await ctx.storage.get("mybet_last_target", "")
+    amount = int(await ctx.storage.get("mybet_last_amount", 0) or 0)
     if not target or not amount:
         return
     is_win = (target == "大" and latest == "1") or (target == "小" and latest == "0")
     fee = int(amount * 0.01)
     net = amount - fee if is_win else -amount
-    wins = int(ctx.kv.get("mybet_wins", 0) or 0)
-    losses = int(ctx.kv.get("mybet_losses", 0) or 0)
-    profit = int(ctx.kv.get("mybet_profit", 0) or 0)
-    ls = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+    wins = int(await ctx.storage.get("mybet_wins", 0) or 0)
+    losses = int(await ctx.storage.get("mybet_losses", 0) or 0)
+    profit = int(await ctx.storage.get("mybet_profit", 0) or 0)
+    ls = int(await ctx.storage.get("mybet_lose_streak", 0) or 0)
     if is_win:
         wins += 1; profit += net; ls = 0
     else:
         losses += 1; profit += net; ls += 1
-    ctx.kv.set("mybet_wins", wins)
-    ctx.kv.set("mybet_losses", losses)
-    ctx.kv.set("mybet_profit", profit)
-    ctx.kv.set("mybet_lose_streak", ls)
-    ctx.kv.set("mybet_betted", False)
+    await ctx.storage.set("mybet_wins", wins)
+    await ctx.storage.set("mybet_losses", losses)
+    await ctx.storage.set("mybet_profit", profit)
+    await ctx.storage.set("mybet_lose_streak", ls)
+    await ctx.storage.set("mybet_betted", False)
     # 最大连错
     ms = int(cfg.get("max_loss_streak", 10) or 10)
     if not is_win and ms > 0 and ls >= ms:
-        ctx.kv.set("mybet_locked", True)
+        await ctx.storage.set("mybet_locked", True)
     # 记录
-    recs = list(ctx.kv.get("mybet_records", []) or [])
+    recs = list(await ctx.storage.get("mybet_records", []) or [])
     recs.append({"t": datetime.now().strftime("%H:%M"), "r": "✅" if is_win else "❌", "a": _fmt(amount), "p": _fmt(abs(profit))})
     if len(recs) > 20:
         recs = recs[-20:]
-    ctx.kv.set("mybet_records", recs)
+    await ctx.storage.set("mybet_records", recs)
     ctx.log.info("[下注] %s 结算: 押%s %s → %s, 连错%s, 累计%s",
                   "✅" if is_win else "❌", target, _fmt(amount),
                   "赢" if is_win else "输", ls, _fmt(profit))
@@ -215,13 +222,13 @@ async def _settle(ctx, matrix_str):
     tp = int(cfg.get("take_profit", 100000) or 0)
     sl = int(cfg.get("stop_loss", 50000) or 0)
     if tp > 0 and profit >= tp:
-        ctx.kv.set("mybet_locked", True)
+        await ctx.storage.set("mybet_locked", True)
     elif sl > 0 and profit <= -sl:
-        ctx.kv.set("mybet_locked", True)
+        await ctx.storage.set("mybet_locked", True)
     await _push_stats(ctx)
 
 
-async def _run_strategy(ctx, client, message, matrix_str):
+async def _run_strategy(ctx, client, event, matrix_str):
     """执行策略并下注"""
     cfg = ctx.config
     bb = int(cfg.get("base_bet", 500) or 500)
@@ -244,7 +251,7 @@ async def _run_strategy(ctx, client, message, matrix_str):
     if target == "挂起":
         return
 
-    ls = int(ctx.kv.get("mybet_lose_streak", 0) or 0)
+    ls = int(await ctx.storage.get("mybet_lose_streak", 0) or 0)
     if ls == 0:
         cb, ml = bb, "平常"
     elif ls == 1:
@@ -274,7 +281,7 @@ async def _run_strategy(ctx, client, message, matrix_str):
             btn = f"押{target} {chip:,}"
             ok = False
             try:
-                await message.click(btn)
+                await event.click(text=btn)
                 ok = True
             except ValueError:
                 break
@@ -288,9 +295,9 @@ async def _run_strategy(ctx, client, message, matrix_str):
     if remaining > 0:
         ctx.log.warning("[下注] ⚠️ 剩余%s无法下注", _fmt(remaining))
     if success:
-        ctx.kv.set("mybet_last_target", target)
-        ctx.kv.set("mybet_last_amount", cb)
-        ctx.kv.set("mybet_betted", True)
+        await ctx.storage.set("mybet_last_target", target)
+        await ctx.storage.set("mybet_last_amount", cb)
+        await ctx.storage.set("mybet_betted", True)
     else:
         ctx.log.warning("[下注] ❌ 下注失败")
 

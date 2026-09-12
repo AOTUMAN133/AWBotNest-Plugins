@@ -12,12 +12,19 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "DC助手",
     "id": "mydc",
-    "version": "1.2.9",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydc_v2.svg",
     "author": "凹凸曼",
     "description": "配合 DockerCopilot 实现容器自动更新、清理、备份。",
     "scope": "user",
-    "default_enabled": False,
+    "plugin_api_version": 2,
+    "tags": ["Docker", "容器"],
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 16,
+        "failure_threshold": 5,
+    },
     "render_mode": "vue",
     "config_schema": {
         "host": {
@@ -89,11 +96,14 @@ def _now():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _log(ctx, msg: str):
-    ctx.log.info("[DC助手] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, []) or []
-    logs.append({"t": _now(), "m": msg})
-    ctx.kv.set(_KV_LOGS, logs[-50:])
+async def _log(ctx, msg: str):
+    # 只写插件前端日志区, 不刷平台运行日志
+    try:
+        logs = await ctx.storage.get(_KV_LOGS, []) or []
+        logs.append({"t": _now(), "m": msg})
+        await ctx.storage.set(_KV_LOGS, logs[-50:])
+    except Exception:
+        pass
 
 
 async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
@@ -102,7 +112,7 @@ async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
     if not host or not secret:
         return None
     try:
-        jwt_token = ctx.kv.get("mydc_jwt", "")
+        jwt_token = await ctx.storage.get("mydc_jwt", "")
         if not jwt_token:
             async with httpx.AsyncClient(timeout=15, verify=False) as cli:
                 ar = await cli.post(f"{host}/api/auth", data={"secretKey": secret})
@@ -110,7 +120,7 @@ async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
                     data = ar.json()
                     jwt_token = data.get("data", {}).get("jwt", "")
                     if jwt_token:
-                        ctx.kv.set("mydc_jwt", jwt_token)
+                        await ctx.storage.set("mydc_jwt", jwt_token)
         if not jwt_token:
             return None
         headers = {"Authorization": f"Bearer {jwt_token}"}
@@ -122,7 +132,7 @@ async def _api_call(ctx, method: str, path: str, **kwargs) -> dict | None:
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 401:
-                ctx.kv.set("mydc_jwt", "")
+                await ctx.storage.set("mydc_jwt", "")
                 return await _api_call(ctx, method, path, **kwargs)
             return None
     except Exception:
@@ -148,8 +158,8 @@ async def setup(ctx):
         if not data:
             return {"ok": False, "message": "获取失败"}
         containers = data.get("data") or data.get("containers") or []
-        include = ctx.kv.get("mydc_include", []) or []
-        immediate = ctx.kv.get("mydc_immediate", []) or []
+        include = await ctx.storage.get("mydc_include", []) or []
+        immediate = await ctx.storage.get("mydc_immediate", []) or []
         result = []
         for c in containers:
             name = c.get("name", "?")
@@ -169,17 +179,17 @@ async def setup(ctx):
         body = req.json
         selected = body.get("selected", [])
         immediate = body.get("immediate", [])
-        ctx.kv.set("mydc_include", selected)
-        ctx.kv.set("mydc_immediate", immediate)
-        _log(ctx, f"容器选择已保存: {len(selected)}个选中, {len(immediate)}个立即更新")
+        await ctx.storage.set("mydc_include", selected)
+        await ctx.storage.set("mydc_immediate", immediate)
+        await _log(ctx, f"容器选择已保存: {len(selected)}个选中, {len(immediate)}个立即更新")
         return {"ok": True, "message": "已保存"}
 
     @ctx.on_api("/selection", methods=["GET"])
     async def _api_selection(req):
         """获取当前选择"""
         return {
-            "selected": ctx.kv.get("mydc_include", []),
-            "immediate": ctx.kv.get("mydc_immediate", []),
+            "selected": await ctx.storage.get("mydc_include", []),
+            "immediate": await ctx.storage.get("mydc_immediate", []),
         }
 
     @ctx.action("list_containers")
@@ -206,8 +216,8 @@ async def setup(ctx):
             return {"ok": False, "message": "连接 DockerCopilot 失败"}
         containers = data.get("data") or data.get("containers") or []
         # 检查可更新
-        include = ctx.kv.get("mydc_include", []) or []
-        imm = ctx.kv.get("mydc_immediate", []) or []
+        include = await ctx.storage.get("mydc_include", []) or []
+        imm = await ctx.storage.get("mydc_immediate", []) or []
         filtered = [c for c in containers if not include or c.get("name", "") in include]
         updatable = [c for c in filtered if c.get("haveUpdate") or c.get("updatable") or c.get("can_update")]
         has_imm = [c for c in updatable if c.get("name", "") in imm]
@@ -291,14 +301,14 @@ async def setup(ctx):
         if not data:
             return
         containers = data.get("data") or data.get("containers") or []
-        include = ctx.kv.get("mydc_include", []) or []
-        imm = ctx.kv.get("mydc_immediate", []) or []
+        include = await ctx.storage.get("mydc_include", []) or []
+        imm = await ctx.storage.get("mydc_immediate", []) or []
         filtered = [c for c in containers if not include or c.get("name", "") in include]
 
         # 立即更新：每分钟检查，发现可更新容器就执行
         imm_names = []
         now = time.time()
-        updating = ctx.kv.get("mydc_updating", {}) or {}  # {name: timestamp}
+        updating = await ctx.storage.get("mydc_updating", {}) or {}  # {name: timestamp}
         # 清理超过5分钟的过期标记（防止意外卡死）
         stale = [k for k, v in updating.items() if now - v > 300]
         for k in stale:
@@ -313,7 +323,7 @@ async def setup(ctx):
                 if cid:
                     # 先标记为正在更新
                     updating[name] = now
-                    ctx.kv.set("mydc_updating", updating)
+                    await ctx.storage.set("mydc_updating", updating)
                     r = await _api_call(ctx, "POST", f"/container/{cid}/update", data={"imageNameAndTag": c.get("usingImage", ""), "containerName": c.get("name", "")})
                     if r:
                         imm_names.append(name)
@@ -321,7 +331,7 @@ async def setup(ctx):
                     else:
                         # 更新失败，移除标记允许重试
                         updating.pop(name, None)
-                        ctx.kv.set("mydc_updating", updating)
+                        await ctx.storage.set("mydc_updating", updating)
                     await asyncio.sleep(2)
         if imm_names and ctx.config.get("auto_update_notify", True):
             detail = "\n".join(f"  • {n}" for n in imm_names)
@@ -360,19 +370,19 @@ async def setup(ctx):
 
     # 注册定时：只有配置了连接信息才注册
     if ctx.config.get("secret_key"):
-        ctx.schedule(_auto_tick, "interval", minutes=1, id="DC助手-自动更新")
+        ctx.schedule_interval("DC助手-自动更新", _auto_tick, seconds=60)
         ctx.log.info("DC助手-自动更新 已注册")
 
         bc = ctx.config.get("backup_cron", "0 5 * * 0")
         parts = bc.split()
         if len(parts) == 5:
             try:
-                ctx.schedule(_backup_tick, "cron", minute=parts[0], hour=parts[1],
-                            day=parts[2], month=parts[3], day_of_week=parts[4], id="DC助手-自动备份")
+                ctx.schedule_cron("DC助手-自动备份", _backup_tick, minute=parts[0], hour=parts[1],
+                            day=parts[2], month=parts[3], day_of_week=parts[4])
             except Exception:
-                ctx.schedule(_backup_tick, "cron", hour=5, minute=0, day_of_week="sun", id="DC助手-自动备份")
+                ctx.schedule_cron("DC助手-自动备份", _backup_tick, hour=5, minute=0, day_of_week="sun")
         else:
-            ctx.schedule(_backup_tick, "cron", hour=5, minute=0, day_of_week="sun", id="DC助手-自动备份")
+            ctx.schedule_cron("DC助手-自动备份", _backup_tick, hour=5, minute=0, day_of_week="sun")
         ctx.log.info("DC助手-自动备份 已注册")
     else:
         ctx.log.info("DC助手未配置连接信息，定时任务未注册")

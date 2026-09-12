@@ -15,12 +15,19 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "3.7.3",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
-    "default_enabled": True,
+    "plugin_api_version": 2,
+    "tags": ["签到", "HDHive"],
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 16,
+        "failure_threshold": 5,
+    },
     "render_mode": "vue",
     "config_schema": {
         "accounts": {
@@ -62,10 +69,7 @@ _LOG_FILE = "/tmp/hdhive_sign.log"
 _run_lock = None
 
 def _log_debug(ctx, msg: str):
-    ctx.log.info("[影巢签到] %s", msg)
-    logs = ctx.kv.get(_KV_DEBUG, []) or []
-    logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
-    ctx.kv.set(_KV_DEBUG, logs[-50:])
+    # 只写日志文件, 不刷平台运行日志
     _log_file(msg)
 
 def _log_file(msg: str):
@@ -380,10 +384,10 @@ async def setup(ctx):
         if not cookie:
             continue
         sk = f"signed_today:{cookie[:20]}"
-        st = ctx.kv.get(sk, "")
+        st = await ctx.storage.get(sk, "")
         if st and st != today_str:
             _log_debug(ctx, f"清理过期签到标记: {acc.get('name','?')} ({st} → 待签到)")
-            ctx.kv.set(sk, "")
+            await ctx.storage.set(sk, "")
 
     async def _sign_account(ctx, acc, base_url, action_hash):
         """签到单个账号，返回结果，失败自动重试"""
@@ -427,14 +431,14 @@ async def setup(ctx):
             if nick:
                 msg += f" | {nick} 积分={pts} 已签{days}天"
             if days > 0:
-                ctx.kv.set(f"last_signin_days:{cookie[:20]}", days)
+                await ctx.storage.set(f"last_signin_days:{cookie[:20]}", days)
         _log_debug(ctx, f"{name}: {msg}")
         if result.get("user"):
             u = result["user"]
             _log_debug(ctx, f"{name}: {u.get('nickname','')} 积分={u.get('points',0)} 签到天数={u.get('signin_days',0)}")
         # 只有签到成功才标记已签到，失败不标记（允许重试）
         if result["success"]:
-            ctx.kv.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
+            await ctx.storage.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
         return {"name": name, "mode": mode, "success": result["success"], "message": msg}
 
     async def _get_action_hash(ctx, base_url):
@@ -442,9 +446,9 @@ async def setup(ctx):
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
             _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
-            action_hash = ctx.config.get("action_hash", "") or ctx.kv.get(_KV_HASH, "")
+            action_hash = ctx.config.get("action_hash", "") or await ctx.storage.get(_KV_HASH, "")
         if action_hash:
-            ctx.kv.set(_KV_HASH, action_hash)
+            await ctx.storage.set(_KV_HASH, action_hash)
             _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
         return action_hash
 
@@ -473,7 +477,7 @@ async def setup(ctx):
             today_str = datetime.now(TZ).strftime("%Y-%m-%d")
             if cookie:
                 signed_key = f"signed_today:{cookie[:20]}"
-                if ctx.kv.get(signed_key, "") == today_str:
+                if await ctx.storage.get(signed_key, "") == today_str:
                     _log_debug(ctx, f"{name}: 今日已签到，跳过")
                     logs.append({"time": _now(), "name": name, "status": "✅", "message": "今日已签到"})
                     notify_lines.append(f"✅ {name}: 今日已签到")
@@ -481,7 +485,7 @@ async def setup(ctx):
 
             # 无Cookie时尝试用账号密码登录
             if not cookie and username and password:
-                saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
+                saved = await ctx.storage.get(f"cookie:{acc.get('name', '')}", "")
                 if saved:
                     cookie = saved
                     acc["cookie"] = saved
@@ -491,7 +495,7 @@ async def setup(ctx):
                     cookie = await _login_with_playwright(base_url, username, password)
                     if cookie:
                         acc["cookie"] = cookie
-                        ctx.kv.set(f"cookie:{acc.get('name', '')}", cookie)
+                        await ctx.storage.set(f"cookie:{acc.get('name', '')}", cookie)
                         _log_debug(ctx, f"{name}: 登录成功")
                     else:
                         _log_debug(ctx, f"{name}: 登录失败")
@@ -522,7 +526,7 @@ async def setup(ctx):
                         ctx.update_config({"accounts": json.dumps(accounts, ensure_ascii=False)})
                     except Exception as e:
                         _log_debug(ctx, f"{name}: update_config 保存新Cookie失败: {e}")
-                    ctx.kv.set(f"cookie:{acc.get('name', '')}", new_cookie)
+                    await ctx.storage.set(f"cookie:{acc.get('name', '')}", new_cookie)
                     _log_debug(ctx, f"{name}: 重新登录成功，重试签到")
                     r = await _sign_account(ctx, acc, base_url, action_hash)
                 else:
@@ -534,7 +538,7 @@ async def setup(ctx):
             await asyncio.sleep(1)
 
         if logs:
-            ctx.kv.set(_KV_LOGS, logs)
+            await ctx.storage.set(_KV_LOGS, logs)
         if ctx.config.get("notify_on_sign", True):
             has_errors = any("❌" in l for l in notify_lines)
             level = "error" if all("❌" in l for l in notify_lines) else ("warning" if has_errors else "success")
@@ -547,15 +551,14 @@ async def setup(ctx):
     checkin_minute = int(ctx.config.get("checkin_minute", 0) or 0)
 
     async def _scheduled_checkin():
-        ctx.log.info("[影巢签到] 定时任务已触发")
+        _log_debug(ctx, "定时任务已触发")
         await _do_sign_all("定时")
 
-    ctx.schedule(
+    ctx.schedule_cron(
+        "影巢签到-每日签到",
         _scheduled_checkin,
-        "cron",
         hour=checkin_hour,
         minute=checkin_minute,
-        id="影巢签到-每日签到",
     )
     _log_debug(ctx, f"已注册每日签到任务: {checkin_hour:02d}:{checkin_minute:02d}")
 
@@ -572,7 +575,7 @@ async def setup(ctx):
         accounts = _get_accounts(ctx)
         for acc in accounts:
             if not acc.get("cookie"):
-                saved = ctx.kv.get(f"cookie:{acc.get('name', '')}", "")
+                saved = await ctx.storage.get(f"cookie:{acc.get('name', '')}", "")
                 if saved:
                     acc["cookie"] = saved
         return {"accounts": accounts}
@@ -614,10 +617,10 @@ async def setup(ctx):
                         days = int(m.group(1))
                     # 检查签到状态：比较当前signin_days_total与上次记录
                     today_str = datetime.now(TZ).strftime("%Y-%m-%d")
-                    last_days = ctx.kv.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0) or 0
+                    last_days = await ctx.storage.get(f"last_signin_days:{acc.get('cookie','')[:20]}", 0) or 0
                     signed = days > last_days if last_days > 0 else False
                     # 如果signed_today记录存在也作为辅助判断
-                    signed_today = ctx.kv.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
+                    signed_today = await ctx.storage.get(f"signed_today:{acc.get('cookie','')[:20]}", "")
                     if signed_today == today_str:
                         signed = True
                     results.append({"name": nick or acc.get("name", ""), "points": pts, "days": days, "signed": signed})
@@ -631,11 +634,11 @@ async def setup(ctx):
 
     @ctx.on_api("/get_logs", methods=["GET"])
     async def _api_get_logs(req):
-        return {"logs": ctx.kv.get(_KV_LOGS, [])}
+        return {"logs": await ctx.storage.get(_KV_LOGS, [])}
 
     @ctx.on_api("/get_debug_logs", methods=["GET"])
     async def _api_get_debug_logs(req):
-        return {"logs": ctx.kv.get(_KV_DEBUG, [])}
+        return {"logs": await ctx.storage.get(_KV_DEBUG, [])}
 
     @ctx.on_api("/save_accounts", methods=["POST"])
     async def _api_save_accounts(req):
