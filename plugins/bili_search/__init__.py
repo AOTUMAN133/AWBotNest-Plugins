@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -238,6 +238,10 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
             "extract_flat": "in_playlist",
             "skip_download": True,
             "playlistend": count,
+            # 关键: YouTube 不可达时不能无限卡住 (socket_timeout 秒级失败)
+            "socket_timeout": 15,
+            "nocheckcertificate": True,
+            "retries": 1,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"ytsearch{count}:{keyword}", download=False)
@@ -461,7 +465,12 @@ async def setup(ctx):
         except Exception:
             pass
         count = ctx.config.get("search_count", 5)
-        yt_results = await asyncio.to_thread(_youtube_search, keyword, count)
+        # YouTube 搜索加超时保护, 不可达时 20s 返回空
+        try:
+            yt_results = await asyncio.wait_for(
+                asyncio.to_thread(_youtube_search, keyword, count), timeout=20)
+        except (asyncio.TimeoutError, Exception):
+            yt_results = []
         results = [{"platform": "YouTube", **v} for v in yt_results]
         if not results:
             await msg.edit(f"❌ 未在YouTube找到「{keyword}」的相关视频")
@@ -489,10 +498,15 @@ async def setup(ctx):
             pass
         count = ctx.config.get("search_count", 5)
 
-        # 并行搜索
+        # 并行搜索 — YouTube 加超时降级: 不可达时 20s 返回空, B站结果照常出
         bili_task = _bili_search(keyword, page=page, count=count)
-        yt_task = asyncio.to_thread(_youtube_search, keyword, count)
-        bili, yt_results = await asyncio.gather(bili_task, yt_task)
+        yt_task = asyncio.wait_for(
+            asyncio.to_thread(_youtube_search, keyword, count), timeout=20)
+        try:
+            bili, yt_results = await asyncio.gather(bili_task, yt_task)
+        except asyncio.TimeoutError:
+            bili = await bili_task
+            yt_results = []
 
         results = []
         for v in bili:
