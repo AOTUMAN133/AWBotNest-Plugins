@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 __plugin__ = {
     "name": "自动报时昵称",
     "id": "myname",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "author": "凹凸曼",
     "description": "定时把昵称改成当前时间+天气，支持特殊字体和天气图标。",
     "tags": ["改名", "天气", "定时"],
@@ -176,7 +176,7 @@ def _make_action(ctx):
                     first_name=kwargs.get("first_name"),
                     last_name=kwargs.get("last_name"),
                 ))
-                ctx.log.info("[自动报时] 已改名为: %s", rendered)
+                # 成功改名不打日志(每分钟一次太吵), 失败才 warning
             except Exception as e:
                 ctx.log.warning("[自动报时] 改名失败: %r", e)
 
