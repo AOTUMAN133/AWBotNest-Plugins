@@ -111,7 +111,7 @@
     },
     "mymusic": {
       "name": "音乐搜索下载",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "凹凸曼",
       "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
       "scope": "user",

@@ -39,7 +39,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -145,38 +145,22 @@ if str(_BASE_DIR) not in sys.path:
 from _musicdl_engine import search as _musicdl_search_sync, get_url as _musicdl_url_sync, HAS_MUSICDL, get_import_error
 
 
-async def setup(ctx):
-    await _add_plugin_log(ctx, "音乐搜索下载 v2.0.0 插件加载中")
+async def _repair_deps(ctx):
+    """后台修复依赖（pywidevine/ffmpeg）——不阻塞 setup, 修复完更新全局标志"""
+    global HAS_YTDLP, HAS_MUSICDL, _musicdl_search_sync, _musicdl_url_sync, get_import_error
 
-    # 检查 yt-dlp（优先 Python 模块，兜底二进制）
-    global HAS_YTDLP
-    if HAS_YTDLP:
-        await _add_plugin_log(ctx, "yt-dlp Python 模块可用，YouTube 搜索可用")
-    else:
-        yt_path = _yt_path()
-        try:
-            r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
-            await _add_plugin_log(ctx, f"yt-dlp 二进制可用: {r.stdout.strip()}")
-        except Exception:
-            await _add_plugin_log(ctx, "yt-dlp 未找到，YouTube 搜索不可用")
-
-    # 检查 musicdl 引擎状态
-    if HAS_MUSICDL:
-        await _add_plugin_log(ctx, "musicdl 引擎可用，支持5音源搜索")
-    else:
+    # 检查 musicdl 引擎状态（pywidevine 修复）
+    if not HAS_MUSICDL:
         await _add_plugin_log(ctx, f"musicdl 引擎不可用（{get_import_error()}），尝试修复 pywidevine...")
         try:
-            # 修复 pywidevine 版本
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "pywidevine>=1.9.0", "--upgrade", "-q"],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=60
             )
             importlib.invalidate_caches()
-            # 重新加载引擎（_musicdl_engine 是模块变量，需重新 import）
             import _musicdl_engine as _me
             importlib.reload(_me)
             if _me.HAS_MUSICDL:
-                # 更新全局变量
                 globals()["HAS_MUSICDL"] = _me.HAS_MUSICDL
                 globals()["_musicdl_search_sync"] = _me.search
                 globals()["_musicdl_url_sync"] = _me.get_url
@@ -187,19 +171,38 @@ async def setup(ctx):
         except Exception as e:
             await _add_plugin_log(ctx, f"pywidevine 修复失败: {e}；降级使用网易云 EAPI 搜索")
 
-    # 检查 ffmpeg
-    ffmpeg_available = shutil.which("ffmpeg") is not None
-    if not ffmpeg_available:
-        await _add_plugin_log(ctx, "ffmpeg 未找到，尝试安装...")
+    # 检查 ffmpeg（仅在确实缺失时后台安装）
+    if shutil.which("ffmpeg") is None:
+        await _add_plugin_log(ctx, "ffmpeg 未找到，尝试后台安装...")
         try:
-            subprocess.run(["apt-get", "install", "-y", "ffmpeg"], capture_output=True, text=True, timeout=120)
-            ffmpeg_available = shutil.which("ffmpeg") is not None
-            if ffmpeg_available:
+            subprocess.run(["apt-get", "install", "-y", "ffmpeg"], capture_output=True, text=True, timeout=180)
+            if shutil.which("ffmpeg"):
                 await _add_plugin_log(ctx, "ffmpeg 安装成功")
+            else:
+                await _add_plugin_log(ctx, "ffmpeg 安装完成但未生效（可能需要重启）")
         except Exception as e:
             await _add_plugin_log(ctx, f"ffmpeg 自动安装失败: {e}")
+
+
+async def setup(ctx):
+    await _add_plugin_log(ctx, "音乐搜索下载 v2.0.0 插件加载中")
+
+    # 快速检查（不做耗时子进程调用, 避免超过平台 setup 30s 超时）
+    global HAS_YTDLP
+    if HAS_YTDLP:
+        await _add_plugin_log(ctx, "yt-dlp Python 模块可用，YouTube 搜索可用")
     else:
-        await _add_plugin_log(ctx, "ffmpeg 已可用")
+        try:
+            r = subprocess.run([_yt_path(), "--version"], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and r.stdout.strip():
+                await _add_plugin_log(ctx, f"yt-dlp 二进制可用: {r.stdout.strip()}")
+            else:
+                await _add_plugin_log(ctx, "yt-dlp 未找到，YouTube 搜索不可用")
+        except Exception:
+            await _add_plugin_log(ctx, "yt-dlp 未找到，YouTube 搜索不可用")
+
+    # 耗时修复(pywidevine/ffmpeg)丢后台, 不阻塞 setup
+    ctx.create_task(_repair_deps(ctx), name="mymusic-repair-deps")
 
     # ── YouTube 搜索 ──
     async def _yt_search(ctx, event, keyword, page=1):
