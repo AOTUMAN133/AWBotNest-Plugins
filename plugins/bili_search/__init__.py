@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -264,6 +264,11 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
         return []
 
 
+async def _youtube_search_async(keyword: str, count: int = 5) -> list:
+    """yt-dlp 是阻塞调用, 包到线程池跑; 内部有 socket_timeout, 外层还有 wait_for 兜底"""
+    return await asyncio.to_thread(_youtube_search, keyword, count)
+
+
 def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -> bool:
     """使用 yt-dlp 下载视频/音频，成功返回 True"""
     try:
@@ -499,14 +504,18 @@ async def setup(ctx):
         count = ctx.config.get("search_count", 5)
 
         # 并行搜索 — YouTube 加超时降级: 不可达时 20s 返回空, B站结果照常出
-        bili_task = _bili_search(keyword, page=page, count=count)
-        yt_task = asyncio.wait_for(
-            asyncio.to_thread(_youtube_search, keyword, count), timeout=20)
+        # 注意: 必须 create_task 包装成 Task, gather 超时后协程不能二次 await
+        bili_task = asyncio.create_task(_bili_search(keyword, page=page, count=count))
+        yt_task = asyncio.create_task(_youtube_search_async(keyword, count))
         try:
-            bili, yt_results = await asyncio.gather(bili_task, yt_task)
-        except asyncio.TimeoutError:
             bili = await bili_task
+        except Exception:
+            bili = []
+        try:
+            yt_results = await asyncio.wait_for(yt_task, timeout=20)
+        except (asyncio.TimeoutError, Exception):
             yt_results = []
+            yt_task.cancel()
 
         results = []
         for v in bili:
