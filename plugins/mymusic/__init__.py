@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：音乐搜索下载 (mymusic) v2.0.0
+# AWBotNest V2 插件：音乐搜索下载 (mymusic) v2.0.0
 # 聚合搜索：网易云/QQ/酷狗/酷我/咪咕 + YouTube，支持翻页、编号选择下载
 
 import os
@@ -13,6 +13,8 @@ import time
 import importlib
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+
+from telethon.tl.types import DocumentAttributeAudio
 
 TZ = timezone(timedelta(hours=8))
 _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
@@ -37,13 +39,20 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.1.4",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
+    "tags": ["音乐", "搜索", "下载"],
     "scope": "user",
-    "default_enabled": False,
+    "plugin_api_version": 2,
     "requirements": ["yt-dlp>=2024.0.0", "aiohttp", "click", "json_repair", "rich"],
+    "resources": {
+        "timeout_seconds": 180,
+        "max_concurrency": 8,
+        "max_background_tasks": 32,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "keep_local": {
             "type": "boolean", "default": False, "label": "保留本地文件",
@@ -52,6 +61,23 @@ __plugin__ = {
         },
     },
 }
+
+# 插件日志区：运行明细写入 storage（供前端/排障读取），不刷平台日志；仅 error 级进平台日志
+_LOG_KEY = "mymusic_logs"
+
+
+async def _add_plugin_log(ctx, msg: str):
+    """记录运行日志到插件日志区（storage），不刷平台运行日志"""
+    try:
+        logs = await ctx.storage.get(_LOG_KEY, []) or []
+        if isinstance(logs, str):
+            logs = json.loads(logs) if logs else []
+        if not isinstance(logs, list):
+            logs = []
+        logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
+        await ctx.storage.set(_LOG_KEY, logs[-100:])
+    except Exception:
+        pass
 
 
 def _format_duration(seconds: int) -> str:
@@ -120,25 +146,25 @@ from _musicdl_engine import search as _musicdl_search_sync, get_url as _musicdl_
 
 
 async def setup(ctx):
-    ctx.log.info("音乐搜索下载 v2.0.0 已加载")
+    await _add_plugin_log(ctx, "音乐搜索下载 v2.0.0 插件加载中")
 
     # 检查 yt-dlp（优先 Python 模块，兜底二进制）
     global HAS_YTDLP
     if HAS_YTDLP:
-        ctx.log.info("yt-dlp Python 模块可用，YouTube 搜索可用")
+        await _add_plugin_log(ctx, "yt-dlp Python 模块可用，YouTube 搜索可用")
     else:
         yt_path = _yt_path()
         try:
             r = subprocess.run([yt_path, "--version"], capture_output=True, text=True, timeout=10)
-            ctx.log.info(f"yt-dlp 二进制可用: {r.stdout.strip()}")
+            await _add_plugin_log(ctx, f"yt-dlp 二进制可用: {r.stdout.strip()}")
         except Exception:
-            ctx.log.info("yt-dlp 未找到，YouTube 搜索不可用")
+            await _add_plugin_log(ctx, "yt-dlp 未找到，YouTube 搜索不可用")
 
     # 检查 musicdl 引擎状态
     if HAS_MUSICDL:
-        ctx.log.info("musicdl 引擎可用，支持5音源搜索")
+        await _add_plugin_log(ctx, "musicdl 引擎可用，支持5音源搜索")
     else:
-        ctx.log.info(f"musicdl 引擎不可用（{get_import_error()}），尝试修复 pywidevine...")
+        await _add_plugin_log(ctx, f"musicdl 引擎不可用（{get_import_error()}），尝试修复 pywidevine...")
         try:
             # 修复 pywidevine 版本
             subprocess.run(
@@ -155,32 +181,31 @@ async def setup(ctx):
                 globals()["_musicdl_search_sync"] = _me.search
                 globals()["_musicdl_url_sync"] = _me.get_url
                 globals()["get_import_error"] = _me.get_import_error
-                ctx.log.info("pywidevine 修复成功，musicdl 引擎已可用")
+                await _add_plugin_log(ctx, "pywidevine 修复成功，musicdl 引擎已可用")
             else:
-                ctx.log.warning(f"pywidevine 修复后仍不可用: {_me.get_import_error()}")
+                await _add_plugin_log(ctx, f"pywidevine 修复后仍不可用: {_me.get_import_error()}")
         except Exception as e:
-            ctx.log.warning(f"pywidevine 修复失败: {e}")
-            ctx.log.info("降级使用网易云 EAPI 搜索")
+            await _add_plugin_log(ctx, f"pywidevine 修复失败: {e}；降级使用网易云 EAPI 搜索")
 
     # 检查 ffmpeg
     ffmpeg_available = shutil.which("ffmpeg") is not None
     if not ffmpeg_available:
-        ctx.log.info("ffmpeg 未找到，尝试安装...")
+        await _add_plugin_log(ctx, "ffmpeg 未找到，尝试安装...")
         try:
             subprocess.run(["apt-get", "install", "-y", "ffmpeg"], capture_output=True, text=True, timeout=120)
             ffmpeg_available = shutil.which("ffmpeg") is not None
             if ffmpeg_available:
-                ctx.log.info("ffmpeg 安装成功")
+                await _add_plugin_log(ctx, "ffmpeg 安装成功")
         except Exception as e:
-            ctx.log.warning(f"ffmpeg 自动安装失败: {e}")
+            await _add_plugin_log(ctx, f"ffmpeg 自动安装失败: {e}")
     else:
-        ctx.log.info("ffmpeg 已可用")
+        await _add_plugin_log(ctx, "ffmpeg 已可用")
 
     # ── YouTube 搜索 ──
-    async def _yt_search(ctx, client, message, keyword, page=1):
-        msg = await message.reply(f"🔍 正在搜索 YouTube「{keyword}」...")
+    async def _yt_search(ctx, event, keyword, page=1):
+        msg = await event.reply(f"🔍 正在搜索 YouTube「{keyword}」...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
 
@@ -212,7 +237,7 @@ async def setup(ctx):
                     })
                 return out
             try:
-                results = await asyncio.get_event_loop().run_in_executor(None, _search)
+                results = await asyncio.get_running_loop().run_in_executor(None, _search)
             except Exception as e:
                 await msg.edit(f"❌ YouTube 搜索失败: {e}")
                 return
@@ -246,13 +271,13 @@ async def setup(ctx):
         if not results:
             await msg.edit(f"❌ YouTube 未找到相关结果")
             return
-        pending_key = f"pending_music:{message.chat.id}"
-        ctx.kv.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_YOUTUBE})
+        pending_key = f"pending_music:{event.chat_id}"
+        await ctx.storage.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_YOUTUBE})
         await msg.edit(_build_result_page(results, 0, keyword))
 
     # ── YouTube 下载 ──
-    async def _yt_download(ctx, client, message, url, title, uploader=""):
-        wait = await message.reply(f"⏳ 正在下载: {title}")
+    async def _yt_download(ctx, event, url, title, uploader=""):
+        wait = await event.reply(f"⏳ 正在下载: {title}")
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         template = str(_DOWNLOAD_DIR / "%(title)s.%(ext)s")
 
@@ -273,9 +298,9 @@ async def setup(ctx):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
             try:
-                await asyncio.get_event_loop().run_in_executor(None, _download)
+                await asyncio.get_running_loop().run_in_executor(None, _download)
             except Exception as e:
-                await wait.edit_text(f"❌ 下载异常: {e}")
+                await wait.edit(f"❌ 下载异常: {e}")
                 return
         else:
             # 兜底用二进制
@@ -285,34 +310,37 @@ async def setup(ctx):
                 else:
                     subprocess.run([_yt_path(), "-f", "bestaudio[ext=m4a]/bestaudio", "-o", template, "--no-playlist", "--no-warnings", url], capture_output=True, text=True, timeout=300)
             except Exception as e:
-                await wait.edit_text(f"❌ 下载异常: {e}")
+                await wait.edit(f"❌ 下载异常: {e}")
                 return
         audio_files = sorted(_DOWNLOAD_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
         audio_files = [f for f in audio_files if f.suffix in (".mp3", ".webm", ".m4a", ".opus")]
         if not audio_files:
-            await wait.edit_text("❌ 下载失败，未找到音频文件")
+            await wait.edit("❌ 下载失败，未找到音频文件")
             return
         path = audio_files[0]
-        await wait.edit_text(f"⏳ 正在发送: {title}")
+        await wait.edit(f"⏳ 正在发送: {title}")
         try:
             with open(path, "rb") as f:
-                await client.send_audio(message.chat.id, f, title=title, performer=uploader)
+                await event.client.send_file(
+                    event.chat_id, f,
+                    attributes=[DocumentAttributeAudio(duration=0, title=title, performer=uploader, voice=False)],
+                )
             if not ctx.config.get("keep_local", False):
                 path.unlink(missing_ok=True)
             await wait.delete()
         except Exception as e:
-            await wait.edit_text(f"❌ 发送失败: {e}")
+            await wait.edit(f"❌ 发送失败: {e}")
 
     # ── 聚合搜索（musicdl）──
-    async def _musicdl_search(ctx, client, message, keyword, sources=None):
-        msg = await message.reply(f"🔍 正在搜索「{keyword}」...")
+    async def _musicdl_search(ctx, event, keyword, sources=None):
+        msg = await event.reply(f"🔍 正在搜索「{keyword}」...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         try:
             results = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, _musicdl_search_sync, keyword, sources),
+                asyncio.get_running_loop().run_in_executor(None, _musicdl_search_sync, keyword, sources),
                 timeout=30
             )
         except asyncio.TimeoutError:
@@ -324,60 +352,63 @@ async def setup(ctx):
         if not results:
             await msg.edit(f"❌ 未找到相关结果")
             return
-        pending_key = f"pending_music:{message.chat.id}"
-        ctx.kv.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_AGGREGATE})
+        pending_key = f"pending_music:{event.chat_id}"
+        await ctx.storage.set(pending_key, {"results": results, "page": 0, "query": keyword, "time": time.time(), "msg_id": msg.id, "source": SOURCE_AGGREGATE})
         await msg.edit(_build_result_page(results, 0, keyword))
 
     # ── musicdl 下载 ──
-    async def _musicdl_download(ctx, client, message, song_data):
+    async def _musicdl_download(ctx, event, song_data):
         title = song_data.get("title") or song_data.get("song_name") or "未知"
-        wait = await message.reply(f"⏳ 正在获取音频: {title}")
+        wait = await event.reply(f"⏳ 正在获取音频: {title}")
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         url = song_data.get("download_url", "")
         if not url:
-            await wait.edit_text(f"❌ 未获取到下载链接")
+            await wait.edit(f"❌ 未获取到下载链接")
             return
         ext = song_data.get("ext", "mp3")
-        await wait.edit_text(f"⏳ 正在下载: {title}")
+        await wait.edit(f"⏳ 正在下载: {title}")
         import aiohttp
         filepath = _DOWNLOAD_DIR / f"musicdl_{int(time.time())}.{ext}"
         try:
             async with aiohttp.ClientSession() as sess:
                 async with sess.get(url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
                     if resp.status != 200:
-                        await wait.edit_text(f"❌ 下载失败: HTTP {resp.status}")
+                        await wait.edit(f"❌ 下载失败: HTTP {resp.status}")
                         return
                     with open(filepath, "wb") as f:
                         f.write(await resp.read())
         except Exception as e:
-            await wait.edit_text(f"❌ 下载异常: {e}")
+            await wait.edit(f"❌ 下载异常: {e}")
             import traceback
             ctx.log.error(traceback.format_exc())
             return
         if not filepath.exists() or filepath.stat().st_size == 0:
-            await wait.edit_text("❌ 下载失败，文件为空")
+            await wait.edit("❌ 下载失败，文件为空")
             return
-        await wait.edit_text(f"⏳ 正在发送: {title}")
+        await wait.edit(f"⏳ 正在发送: {title}")
         try:
             with open(filepath, "rb") as f:
-                await client.send_audio(message.chat.id, f, title=title, performer=song_data.get("artist", ""))
+                await event.client.send_file(
+                    event.chat_id, f,
+                    attributes=[DocumentAttributeAudio(duration=0, title=title, performer=song_data.get("artist", ""), voice=False)],
+                )
             if not ctx.config.get("keep_local", False):
                 filepath.unlink(missing_ok=True)
             await wait.delete()
         except Exception as e:
-            await wait.edit_text(f"❌ 发送失败: {e}")
+            await wait.edit(f"❌ 发送失败: {e}")
 
     # ── 命令处理 ──
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
-    async def cmd_handler(client, message):
-        text = (message.text or "").strip()
+    @ctx.on_message(outgoing=True)
+    async def cmd_handler(event):
+        text = (event.text or "").strip()
         if not text.startswith("."):
             return
 
         # .yysm 帮助
         if text == ".yysm":
             help_text = (
-                "🎵 <b>音乐搜索下载 v2.1.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v2.0.0</b>\n\n"
                 "🔍 <b>聚合搜索</b>（5音源）\n"
                 "  <code>.yy 歌名</code> — 网易云/QQ/酷狗/酷我/咪咕\n\n"
                 "🔍 <b>单音源搜索</b>\n"
@@ -389,9 +420,9 @@ async def setup(ctx):
                 "  <code>.yymg 歌名</code> — 咪咕音乐\n\n"
                 "💡 输入编号下载，<b>n</b> 下一页 <b>p</b> 上一页 <b>0</b> 取消"
             )
-            msg = await message.reply(help_text)
+            msg = await event.reply(help_text)
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             await asyncio.sleep(30)
@@ -403,7 +434,7 @@ async def setup(ctx):
 
         if text == ".yy help":
             help_text = (
-                "🎵 <b>音乐搜索下载 v2.1.0</b>\n\n"
+                "🎵 <b>音乐搜索下载 v2.0.0</b>\n\n"
                 "🔍 <b>聚合搜索</b>（5音源）\n"
                 "  <code>.yy 歌名</code> — 网易云/QQ/酷狗/酷我/咪咕\n\n"
                 "🔍 <b>单音源搜索</b>\n"
@@ -415,9 +446,9 @@ async def setup(ctx):
                 "  <code>.yymg 歌名</code> — 咪咕音乐\n\n"
                 "💡 输入编号下载，<b>n</b> 下一页 <b>p</b> 上一页 <b>0</b> 取消"
             )
-            msg = await message.reply(help_text)
+            msg = await event.reply(help_text)
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             await asyncio.sleep(30)
@@ -445,28 +476,28 @@ async def setup(ctx):
                 if not keyword:
                     break
                 if engine == "youtube":
-                    await _yt_search(ctx, client, message, keyword)
+                    await _yt_search(ctx, event, keyword)
                 else:
-                    await _musicdl_search(ctx, client, message, keyword, [engine])
+                    await _musicdl_search(ctx, event, keyword, [engine])
                 return
 
         # .yy 歌名 → 聚合搜索（全部音源）
         if text.startswith(".yy"):
             keyword = text[len(".yy"):].strip()
             if keyword:
-                await _musicdl_search(ctx, client, message, keyword, None)
+                await _musicdl_search(ctx, event, keyword, None)
             return
 
     # ── 选择处理 ──
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
-    async def select_handler(client, message):
-        text = (message.text or "").strip().lower()
-        pending_key = f"pending_music:{message.chat.id}"
-        pending = ctx.kv.get(pending_key, None)
+    @ctx.on_message(outgoing=True)
+    async def select_handler(event):
+        text = (event.text or "").strip().lower()
+        pending_key = f"pending_music:{event.chat_id}"
+        pending = await ctx.storage.get(pending_key, None)
         if not pending:
             return
         if time.time() - pending.get("time", 0) > 60:
-            ctx.kv.delete(pending_key)
+            await ctx.storage.delete(pending_key)
             return
 
         results = pending.get("results", [])
@@ -478,10 +509,10 @@ async def setup(ctx):
             page = min(page + 1, total_pages - 1)
             pending["page"] = page
             pending["time"] = time.time()
-            ctx.kv.set(pending_key, pending)
-            await message.reply(_build_result_page(results, page, pending.get("query", "")))
+            await ctx.storage.set(pending_key, pending)
+            await event.reply(_build_result_page(results, page, pending.get("query", "")))
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
@@ -490,18 +521,18 @@ async def setup(ctx):
             page = max(page - 1, 0)
             pending["page"] = page
             pending["time"] = time.time()
-            ctx.kv.set(pending_key, pending)
-            await message.reply(_build_result_page(results, page, pending.get("query", "")))
+            await ctx.storage.set(pending_key, pending)
+            await event.reply(_build_result_page(results, page, pending.get("query", "")))
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
             return
 
         if text == "0":
-            ctx.kv.delete(pending_key)
+            await ctx.storage.delete(pending_key)
             try:
-                await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+                await event.client.delete_messages(event.chat_id, [pending.get("msg_id"), event.id])
             except Exception:
                 pass
             return
@@ -513,29 +544,29 @@ async def setup(ctx):
         if idx < 1 or idx > len(results):
             return
 
-        ctx.kv.delete(pending_key)
+        await ctx.storage.delete(pending_key)
         selected = results[idx - 1]
 
         try:
-            await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
+            await event.client.delete_messages(event.chat_id, [pending.get("msg_id"), event.id])
         except Exception:
             try:
-                await message.delete()
+                await event.delete()
             except Exception:
                 pass
 
         if source == SOURCE_YOUTUBE:
-            await _yt_download(ctx, client, message, selected["url"], selected["title"], selected.get("uploader", ""))
+            await _yt_download(ctx, event, selected["url"], selected["title"], selected.get("uploader", ""))
         else:
             # 处理 musicdl 下载
             artist = selected.get("artist") or selected.get("singers") or ""
             if isinstance(artist, list):
                 artist = "".join(artist) if all(len(c) <= 2 for c in artist) else ", ".join(artist)
             selected["artist"] = artist
-            await _musicdl_download(ctx, client, message, selected)
+            await _musicdl_download(ctx, event, selected)
 
-    ctx.log.info("音乐搜索下载 v2.0.0 已就绪")
+    await _add_plugin_log(ctx, "音乐搜索下载 v2.0.0 已就绪")
 
 
 async def teardown(ctx):
-    ctx.log.info("音乐搜索下载已卸载")
+    await _add_plugin_log(ctx, "音乐搜索下载已卸载")

@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：B站&YouTube搜索 (bili_search)
+# AWBotNest V2 插件：B站&YouTube搜索 (bili_search)
 
 import asyncio
 import httpx
-import os
 import re
 import time
 from datetime import datetime, timezone, timedelta
@@ -14,13 +13,20 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "1.2.9",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
+    "tags": ["B站", "YouTube", "搜索下载"],
     "scope": "user",
-    "default_enabled": False,
-    "requirements": ["yt-dlp"],
+    "plugin_api_version": 2,
+    "requirements": ["yt-dlp", "httpx"],
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 16,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "max_size": {
             "type": "number", "default": 50, "label": "最大文件大小(MB)",
@@ -98,11 +104,11 @@ _DOWNLOAD_DIR = Path(__file__).parent / "downloads"
 _KV_LOGS = "bili_search_logs"
 
 
-def _log(ctx, msg: str):
-    ctx.log.info("[B站搜索] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, []) or []
+async def _log(ctx, msg: str):
+    # V2: 只写 storage 日志，不刷 ctx.log.info
+    logs = await ctx.storage.get(_KV_LOGS, []) or []
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
-    ctx.kv.set(_KV_LOGS, logs[-30:])
+    await ctx.storage.set(_KV_LOGS, logs[-30:])
 
 
 def _clean_title(title: str) -> str:
@@ -287,34 +293,131 @@ def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -
 
 
 # ═══════════════════════════════════════════════
-# 插件入口
+# 插件入口（V2: Telethon 单参 event）
 # ═══════════════════════════════════════════════
 
 async def setup(ctx):
-    ctx.log.info("B站&YouTube搜索插件已加载")
-
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
-    async def _handler(client, message):
-        text = (message.text or "").strip()
+    # ═══════════ 命令入口（统一处理，V2 无 group/filters） ═══════════
+    @ctx.on_message(outgoing=True)
+    async def _handler(event):
+        text = (event.text or "").strip()
         if not text:
             return
+        client = event.client
 
+        # ── 处理选择/翻页回复（纯数字 或 n）──
+        if text.isdigit() or text.lower() == "n":
+            # 搜索结果选择
+            pending_key = f"pending_select:{event.chat_id}"
+            pending = await ctx.storage.get(pending_key, None)
+            if pending:
+                if time.time() - pending.get("time", 0) > 30:
+                    await ctx.storage.delete(pending_key)
+                    return
+                if text.lower() == "n":
+                    page = pending.get("page", 1) + 1
+                    keyword = pending.get("keyword", "")
+                    if keyword:
+                        await ctx.storage.delete(pending_key)
+                        # 根据结果类型决定翻页方式
+                        results = pending.get("results", [])
+                        platforms = set(r.get("platform", "") for r in results)
+                        if platforms == {"B站"}:
+                            await _do_search_bili(ctx, event, keyword, page=page)
+                        elif platforms == {"YouTube"}:
+                            await _do_search_youtube(ctx, event, keyword, page=page)
+                        else:
+                            # 聚合搜索不支持翻页，重新搜索
+                            await _do_search_aggregate(ctx, event, keyword)
+                    return
+                idx = int(text)
+                if idx == 0:
+                    await ctx.storage.delete(pending_key)
+                    await event.reply("已取消")
+                    return
+                results = pending.get("results", [])
+                if 1 <= idx <= len(results):
+                    await ctx.storage.delete(pending_key)
+                    r = results[idx - 1]
+                    try:
+                        await client.delete_messages(event.chat_id, [pending.get("msg_id"), event.id])
+                    except Exception:
+                        try:
+                            await event.delete()
+                        except Exception:
+                            pass
+                    platform = r.get("platform", "")
+                    if platform == "B站" and r.get("bvid"):
+                        await _do_bili_download(ctx, event, r["bvid"])
+                    elif platform == "YouTube" and r.get("url"):
+                        await _do_youtube_download(ctx, event, r["url"], r.get("title", "视频"))
+                return
+
+            # 超限处理选择
+            pending_key = f"pending_oversize:{event.chat_id}"
+            pending = await ctx.storage.get(pending_key, None)
+            if pending:
+                if time.time() - pending.get("time", 0) > 60:
+                    await ctx.storage.delete(pending_key)
+                    return
+                idx = int(text)
+                await ctx.storage.delete(pending_key)
+                if idx == 0:
+                    await event.reply("已取消")
+                    return
+                bvid = pending.get("bvid", "")
+                url = pending.get("url", "")
+                title = pending.get("title", "视频")
+                msg_id = pending.get("msg_id")
+                try:
+                    ids = [msg_id, event.id] if msg_id else [event.id]
+                    await client.delete_messages(event.chat_id, ids)
+                except Exception:
+                    try:
+                        await event.delete()
+                    except Exception:
+                        pass
+                if idx == 1:
+                    dl_msg = await event.reply(f"⏳ 正在下载 {title[:30]}...")
+                    dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
+                    success = await _download_file(url, dl_path)
+                    if success and dl_path.exists():
+                        try:
+                            await client.send_file(event.chat_id, str(dl_path), caption=f"📹 {title[:50]}")
+                            try:
+                                await dl_msg.delete()
+                            except Exception:
+                                pass
+                            if not ctx.config.get("keep_local", False):
+                                dl_path.unlink(missing_ok=True)
+                        except Exception as e:
+                            await event.reply(f"❌ 发送失败: {e}")
+                    else:
+                        await event.reply("❌ 下载失败")
+                elif idx == 2:
+                    link = f"https://www.bilibili.com/video/{bvid}"
+                    await event.reply(f"🔗 {link}")
+                elif idx == 3:
+                    await event.reply(f"📁 已发送到收藏夹")
+                return
+
+        # ── 命令处理 ──
         # .spb keyword — B站搜索
         if text.startswith(".spb "):
             kw = text[5:].strip()
-            await _do_search_bili(ctx, client, message, kw)
+            await _do_search_bili(ctx, event, kw)
             return
 
         # .spy keyword — YouTube搜索
         if text.startswith(".spy "):
             kw = text[5:].strip()
-            await _do_search_youtube(ctx, client, message, kw)
+            await _do_search_youtube(ctx, event, kw)
             return
 
         # .sp keyword — 聚合搜索
         if text.startswith(".sp "):
             kw = text[4:].strip()
-            await _do_search_aggregate(ctx, client, message, kw)
+            await _do_search_aggregate(ctx, event, kw)
             return
 
         # 自动检测B站链接
@@ -322,14 +425,13 @@ async def setup(ctx):
             bili_m = re.search(r"(?:bilibili\.com/video/|b23\.tv/)(BV\w+)", text)
             if bili_m:
                 bvid = bili_m.group(1)
-                await _do_bili_download(ctx, client, message, bvid)
-                return
+                await _do_bili_download(ctx, event, bvid)
 
     # ── B站搜索 ──
-    async def _do_search_bili(ctx, client, message, keyword, page=1):
-        msg = await message.reply(f"🔍 正在B站搜索「{keyword}」...")
+    async def _do_search_bili(ctx, event, keyword, page=1):
+        msg = await event.reply(f"🔍 正在B站搜索「{keyword}」...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         count = ctx.config.get("search_count", 5)
@@ -348,14 +450,14 @@ async def setup(ctx):
         else:
             lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}"
-        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+        pending_key = f"pending_select:{event.chat_id}"
+        await ctx.storage.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── YouTube搜索 ──
-    async def _do_search_youtube(ctx, client, message, keyword, page=1):
-        msg = await message.reply(f"🔍 正在YouTube搜索「{keyword}」...")
+    async def _do_search_youtube(ctx, event, keyword, page=1):
+        msg = await event.reply(f"🔍 正在YouTube搜索「{keyword}」...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         count = ctx.config.get("search_count", 5)
@@ -375,14 +477,14 @@ async def setup(ctx):
         else:
             lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}"
-        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
+        pending_key = f"pending_select:{event.chat_id}"
+        await ctx.storage.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── 聚合搜索 ──
-    async def _do_search_aggregate(ctx, client, message, keyword, page=1):
-        msg = await message.reply(f"🔍 正在B站+YouTube搜索「{keyword}」...")
+    async def _do_search_aggregate(ctx, event, keyword, page=1):
+        msg = await event.reply(f"🔍 正在B站+YouTube搜索「{keyword}」...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         count = ctx.config.get("search_count", 5)
@@ -414,117 +516,14 @@ async def setup(ctx):
         lines.append(f"\n回复序号选择下载（30秒内）")
         lines.append(f"回复 <b>0</b> 取消")
         await msg.edit("\n".join(lines))
-        pending_key = f"pending_select:{message.chat.id}"
-        ctx.kv.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
-
-    # ── 处理用户选择回复 ──
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=1)
-    async def _select_handler(client, message):
-        text = (message.text or "").strip().lower()
-        pending_key = f"pending_select:{message.chat.id}"
-        pending = ctx.kv.get(pending_key, None)
-        if not pending:
-            pending_key = f"pending_oversize:{message.chat.id}"
-            pending = ctx.kv.get(pending_key, None)
-            if pending:
-                if not text.isdigit():
-                    return
-                if time.time() - pending.get("time", 0) > 60:
-                    ctx.kv.delete(pending_key)
-                    return
-                idx = int(text)
-                ctx.kv.delete(pending_key)
-                if idx == 0:
-                    await message.reply("已取消")
-                    return
-                bvid = pending.get("bvid", "")
-                url = pending.get("url", "")
-                title = pending.get("title", "视频")
-                msg_id = pending.get("msg_id")
-                try:
-                    ids = [msg_id, message.id] if msg_id else [message.id]
-                    await client.delete_messages(message.chat.id, ids)
-                except Exception:
-                    try:
-                        await message.delete()
-                    except Exception:
-                        pass
-                if idx == 1:
-                    dl_msg = await message.reply(f"⏳ 正在下载 {title[:30]}...")
-                    dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
-                    success = await _download_file(url, dl_path)
-                    if success and dl_path.exists():
-                        try:
-                            await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
-                            try:
-                                await dl_msg.delete()
-                            except Exception:
-                                pass
-                            if not ctx.config.get("keep_local", False):
-                                dl_path.unlink(missing_ok=True)
-                        except Exception as e:
-                            await message.reply(f"❌ 发送失败: {e}")
-                    else:
-                        await message.reply("❌ 下载失败")
-                elif idx == 2:
-                    link = f"https://www.bilibili.com/video/{bvid}"
-                    await message.reply(f"🔗 {link}")
-                elif idx == 3:
-                    await message.reply(f"📁 已发送到收藏夹")
-            return
-
-        if time.time() - pending.get("time", 0) > 30:
-            ctx.kv.delete(pending_key)
-            return
-
-        if text == "n":
-            page = pending.get("page", 1) + 1
-            keyword = pending.get("keyword", "")
-            if keyword:
-                ctx.kv.delete(pending_key)
-                # 根据结果类型决定翻页方式
-                results = pending.get("results", [])
-                platforms = set(r.get("platform", "") for r in results)
-                if platforms == {"B站"}:
-                    await _do_search_bili(ctx, client, message, keyword, page=page)
-                elif platforms == {"YouTube"}:
-                    await _do_search_youtube(ctx, client, message, keyword, page=page)
-                else:
-                    # 聚合搜索不支持翻页，重新搜索
-                    await _do_search_aggregate(ctx, client, message, keyword)
-            return
-
-        if not text.isdigit():
-            return
-
-        idx = int(text)
-        if idx == 0:
-            ctx.kv.delete(pending_key)
-            await message.reply("已取消")
-            return
-
-        results = pending.get("results", [])
-        if 1 <= idx <= len(results):
-            ctx.kv.delete(pending_key)
-            r = results[idx - 1]
-            try:
-                await client.delete_messages(message.chat.id, [pending.get("msg_id"), message.id])
-            except Exception:
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-            platform = r.get("platform", "")
-            if platform == "B站" and r.get("bvid"):
-                await _do_bili_download(ctx, client, message, r["bvid"])
-            elif platform == "YouTube" and r.get("url"):
-                await _do_youtube_download(ctx, client, message, r["url"], r.get("title", "视频"))
+        pending_key = f"pending_select:{event.chat_id}"
+        await ctx.storage.set(pending_key, {"results": results, "time": time.time(), "msg_id": msg.id, "keyword": keyword, "page": page})
 
     # ── B站下载 ──
-    async def _do_bili_download(ctx, client, message, bvid):
-        msg = await message.reply(f"⏳ 正在解析 B站视频 {bvid}...")
+    async def _do_bili_download(ctx, event, bvid):
+        msg = await event.reply(f"⏳ 正在解析 B站视频 {bvid}...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         info = await _bili_video_info(bvid)
@@ -545,7 +544,7 @@ async def setup(ctx):
             action = ctx.config.get("oversize_action", "notify")
             if action == "link":
                 link = f"https://www.bilibili.com/video/{bvid}"
-                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(total_size)}（超过{max_mb}MB）\n🔗 {link}", disable_web_page_preview=True)
+                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(total_size)}（超过{max_mb}MB）\n🔗 {link}", link_preview=False)
                 return
             elif action == "force":
                 pass
@@ -562,15 +561,15 @@ async def setup(ctx):
                     f"3 - 发送到收藏夹\n"
                     f"0 - 取消"
                 )
-                pending_key = f"pending_oversize:{message.chat.id}"
-                ctx.kv.set(pending_key, {"bvid": bvid, "url": urls[0]["url"], "title": title, "time": time.time(), "msg_id": msg.id})
+                pending_key = f"pending_oversize:{event.chat_id}"
+                await ctx.storage.set(pending_key, {"bvid": bvid, "url": urls[0]["url"], "title": title, "time": time.time(), "msg_id": msg.id})
                 return
         await msg.edit(f"⏳ 正在下载 {title}...")
         dl_path = _DOWNLOAD_DIR / f"{bvid}.mp4"
         success = await _download_file(urls[0]["url"], dl_path)
         if success and dl_path.exists():
             try:
-                await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title}")
+                await event.client.send_file(event.chat_id, str(dl_path), caption=f"📹 {title}")
                 if not ctx.config.get("keep_local", False):
                     await msg.delete()
                     dl_path.unlink(missing_ok=True)
@@ -582,10 +581,10 @@ async def setup(ctx):
             await msg.edit(f"❌ 下载失败")
 
     # ── YouTube下载 ──
-    async def _do_youtube_download(ctx, client, message, video_url, title):
-        msg = await message.reply(f"⏳ 正在下载 YouTube 视频...")
+    async def _do_youtube_download(ctx, event, video_url, title):
+        msg = await event.reply(f"⏳ 正在下载 YouTube 视频...")
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         video_id = video_url.split("watch?v=")[-1].split("&")[0] if "watch?v=" in video_url else "yt"
@@ -598,10 +597,7 @@ async def setup(ctx):
         _DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
         try:
-            if is_audio:
-                success = _yt_dlp_download(video_url, str(dl_path), is_audio=True)
-            else:
-                success = _yt_dlp_download(video_url, str(dl_path), is_audio=False)
+            success = _yt_dlp_download(video_url, str(dl_path), is_audio=is_audio)
         except Exception as e:
             await msg.edit(f"❌ 下载异常: {e}")
             return
@@ -626,7 +622,7 @@ async def setup(ctx):
         if oversize:
             action = ctx.config.get("oversize_action", "notify")
             if action == "link":
-                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(file_size)}（超过{max_mb}MB）\n🔗 {video_url}", disable_web_page_preview=True)
+                await msg.edit(f"📹 <b>{title}</b>\n📐 大小: {_format_size(file_size)}（超过{max_mb}MB）\n🔗 {video_url}", link_preview=False)
                 if not ctx.config.get("keep_local", False):
                     dl_path.unlink(missing_ok=True)
                 return
@@ -637,9 +633,9 @@ async def setup(ctx):
                 return
         try:
             if is_audio:
-                await client.send_audio(message.chat.id, str(dl_path), caption=f"🎵 {title}")
+                await event.client.send_file(event.chat_id, str(dl_path), caption=f"🎵 {title}")
             else:
-                await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
+                await event.client.send_file(event.chat_id, str(dl_path), caption=f"📹 {title[:50]}")
             if not ctx.config.get("keep_local", False):
                 await msg.delete()
                 dl_path.unlink(missing_ok=True)
@@ -648,6 +644,7 @@ async def setup(ctx):
         except Exception as e:
             await msg.edit(f"❌ 发送失败: {e}")
 
+    # ── 配置页动作 ──
     @ctx.action("test_bili")
     async def _test_bili(req=None):
         r = await _bili_search("风景", count=3)
@@ -660,7 +657,7 @@ async def setup(ctx):
 
     @ctx.action("view_logs")
     async def _view_logs(req=None):
-        logs = ctx.kv.get(_KV_LOGS, []) or []
+        logs = await ctx.storage.get(_KV_LOGS, []) or []
         if not logs:
             return {"ok": True, "message": "暂无日志"}
         lines = ["📋 最近日志:\n"]
@@ -668,8 +665,6 @@ async def setup(ctx):
             lines.append(f"[{log['t']}] {log['m']}")
         return {"ok": True, "message": "\n".join(lines)}
 
-    ctx.log.info("B站&YouTube搜索已就绪")
-
 
 async def teardown(ctx):
-    ctx.log.info("B站&YouTube搜索已卸载")
+    pass

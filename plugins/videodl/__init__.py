@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：聚合解析 (videodl) - 多平台解析下载
+# AWBotNest V2 插件：聚合解析 (videodl) - 多平台解析下载
 
 import asyncio
 import httpx
@@ -23,13 +23,20 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.4.8",
+    "version": "2.0.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
+    "tags": ["视频下载", "聚合解析"],
     "scope": "user",
-    "default_enabled": False,
     "requirements": ["SignerPy>=0.12"],
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 32,
+        "failure_threshold": 5,
+    },
     "config_schema": {
         "max_size": {
             "type": "number", "default": 50, "label": "最大文件大小(MB)",
@@ -63,11 +70,21 @@ _BRIDGE_SCRIPT = Path(__file__).parent / "_core" / "parse_bridge.py"
 _PH_VENV_PYTHON = "/root/.hermes/plugins_env/ph_venv3/bin/python3"
 
 
-def _log(ctx, msg: str):
-    ctx.log.info("[聚合解析] %s", msg)
-    logs = ctx.kv.get(_KV_LOGS, [])
+async def _log(ctx, msg: str, level: str = "info"):
+    """写入插件前端日志区(_KV_LOGS)；仅 error 级别同时输出到平台运行日志，避免刷屏"""
+    if level == "error":
+        ctx.log.error("[聚合解析] %s", msg)
+    try:
+        logs = await ctx.storage.get(_KV_LOGS, [])
+    except Exception:
+        logs = []
+    if not isinstance(logs, list):
+        logs = []
     logs.append({"t": datetime.now(TZ).strftime("%H:%M:%S"), "m": msg})
-    ctx.kv.set(_KV_LOGS, logs[-30:])
+    try:
+        await ctx.storage.set(_KV_LOGS, logs[-30:])
+    except Exception:
+        pass
 
 
 def _format_size(size: int) -> str:
@@ -117,10 +134,10 @@ def _get_help_text() -> str:
     return (
         "📦 <b>聚合解析 - 多平台解析下载</b>\n\n"
         "📌 <b>使用方法</b>\n"
-        "  .jx <链接或分享文本>  — 解析并下载\\n"
-        "  .jxsm  — 查看帮助\\n"
-        "  .jxstatus  — 查看引擎状态\\n"
-        "  💡 回复别人消息发送 .jx 也可解析\\n\\n"
+        "  .jx <链接或分享文本>  — 解析并下载\n"
+        "  .jxsm  — 查看帮助\n"
+        "  .jxstatus  — 查看引擎状态\n"
+        "  💡 回复别人消息发送 .jx 也可解析\n\n"
         "📌 <b>三引擎加持，智能选择</b>\n"
         "  🔵 <b>引擎1: videodl 原生</b>（纯Python，优先）\n"
         "  🇨🇳 抖音 · B站 · 快手 · 小红书 · 微博\n"
@@ -252,18 +269,19 @@ async def _parse_via_bridge(url: str) -> dict | None:
 
 
 async def setup(ctx):
-    ctx.log.info("聚合解析插件已加载 (v2.4.0, videodl原生+ParseHub+yt-dlp三引擎)")
+    await _log(ctx, "插件已加载 (v2.0.0, videodl原生+ParseHub+yt-dlp三引擎)")
 
-    @ctx.on_message(ctx.filters.outgoing & ctx.filters.text, group=0)
-    async def _handler(client, message):
+    # V2: Telethon 单参 event，命令匹配在函数内用 event.text 判断
+    @ctx.on_message(outgoing=True)
+    async def _handler(event):
         try:
-            text = (message.text or "").strip()
+            text = (event.text or "").strip()
             if not text:
                 return
 
-            # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
+            # ── 帮助命令（放在 .jx 前面，避免被前缀匹配吞掉）──
             if text == ".jxsm":
-                await message.reply(_get_help_text())
+                await event.reply(_get_help_text())
                 return
 
             # ── 引擎状态命令 ──
@@ -295,12 +313,7 @@ async def setup(ctx):
                 err = get_import_error()
                 if err:
                     status += f"\n<b>导入错误:</b> {err}\n"
-                await message.reply(status)
-                return
-
-            # ── 帮助命令（放在 /jx 前面，避免被前缀匹配吞掉）──
-            if text == ".jxsm":
-                await message.reply(_get_help_text())
+                await event.reply(status)
                 return
 
             # ── .jx 统一解析命令 ──
@@ -308,28 +321,32 @@ async def setup(ctx):
                 content = text[3:].strip()
                 if not content:
                     # 回复别人的消息时，从被回复的消息中提取链接
-                    reply_to = getattr(message, 'reply_to_message', None)
-                    if reply_to:
-                        reply_text = getattr(reply_to, 'text', '') or getattr(reply_to, 'caption', '') or ''
+                    try:
+                        reply_msg = await event.get_reply_message()
+                    except Exception:
+                        reply_msg = None
+                    if reply_msg:
+                        reply_text = (getattr(reply_msg, "message", "") or "").strip()
                         if reply_text:
                             content = reply_text
                 if not content:
-                    await message.reply(_get_help_text())
+                    await event.reply(_get_help_text())
                     return
-                await _do_parse(ctx, client, message, content)
+                await _do_parse(ctx, event, content)
                 return
         except Exception as e:
             try:
-                await message.reply(f"❌ 处理异常: {e}")
+                await event.reply(f"❌ 处理异常: {e}")
             except Exception:
                 pass
+            await _log(ctx, f"处理异常: {e}", level="error")
 
     # ── 统一解析 ──
-    async def _do_parse(ctx, client, message, content):
+    async def _do_parse(ctx, event, content):
         # 从文本中提取链接
         url = _extract_url(content)
         if not url:
-            await message.reply("❌ 未找到有效链接，请发送 .jx <链接> 或回复消息发送 .jx")
+            await event.reply("❌ 未找到有效链接，请发送 .jx <链接> 或回复消息发送 .jx")
             return
 
         # 解析短链接跳转
@@ -337,10 +354,10 @@ async def setup(ctx):
         if resolved != url:
             url = resolved
 
-        msg = await message.reply(f"⏳ 正在解析...")
+        msg = await event.reply(f"⏳ 正在解析...")
         # 删除原始消息
         try:
-            await message.delete()
+            await event.delete()
         except Exception:
             pass
         try:
@@ -369,10 +386,12 @@ async def setup(ctx):
                     errs.append(f"引擎3(yt-dlp): {yt_result['error']}")
         except Exception as e:
             await msg.edit(f"❌ 解析异常: {e}")
+            await _log(ctx, f"解析异常: {e}", level="error")
             return
         if not result:
             detail = "\n".join(errs) if errs else "所有引擎均无返回"
             await msg.edit(f"❌ 解析失败，该平台暂不支持或链接无效\n\n{detail}")
+            await _log(ctx, f"解析失败: {url[:60]}")
             return
 
         platform = result.get("platform_name", "未知")
@@ -407,12 +426,12 @@ async def setup(ctx):
 
         mtype = first.get("type", "video")
         if mtype == "video":
-            await _do_download_video(ctx, client, message, msg, media_url, title, referer)
+            await _do_download_video(ctx, event, msg, media_url, title, referer)
         elif mtype == "image":
-            await _do_download_image(ctx, client, message, msg, media_url, title, referer)
+            await _do_download_image(ctx, event, msg, media_url, title, referer)
 
     # ── 下载视频 ──
-    async def _do_download_video(ctx, client, message, msg, video_url, title, referer):
+    async def _do_download_video(ctx, event, msg, video_url, title, referer):
         await msg.edit(f"⏳ 正在下载 {title[:30]}...")
         try:
             max_mb = int(ctx.config.get("max_size", 50) or 50)
@@ -431,7 +450,7 @@ async def setup(ctx):
                             dl_path.unlink(missing_ok=True)
                         return
                 try:
-                    await client.send_video(message.chat.id, str(dl_path), caption=f"📹 {title[:50]}")
+                    await event.client.send_video(event.chat_id, str(dl_path), caption=f"📹 {title[:50]}")
                     if not ctx.config.get("keep_local", False):
                         await msg.delete()
                         dl_path.unlink(missing_ok=True)
@@ -448,7 +467,7 @@ async def setup(ctx):
             await msg.edit(f"❌ 下载失败: {e}")
 
     # ── 下载图片 ──
-    async def _do_download_image(ctx, client, message, msg, img_url, title, referer):
+    async def _do_download_image(ctx, event, msg, img_url, title, referer):
         await msg.edit(f"⏳ 正在下载图片...")
         try:
             dl_path = _DOWNLOAD_DIR / f"img_{int(time.time())}.jpg"
@@ -458,7 +477,7 @@ async def setup(ctx):
             })
             if success and dl_path.exists():
                 try:
-                    await client.send_photo(message.chat.id, str(dl_path), caption=f"📷 {title[:50]}")
+                    await event.client.send_photo(event.chat_id, str(dl_path), caption=f"📷 {title[:50]}")
                     if not ctx.config.get("keep_local", False):
                         await msg.delete()
                         dl_path.unlink(missing_ok=True)
@@ -483,7 +502,7 @@ async def setup(ctx):
 
     @ctx.action("view_logs")
     async def _view_logs(req=None):
-        logs = ctx.kv.get(_KV_LOGS, [])
+        logs = await ctx.storage.get(_KV_LOGS, [])
         if not logs:
             return {"ok": True, "message": "暂无日志"}
         lines = ["📋 最近日志:\n"]
@@ -491,8 +510,8 @@ async def setup(ctx):
             lines.append(f"[{log['t']}] {log['m']}")
         return {"ok": True, "message": "\n".join(lines)}
 
-    ctx.log.info("聚合解析已就绪")
+    await _log(ctx, "已就绪")
 
 
 async def teardown(ctx):
-    ctx.log.info("聚合解析已卸载")
+    await _log(ctx, "插件已卸载")
