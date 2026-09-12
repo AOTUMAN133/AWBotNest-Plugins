@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -228,10 +228,29 @@ async def _download_file(url: str, path: Path, headers: dict = None) -> bool:
 # YouTube API (yt-dlp)
 # ═══════════════════════════════════════════════
 
-def _youtube_search(keyword: str, count: int = 5) -> list:
+def _get_proxy(ctx=None) -> str | None:
+    """读取代理: 优先平台配置 ctx.settings.proxy_url (平台已配 192.168.1.33:7890),
+    其次环境变量, 返回 yt-dlp 可用的 proxy 值"""
+    if ctx is not None:
+        try:
+            s = ctx.settings
+            p = (s.proxy_url or "").strip()
+            if p:
+                return p
+        except Exception:
+            pass
+    for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        v = os.environ.get(key, "").strip()
+        if v:
+            return v
+    return None
+
+
+def _youtube_search(keyword: str, count: int = 5, ctx=None) -> list:
     try:
         # 使用 yt-dlp 的 Python API 直接调用（避免子进程/PATH问题）
         import yt_dlp
+        proxy = _get_proxy(ctx)
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -243,6 +262,8 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
             "nocheckcertificate": True,
             "retries": 1,
         }
+        if proxy:
+            ydl_opts["proxy"] = proxy
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"ytsearch{count}:{keyword}", download=False)
             if not info or not info.get("entries"):
@@ -264,9 +285,9 @@ def _youtube_search(keyword: str, count: int = 5) -> list:
         return []
 
 
-async def _youtube_search_async(keyword: str, count: int = 5) -> list:
+async def _youtube_search_async(keyword: str, count: int = 5, ctx=None) -> list:
     """yt-dlp 是阻塞调用, 包到线程池跑; 内部有 socket_timeout, 外层还有 wait_for 兜底"""
-    return await asyncio.to_thread(_youtube_search, keyword, count)
+    return await asyncio.to_thread(_youtube_search, keyword, count, ctx)
 
 
 def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -> bool:
@@ -473,7 +494,7 @@ async def setup(ctx):
         # YouTube 搜索加超时保护, 不可达时 20s 返回空
         try:
             yt_results = await asyncio.wait_for(
-                asyncio.to_thread(_youtube_search, keyword, count), timeout=20)
+                asyncio.to_thread(_youtube_search, keyword, count, ctx), timeout=20)
         except (asyncio.TimeoutError, Exception):
             yt_results = []
         results = [{"platform": "YouTube", **v} for v in yt_results]
@@ -506,7 +527,7 @@ async def setup(ctx):
         # 并行搜索 — YouTube 加超时降级: 不可达时 20s 返回空, B站结果照常出
         # 注意: 必须 create_task 包装成 Task, gather 超时后协程不能二次 await
         bili_task = asyncio.create_task(_bili_search(keyword, page=page, count=count))
-        yt_task = asyncio.create_task(_youtube_search_async(keyword, count))
+        yt_task = asyncio.create_task(_youtube_search_async(keyword, count, ctx))
         try:
             bili = await bili_task
         except Exception:
