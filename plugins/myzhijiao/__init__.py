@@ -6,7 +6,7 @@ import random
 __plugin__ = {
     "name": "掷筊",
     "id": "myzhijiao",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "author": "凹凸曼",
     "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
     "scope": "user",
@@ -32,7 +32,7 @@ RESULT_MAP = {
 
 
 async def setup(ctx):
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def _zj_handler(event):
         text = (event.raw_text or "").strip()
         if text not in (".zj", ".zhijiao"):

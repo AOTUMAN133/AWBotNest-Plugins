@@ -13,7 +13,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "B站&YouTube搜索",
     "id": "bili_search",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/bili_search_v2.svg",
     "author": "凹凸曼",
     "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
@@ -328,7 +328,7 @@ def _yt_dlp_download(video_url: str, output_path: str, is_audio: bool = False) -
 
 async def setup(ctx):
     # ═══════════ 命令入口（统一处理，V2 无 group/filters） ═══════════
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def _handler(event):
         text = (event.text or "").strip()
         if not text:

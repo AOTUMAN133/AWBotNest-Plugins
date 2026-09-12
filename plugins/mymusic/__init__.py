@@ -39,7 +39,7 @@ SOURCES = {
 __plugin__ = {
     "name": "音乐搜索下载",
     "id": "mymusic",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mymusic_v1.svg",
     "author": "凹凸曼",
     "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
@@ -402,7 +402,7 @@ async def setup(ctx):
             await wait.edit(f"❌ 发送失败: {e}")
 
     # ── 命令处理 ──
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def cmd_handler(event):
         text = (event.text or "").strip()
         if not text.startswith("."):
@@ -492,7 +492,7 @@ async def setup(ctx):
             return
 
     # ── 选择处理 ──
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def select_handler(event):
         text = (event.text or "").strip().lower()
         pending_key = f"pending_music:{event.chat_id}"

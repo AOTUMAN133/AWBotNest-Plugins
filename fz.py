@@ -12,7 +12,7 @@ import asyncio
 __plugin__ = {
     "name": "复读转发",
     "id": "fz",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "author": "AOTUMAN133",
     "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。支持复制搬运模式。",
     "tags": ["转发", "复读"],
@@ -53,7 +53,7 @@ def _bare(command: str) -> str:
 
 async def setup(ctx):
     # V2: Telethon 单参 event, outgoing=True
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def forward_to_group(event):
         cfg = ctx.config
         bare = _bare(cfg.get("command", ".fz"))

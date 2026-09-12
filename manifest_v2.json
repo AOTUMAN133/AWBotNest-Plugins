@@ -2,7 +2,7 @@
   "plugins": {
     "bili_search": {
       "name": "B站&YouTube搜索",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "凹凸曼",
       "description": "B站+YouTube搜索下载。.spb搜B站，.spy搜YouTube，.sp聚合搜索",
       "scope": "user",
@@ -16,7 +16,7 @@
     },
     "fz": {
       "name": "复读转发",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "AOTUMAN133",
       "description": "回复一条消息再发 /zf [次数]，把它在当前会话转发/复读若干次。支持复制搬运模式。",
       "scope": "user",
@@ -28,7 +28,7 @@
     },
     "my115": {
       "name": "115频道监控",
-      "version": "2.0.8",
+      "version": "2.0.9",
       "author": "凹凸曼",
       "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
       "scope": "user",
@@ -52,7 +52,7 @@
     },
     "my115sign": {
       "name": "115签到",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "author": "凹凸曼",
       "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
       "scope": "user",
@@ -93,7 +93,7 @@
     },
     "mydraw": {
       "name": "豆包多模态",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "author": "凹凸曼",
       "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
       "scope": "user",
@@ -115,7 +115,7 @@
     },
     "mymusic": {
       "name": "音乐搜索下载",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "author": "凹凸曼",
       "description": "聚合搜索 5 音源（网易云/QQ/酷狗/酷我/咪咕）+ YouTube，支持 .yy 聚合搜索、.yyyt YouTube、.yywy 网易云等",
       "scope": "user",
@@ -156,7 +156,7 @@
     },
     "mysummary": {
       "name": "AI总结",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "凹凸曼",
       "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
       "scope": "user",
@@ -169,7 +169,7 @@
     },
     "myzhijiao": {
       "name": "掷筊",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "凹凸曼",
       "description": "掷筊占卜，随机生成胜/阳/阴三筊并解读卦辞。用法: .zj",
       "scope": "user",
@@ -182,7 +182,7 @@
     },
     "videodl": {
       "name": "聚合解析",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "author": "凹凸曼",
       "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
       "scope": "user",
@@ -195,7 +195,7 @@
     },
     "ye_monitor": {
       "name": "小叶对话监控",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "author": "AWdress",
       "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
       "scope": "user",

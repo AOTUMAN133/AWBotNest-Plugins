@@ -23,7 +23,7 @@
 __plugin__ = {
     "name": "小叶对话监控",
     "id": "ye_monitor",
-    "version": "2.0.6",
+    "version": "2.0.7",
     "author": "AWdress",
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "tags": ["监控", "关键词", "自动回复"],
@@ -221,7 +221,7 @@ async def setup(ctx):
             ctx.log.error("[小叶监控] 处理异常: %r", e)
 
     # ── 命令 handler：.yemon 系列子命令 + 工具命令，单 handler 分发 ──
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def _cmd(event):
         text = (event.text or "").strip()
         parts = text.split()

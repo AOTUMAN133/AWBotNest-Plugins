@@ -23,7 +23,7 @@ except Exception:
 __plugin__ = {
     "name": "聚合解析",
     "id": "videodl",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/videodl_v2.svg",
     "author": "凹凸曼",
     "description": "多平台视频/图文解析下载。支持 /jx 解析链接。支持抖音/B站/优酷/腾讯/爱奇艺/YouTube等1000+平台（videodl原生+ParseHub+yt-dlp三引擎）。",
@@ -272,7 +272,7 @@ async def setup(ctx):
     await _log(ctx, "插件已加载 (v2.0.0, videodl原生+ParseHub+yt-dlp三引擎)")
 
     # V2: Telethon 单参 event，命令匹配在函数内用 event.text 判断
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def _handler(event):
         try:
             text = (event.text or "").strip()

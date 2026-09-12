@@ -18,7 +18,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "115签到",
     "id": "my115sign",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115sign_v1.svg",
     "author": "凹凸曼",
     "description": "115网盘每日自动签到，支持多账号、WxPusher推送、扫码登录。用法: .115sign 签到 / .115login 扫码登录",
@@ -675,7 +675,7 @@ async def _do_qrcode_login(ctx, client, message, device: str = None):
 
 async def setup(ctx):
     # 统一命令处理（V2: Telethon 单参 event）
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def _cmd_handler(event):
         text = (event.text or "").strip()
         low = text.lower()

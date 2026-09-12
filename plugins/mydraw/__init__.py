@@ -14,7 +14,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -246,7 +246,7 @@ async def setup(ctx):
             return {"ok": False, "message": f"❌ 异常: {e}"}
 
     # ── 命令处理（V2: Telethon 单参 event，命令在函数内用 event.text 判断）──
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def cmd_handler(event):
         text = (event.text or "").strip()
         if not text.startswith("."):

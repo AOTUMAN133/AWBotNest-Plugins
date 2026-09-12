@@ -20,7 +20,7 @@ from ._tmdb import TmdbApi, emby_has_tmdb_id, get_emby_tmdb_ids
 __plugin__ = {
     "name": "115频道监控",
     "id": "my115",
-    "version": "2.0.8",
+    "version": "2.0.9",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/my115_v2.svg",
     "author": "凹凸曼",
     "description": "通用监控频道里的 115 分享，读取/识别 TMDB 后查 Emby 媒体库，缺失的转发给 CMS 入库机器人。可选电影/电视剧，默认全部。",
@@ -728,7 +728,7 @@ async def setup(ctx):
     ctx.schedule_interval("115频道轮询", _poll_channels, seconds=300)
 
     # ───────── 命令：/getmedia 和 /find ─────────
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def commands(event):
         text = event.text or ""
         if re.match(r"^[/\.]getmedia(?:\s|$)", text, re.IGNORECASE):

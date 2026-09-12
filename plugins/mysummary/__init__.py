@@ -130,7 +130,7 @@ _QA_PROMPT = (
 __plugin__ = {
     "name": "AI总结",
     "id": "mysummary",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mysummary_v2.svg",
     "author": "凹凸曼",
     "description": "群消息存储+总结+问答+搜索。自动存储消息，支持 .sum .ask .search",
@@ -217,7 +217,7 @@ async def setup(ctx):
             pass
 
     # ── 命令处理 ──
-    @ctx.on_message(outgoing=True)
+    @ctx.on_message(incoming=False, outgoing=True)
     async def cmd_handler(event):
         text = (event.text or "").strip()
         if not text.startswith("."):
