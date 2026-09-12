@@ -14,7 +14,7 @@ _DOWNLOAD_DIR = Path("/tmp/mydraw_downloads")
 __plugin__ = {
     "name": "豆包多模态",
     "id": "mydraw",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mydraw_v1.svg",
     "author": "凹凸曼",
     "description": "豆包 AI 多模态生成。支持 .st 文生图，.ssp 文生视频，.sy 文生音乐。免费免 Key，扫码登录豆包账号即可使用。",
@@ -122,8 +122,8 @@ async def setup(ctx):
             pass
 
     # ── 扫码登录 ──
-    async def _do_qr_login(ctx, chat_id=None):
-        """扫码登录核心: 生成二维码, 有 chat_id 则发送图片到聊天"""
+    async def _do_qr_login(ctx, chat_id=None, client=None):
+        """扫码登录核心: 生成二维码, 用用户账号 client 发送图片到聊天（同 my115sign 模式）"""
         from ._doubao2api.qr_login import QRLogin, QRStatus
 
         qr = QRLogin()
@@ -151,13 +151,13 @@ async def setup(ctx):
         qr_path = ctx.data_dir / "doubao_qr.png"
         qr_path.write_bytes(qr.qrcode_data)
 
-        # 发送二维码到聊天（V2: 用 chat_id, 无 owner_id）
+        # 发送二维码到聊天（V2: 优先用户账号 client（同 my115sign）, 兜底 ctx.bot）
         sent = False
         if chat_id is not None:
             try:
-                bot = ctx.bot
-                if bot is not None:
-                    await bot.send_file(chat_id, str(qr_path))
+                sender = client or ctx.user
+                if sender is not None:
+                    await sender.send_file(chat_id, str(qr_path))
                     sent = True
             except Exception as e:
                 ctx.update_config({"_login_status": f"📱 二维码已生成（{qr_path}），但发送失败: {e}"})
@@ -178,9 +178,9 @@ async def setup(ctx):
                 _CLIENT_INSTANCE = None
                 if chat_id is not None:
                     try:
-                        bot = ctx.bot
-                        if bot is not None:
-                            await bot.send_message(chat_id, "✅ 豆包登录成功！")
+                        sender = client or ctx.user
+                        if sender is not None:
+                            await sender.send_message(chat_id, "✅ 豆包登录成功！")
                     except Exception:
                         pass
             else:
@@ -278,9 +278,9 @@ async def setup(ctx):
         elif text.startswith(".sy "):
             await _handle_music(ctx, event, text[5:])
         elif text == ".dylogin":
-            # 扫码登录（聊天命令触发, 有 event.chat_id 才能发二维码图片）
+            # 扫码登录（聊天命令触发, 用 event.client 发二维码图片到 event.chat_id）
             reply = await event.reply("📱 正在生成二维码，请稍候...")
-            result = await _do_qr_login(ctx, event.chat_id)
+            result = await _do_qr_login(ctx, event.chat_id, event.client)
             try:
                 await reply.delete()
             except Exception:
