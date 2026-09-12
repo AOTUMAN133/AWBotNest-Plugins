@@ -14,7 +14,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "私聊拦截",
     "id": "mypmcaptcha",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/mypmcaptcha_v2.svg",
     "author": "凹凸曼",
     "description": "陌生人私聊时自动发送验证题，通过后放行，失败后执行屏蔽/举报等操作。",
@@ -280,7 +280,7 @@ async def _send_captcha(client, cfg, user_id, ctx):
 async def _mute_user(client, user_id: int):
     """静音（mute_until=2147483647 永久）"""
     await client(functions.account.UpdateNotifySettingsRequest(
-        peer=types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+        peer=types.InputNotifyPeer(peer=await client.get_input_entity(user_id)),
         settings=types.InputPeerNotifySettings(
             show_previews=False, silent=True, mute_until=2147483647
         ),
@@ -290,7 +290,7 @@ async def _mute_user(client, user_id: int):
 async def _unmute_user(client, user_id: int):
     """取消静音"""
     await client(functions.account.UpdateNotifySettingsRequest(
-        peer=types.InputNotifyPeer(peer=await client.resolve_peer(user_id)),
+        peer=types.InputNotifyPeer(peer=await client.get_input_entity(user_id)),
         settings=types.InputPeerNotifySettings(
             show_previews=True, silent=False, mute_until=0
         ),
@@ -300,7 +300,7 @@ async def _unmute_user(client, user_id: int):
 async def _report_user(client, user_id: int):
     """举报为垃圾信息"""
     await client(functions.account.ReportPeerRequest(
-        peer=await client.resolve_peer(user_id),
+        peer=await client.get_input_entity(user_id),
         reason=types.InputReportReasonSpam(),
         message="spam",
     ))
@@ -308,13 +308,13 @@ async def _report_user(client, user_id: int):
 
 async def _block_user(client, user_id: int):
     """屏蔽"""
-    await client(functions.contacts.BlockRequest(id=await client.resolve_peer(user_id)))
+    await client(functions.contacts.BlockRequest(id=await client.get_input_entity(user_id)))
 
 
 async def _delete_chat(client, user_id: int):
     """删除对话（连同历史消息）"""
     await client(functions.messages.DeleteHistoryRequest(
-        peer=await client.resolve_peer(user_id),
+        peer=await client.get_input_entity(user_id),
         max_id=0,
         revoke=True,
         just_clear=False,
