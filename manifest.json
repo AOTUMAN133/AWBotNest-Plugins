@@ -141,5 +141,13 @@
     "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .yemon on|cx",
     "path": "ye_monitor.py",
     "icon": "https://raw.githubusercontent.com/AWdress/AWBotNest-Plugins/main/plugins/icons/family_relay.png"
+  },
+  "dialog_monitor": {
+    "name": "对话监控",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .dmon on|cx",
+    "path": "dialog_monitor.py",
+    "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/usermonitor.svg"
   }
 }

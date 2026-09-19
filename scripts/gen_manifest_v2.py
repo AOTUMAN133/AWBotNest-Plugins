@@ -71,7 +71,7 @@ for name in sorted(os.listdir(os.path.join(REPO_ROOT, 'plugins'))):
                 plugins[pid]['tags'] = meta['tags']
 
 # 仓库根单文件插件
-for f in ['fz.py', 'ye_monitor.py']:
+for f in ['fz.py', 'ye_monitor.py', 'dialog_monitor.py']:
     full = os.path.join(REPO_ROOT, f)
     if os.path.exists(full):
         meta = find_plugin_meta(full)

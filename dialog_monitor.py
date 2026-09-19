@@ -1,0 +1,370 @@
+# -*- coding: utf-8 -*-
+# =============================================================================
+# AWBotNest V2 插件：对话监控（dialog_monitor）
+#
+# 从 PagerMaid 版移植，已按 AWBotNest V2 (Telethon) 规范迁移。
+# 监控指定 TG 聊天窗口，识别关键词后自动回复。
+# 支持精确/包含匹配、触发通知、去重。
+#
+# 用法（在目标聊天里用自己的账号发送）：
+#     .dmon on              # 开启监控
+#     .dmon off             # 关闭监控
+#     .dmon target @name    # 设置监控对象（@username 或 chat_id）
+#     .dmon keyword 777888  # 设置关键词
+#     .dmon reply 同意      # 设置回复词
+#     .dmon mode exact      # 精确匹配
+#     .dmon mode contains   # 包含匹配（默认）
+#     .dmon notify on/off   # 触发通知开关
+#     .dmon cx              # 查看当前配置
+#
+# 也可以在插件设置页里可视化编辑全部配置（推荐）。
+# =============================================================================
+
+__plugin__ = {
+    "name": "对话监控",
+    "id": "dialog_monitor",
+    "version": "1.0.0",
+    "author": "AWdress",
+    "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .dmon on|cx",
+    "tags": ["监控", "关键词", "自动回复"],
+    "scope": "user",
+    "requirements": [],
+    "plugin_api_version": 2,
+    "resources": {
+        "timeout_seconds": 120,
+        "max_concurrency": 8,
+        "max_background_tasks": 16,
+        "failure_threshold": 5,
+    },
+    "config_schema": {
+        "enable": {
+            "type": "boolean", "default": False, "label": "启用监控",
+            "cols": 3, "order": 1, "section": "功能开关",
+            "help": "总开关。关闭后不监听任何消息。",
+        },
+        "notify_enabled": {
+            "type": "boolean", "default": True, "label": "触发通知",
+            "cols": 3, "order": 2, "section": "功能开关",
+            "help": "触发回复时同时推送通知（平台 bot 会话）。",
+        },
+        "target_chat": {
+            "type": "string", "default": "", "label": "监控对象",
+            "order": 3, "section": "监控设置",
+            "help": "对哪个会话监控。填 @username 或 chat_id（数字）。可用 .id 查看当前会话。",
+        },
+        "keyword": {
+            "type": "string", "default": "777888", "label": "监听关键词",
+            "order": 4, "section": "监控设置",
+            "help": "消息里出现该关键词即触发。",
+        },
+        "reply_text": {
+            "type": "string", "default": "同意", "label": "自动回复词",
+            "order": 5, "section": "监控设置",
+            "help": "触发后发送的回复内容。",
+        },
+        "reply_delay": {
+            "type": "number", "default": 10, "label": "回复延迟(秒)",
+            "min": 0, "max": 300, "order": 6, "section": "监控设置",
+            "help": "监控到消息后延迟多少秒才回复。0=立即回复。",
+        },
+        "match_mode": {
+            "type": "select", "default": "contains", "label": "匹配模式",
+            "order": 7, "section": "监控设置",
+            "options": {"contains": "包含匹配（含关键词即触发）",
+                        "exact": "精确匹配（消息完全等于关键词）"},
+            "help": "包含=消息里出现关键词；精确=整条消息等于关键词。",
+        },
+        "notify_chat": {
+            "type": "string", "default": "", "label": "通知发送到",
+            "order": 8, "section": "监控设置",
+            "help": "留空=发送到平台 bot 会话；填 @username 或 chat_id 可指定。",
+        },
+    },
+}
+
+# 简易去重（最近 100 条指纹，存 ctx.storage 跨模块重启保留）
+_MAX_RECENT = 100
+_KV_FINGERPRINTS = "dialog_monitor_recent_fingerprints"
+
+
+def _make_fingerprint(chat_id, message_id, text):
+    return f"{chat_id}:{message_id}:{text.strip()}"
+
+
+def _match_keyword(text: str, keyword: str, mode: str) -> bool:
+    if not text or not keyword:
+        return False
+    if mode == "exact":
+        return text.strip() == keyword.strip()
+    return keyword in text
+
+
+async def _is_recent(ctx, fingerprint: str) -> bool:
+    recent = await ctx.storage.get(_KV_FINGERPRINTS, []) or []
+    if fingerprint in recent:
+        return True
+    recent.append(fingerprint)
+    if len(recent) > _MAX_RECENT:
+        recent.pop(0)
+    await ctx.storage.set(_KV_FINGERPRINTS, recent)
+    return False
+
+
+def _target_match(chat, chat_id, target: str) -> bool:
+    """target 为纯数字 → 匹配 chat_id；否则匹配 @username（不区分大小写）。
+    chat 可能为 None（Telethon 未解析实体），此时用 chat_id 兜底。"""
+    if not target:
+        return False
+    if target.isdigit():
+        return chat_id is not None and chat_id == int(target)
+    username = getattr(chat, "username", None)
+    username = username.lower() if username else ""
+    return bool(username) and username == target.lower().lstrip("@")
+
+
+def _chat_label(chat) -> str:
+    title = getattr(chat, "title", "") or ""
+    if title:
+        return str(title)
+    uname = getattr(chat, "username", "") or ""
+    if uname:
+        return f"@{uname}"
+    return str(getattr(chat, "id", "?"))
+
+
+async def setup(ctx):
+    """注册监控 handler 和命令 handler（V2: Telethon 单事件参数）。"""
+
+    # ── 监控 handler：只监听 target_chat 指定会话(双向) ──
+    # 关键: 用 ctx.user 把 @username 解析成 chat_id, 再传给 chats=[id] 数字过滤
+    # Telethon chats= 对数字 chat_id 过滤可靠; 对 @username 字符串会静默失效(所以必须预解析)
+    monitor_chats = None
+    target_cfg = str(ctx.config.get("target_chat", "") or "").strip()
+    try:
+        if target_cfg:
+            if target_cfg.isdigit():
+                monitor_chats = int(target_cfg)
+            else:
+                client = ctx.user or ctx.bot
+                if client is not None:
+                    entity = await client.get_entity(target_cfg)
+                    monitor_chats = entity.id
+                    ctx.log.info("[对话监控] 目标会话解析: %s → chat_id=%s", target_cfg, entity.id)
+    except Exception as e:
+        ctx.log.warning("[对话监控] 目标会话解析失败 %s: %r, 退化为代码内过滤", target_cfg, e)
+
+    @ctx.on_message(incoming=True, outgoing=True, chats=monitor_chats)
+    async def _monitor(event):
+        try:
+            # event.chat 可能为 None(Telethon 未解析), 用 chat_id 兜底匹配
+            chat = event.chat
+            chat_id = event.chat_id
+            if not ctx.config.get("enable", False):
+                return
+            target = str(ctx.config.get("target_chat", "") or "").strip()
+            # chat 为 None 时尝试异步解析实体, 仍失败则仅用 chat_id 匹配数字型 target
+            if chat is None and not target.isdigit():
+                try:
+                    chat = await event.get_chat()
+                except Exception:
+                    chat = None
+            if not target or not _target_match(chat, chat_id, target):
+                return
+
+            text = (event.text or "").strip()
+            keyword = str(ctx.config.get("keyword", "") or "").strip()
+            mode = str(ctx.config.get("match_mode", "contains") or "contains")
+            if not _match_keyword(text, keyword, mode):
+                return
+
+            fp = _make_fingerprint(event.chat_id, event.id, text)
+            if await _is_recent(ctx, fp):
+                return
+
+            reply_text = str(ctx.config.get("reply_text", "") or "").strip()
+            if not reply_text:
+                return
+            ctx.log.info("[对话监控] 已回复: %r → %s", reply_text, text[:80])
+
+            # 延迟回复（默认 10 秒，可配置）。去重已在上方完成，等待期间不重复触发。
+            import asyncio as _asyncio
+            delay = int(ctx.config.get("reply_delay", 10) or 10)
+            if delay > 0:
+                await _asyncio.sleep(delay)
+
+            # 直接发送回复词（不回复引用原消息，避免暴露来源）
+            try:
+                await event.client.send_message(event.chat_id, reply_text)
+            except Exception:
+                pass
+
+            # 触发通知
+            if ctx.config.get("notify_enabled", True):
+                preview = text if len(text) <= 300 else text[:300] + "…"
+                notify_text = (
+                    "🎯 对话监控已触发\n\n"
+                    f"聊天: {_chat_label(event.chat)}\n"
+                    f"关键词: {keyword}\n"
+                    f"回复词: {reply_text}\n"
+                    f"原消息:\n{preview}"
+                )
+                notify_chat = str(ctx.config.get("notify_chat", "") or "").strip()
+                try:
+                    if notify_chat:
+                        target_id = int(notify_chat) if notify_chat.isdigit() else notify_chat
+                        await event.client.send_message(target_id, notify_text)
+                    else:
+                        await ctx.notify(notify_text, level="info", category="对话监控")
+                except Exception:
+                    pass  # 通知失败不阻塞主流程
+        except Exception as e:
+            ctx.log.error("[对话监控] 处理异常: %r", e)
+
+    # ── 命令 handler：.dmon 系列子命令 + 工具命令，单 handler 分发 ──
+    @ctx.on_message(incoming=False, outgoing=True)
+    async def _cmd(event):
+        text = (event.text or "").strip()
+        parts = text.split()
+        if not parts:
+            return
+        cmd = parts[0].lower()
+        args = parts[1:]
+
+        if cmd == ".dmon":
+            sub = args[0].lower() if args else ""
+            if not sub or sub == "cx":
+                await event.edit(
+                    "当前配置：\n"
+                    f"enabled = {ctx.config.get('enable', False)}\n"
+                    f"target_chat = {ctx.config.get('target_chat', '')}\n"
+                    f"keyword = {ctx.config.get('keyword', '')}\n"
+                    f"reply_text = {ctx.config.get('reply_text', '')}\n"
+                    f"match_mode = {ctx.config.get('match_mode', 'contains')}\n"
+                    f"notify = {ctx.config.get('notify_enabled', True)}"
+                )
+                return
+
+            if sub == "on":
+                ctx.update_config({"enable": True})
+                await event.edit("✅ 对话监控已开启")
+                return
+            if sub == "off":
+                ctx.update_config({"enable": False})
+                await event.edit("✅ 对话监控已关闭")
+                return
+
+            if sub == "target":
+                if len(args) < 2:
+                    await event.edit("❌ 用法: .dmon target <@username|chat_id>")
+                    return
+                val = " ".join(args[1:]).strip()
+                ctx.update_config({"target_chat": val})
+                await event.edit(f"✅ 监控对象已设置为: {val}")
+                return
+
+            if sub == "keyword":
+                if len(args) < 2:
+                    await event.edit("❌ 用法: .dmon keyword <关键词>")
+                    return
+                val = " ".join(args[1:]).strip()
+                ctx.update_config({"keyword": val})
+                await event.edit(f"✅ 监听关键词已设置为: {val}")
+                return
+
+            if sub == "reply":
+                if len(args) < 2:
+                    await event.edit("❌ 用法: .dmon reply <回复词>")
+                    return
+                val = " ".join(args[1:]).strip()
+                ctx.update_config({"reply_text": val})
+                await event.edit(f"✅ 自动回复词已设置为: {val}")
+                return
+
+            if sub == "mode":
+                if len(args) < 2:
+                    await event.edit("❌ 用法: .dmon mode contains|exact")
+                    return
+                mode = args[1].strip().lower()
+                if mode not in ("contains", "exact"):
+                    await event.edit("❌ mode 仅支持: contains 或 exact")
+                    return
+                ctx.update_config({"match_mode": mode})
+                await event.edit(f"✅ 匹配模式已设置为: {mode}")
+                return
+
+            if sub == "notify":
+                if len(args) < 2:
+                    await event.edit("❌ 用法: .dmon notify on|off")
+                    return
+                val = args[1].strip().lower()
+                if val not in ("on", "off"):
+                    await event.edit("❌ notify 仅支持: on 或 off")
+                    return
+                ctx.update_config({"notify_enabled": val == "on"})
+                await event.edit(f"✅ 触发通知已设置为: {val}")
+                return
+
+            await event.edit(
+                "用法:\n"
+                ".dmon on|off\n"
+                ".dmon target <@username|chat_id>\n"
+                ".dmon keyword <关键词>\n"
+                ".dmon reply <回复词>\n"
+                ".dmon mode contains|exact\n"
+                ".dmon notify on|off\n"
+                ".dmon cx"
+            )
+            return
+
+        # ── 工具命令 ──
+        if cmd in (".id", ".currentid"):
+            chat = event.chat
+            await event.edit(
+                "当前对话信息:\n"
+                f"chat.id: {chat.id}\n"
+                f"chat.type: {getattr(chat, 'type', 'N/A')}\n"
+                f"chat.title: {_chat_label(chat)}\n\n"
+                f"✅ 请使用: .dmon target {chat.id}"
+            )
+            return
+
+        if cmd == ".chatid":
+            if len(args) < 1:
+                await event.edit("❌ 用法: .chatid @username")
+                return
+            target = args[0].strip()
+            if not target.startswith("@"):
+                await event.edit("❌ 请提供 @username 格式")
+                return
+            try:
+                user = await event.client.get_entity(target)
+                chat = await event.client.get_entity(user.id)
+                await event.edit(
+                    f"私聊 chat_id 信息:\n"
+                    f"目标: {target}\n"
+                    f"chat.id: {chat.id}\n"
+                    f"chat.type: {getattr(chat, 'type', 'N/A')}\n"
+                    f"chat.title: {_chat_label(chat)}\n\n"
+                    f"✅ 请使用: .dmon target {chat.id}"
+                )
+            except Exception as e:
+                await event.edit(f"❌ 获取失败: {str(e)}")
+            return
+
+        if cmd == ".dmtest":
+            await event.edit(
+                "✅ 脚本运行正常\n\n"
+                f"当前监控配置:\n"
+                f"enabled = {ctx.config.get('enable', False)}\n"
+                f"target_chat = {ctx.config.get('target_chat', '')}\n"
+                f"keyword = {ctx.config.get('keyword', '')}\n"
+                f"reply_text = {ctx.config.get('reply_text', '')}\n"
+                f"match_mode = {ctx.config.get('match_mode', 'contains')}\n"
+                f"notify = {ctx.config.get('notify_enabled', True)}\n\n"
+                "监听器状态: 已注册"
+            )
+            return
+
+
+async def teardown(ctx):
+    pass

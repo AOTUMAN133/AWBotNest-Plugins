@@ -14,6 +14,19 @@
         "搜索下载"
       ]
     },
+    "dialog_monitor": {
+      "name": "对话监控",
+      "version": "1.0.0",
+      "author": "AWdress",
+      "description": "监控指定聊天窗口，识别关键词后自动回复。用法: .dmon on|cx",
+      "scope": "user",
+      "path": "dialog_monitor.py",
+      "tags": [
+        "监控",
+        "关键词",
+        "自动回复"
+      ]
+    },
     "fz": {
       "name": "复读转发",
       "version": "2.0.1",
