@@ -35,17 +35,25 @@ class TmdbApi:
         return await self.search_all(title, year)
 
     async def get_details(self, tmdb_id: int, media_type: str) -> dict:
-        """获取 TMDB 条目详情（含 genres）。"""
+        """获取 TMDB 条目详情（含 genres）。
+        404（TMDB 确认无此 ID）→ 返回 {}（上层按"查无此剧"走启发式兜底）；
+        网络失败/超时/5xx → 抛异常（上层应保守跳过，不误判完结）"""
         key_param, headers = self._auth()
         endpoint = f"{self.base_url}/{media_type}/{tmdb_id}"
         params = {"language": self.language, **key_param}
         try:
             async with self._client() as client:
                 resp = await client.get(endpoint, params=params, headers=headers)
+                if resp.status_code == 404:
+                    return {}
                 resp.raise_for_status()
                 return resp.json()
+        except httpx.HTTPStatusError:
+            # 5xx 等非 404 错误：查询失败，抛给上层保守处理
+            raise
         except Exception:
-            return {}
+            # 连接失败/超时/DNS：查询失败，抛给上层保守处理（不再静默返回 {} 误判）
+            raise
 
     def _auth(self):
         """兼容 TMDB v3 API Key（URL 参数）与 v4 Read Access Token（Bearer 头）。"""
