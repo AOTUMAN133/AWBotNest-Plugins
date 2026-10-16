@@ -20,6 +20,7 @@
 # =============================================================================
 
 import asyncio
+import inspect
 
 from ._core import (
     apply_filters,
@@ -36,7 +37,7 @@ from ._core import (
 __plugin__ = {
     "name": "频道全量搬运",
     "id": "channel_mover",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "author": "凹凸曼",
     "description": "把源频道/群的历史消息从最早开始匀速搬到目标群，支持媒体与相册、断点续传、进度查询。",
     "tags": ["搬运", "频道", "历史", "同步"],
@@ -323,10 +324,12 @@ async def _run_copy(ctx, task_id, client, src, dst, state, cfg):
             merged = pending + page
             groups = group_albums(merged, keep_albums)
             open_album = trailing_open_album(groups)
-            if open_album:
+            if open_album and len(page) >= batch_size:
+                # 本批取满了，末尾相册可能在下一批还有成员，先挂起
                 groups = groups[:-1]
                 pending = open_album
             else:
+                # 本批没取满（已经读到末尾）或末尾不是未完结相册，全部发完
                 pending = []
 
             for group in groups:
@@ -385,7 +388,14 @@ async def _run_copy(ctx, task_id, client, src, dst, state, cfg):
 
 async def _send_group(ctx, client, group, dst, cfg, drops, replaces,
                       copy_media, mode, keep_replies, skip_service, id_map):
-    """把一组（单条或相册）发到目标。"""
+    """把一组（单条或相册）发到目标。
+
+    两种客户端的区别（都按各自真实签名调用）：
+      pyrogram: copy_media_group(chat_id, from_chat_id, message_id)
+                copy_message(chat_id, from_chat_id, message_id, caption)
+      telethon : forward_messages(entity, messages, from_peer, drop_author=True)
+                —— 无 copy_* API；drop_author=True 即"不带转发来源头"
+    """
     if skip_service and all(is_service_message(m) for m in group):
         return
 
@@ -401,19 +411,43 @@ async def _send_group(ctx, client, group, dst, cfg, drops, replaces,
             return
         fn = getattr(client, "copy_media_group", None)
         if fn is not None:
-            # copy_media_group 按相册首条 message_id 整组复制
+            # pyrogram 整组复制
             await fn(
                 chat_id=dst, from_chat_id=_msg_peer_id(group[0], None),
                 message_id=group[0].id,
             )
             return
-        for m in group:  # 没有整组 API 时逐条发
+        if _is_pyrogram(client):
+            # pyrogram 但没有整组 API：逐条发
+            for m in group:
+                await _send_one(client, m, dst, drops, replaces, copy_media,
+                                mode, keep_replies, id_map)
+            return
+        fn = getattr(client, "forward_messages", None)
+        if fn is not None:
+            # telethon：一次 forward 整组，drop_author=True 不带来源头
+            await _tcall(fn, dst, [m.id for m in group],
+                         _msg_peer_id(group[0], None), reply_to)
+            return
+        for m in group:  # 都没有时逐条发
             await _send_one(client, m, dst, drops, replaces, copy_media,
                             mode, keep_replies, id_map)
         return
 
     await _send_one(client, group[0], dst, drops, replaces, copy_media,
                     mode, keep_replies, id_map)
+
+
+async def _tcall(fn, entity, messages, from_peer, reply_to=None):
+    """调 telethon forward_messages，兼容位置/关键字参数形态。"""
+    kw = {}
+    if reply_to is not None:
+        kw["silent"] = True  # telethon 无 reply_to 于 forward，静音降噪
+    try:
+        return await fn(entity, messages, from_peer=from_peer,
+                        drop_author=True, **kw)
+    except TypeError:
+        return await fn(entity, messages, from_peer, drop_author=True, **kw)
 
 
 async def _send_one(client, msg, dst, drops, replaces, copy_media,
@@ -443,12 +477,12 @@ async def _send_one(client, msg, dst, drops, replaces, copy_media,
 
     src_peer = _msg_peer_id(msg, None)
 
+    # pyrogram 路径
     if mode == "forward" and not drops and not replaces:
         fn = getattr(client, "forward_messages", None)
-        if fn is not None:
+        if fn is not None and _is_pyrogram(client):
             await fn(chat_id=dst, from_chat_id=src_peer, message_ids=[msg.id])
             return
-
     fn = getattr(client, "copy_message", None)
     if fn is not None:
         await fn(
@@ -457,14 +491,49 @@ async def _send_one(client, msg, dst, drops, replaces, copy_media,
         )
         return
 
-    # 连 copy 都没有（理论上不会）：退回纯文本
+    # telethon 路径：forward_messages(entity, messages, from_peer, drop_author=True)
+    fn = getattr(client, "forward_messages", None)
+    if fn is not None:
+        if mode == "forward" or not (drops or replaces):
+            await _tcall(fn, dst, [msg.id], src_peer, reply_to)
+            return
+        # 有过滤/替换时，telethon 没有 copy，只能取文字重发
+        if text.strip():
+            sm = getattr(client, "send_message", None)
+            if sm is not None:
+                await sm(dst, text, reply_to=reply_to)
+        return
+
+    # 最后的兜底
     if text.strip():
-        fn = getattr(client, "send_message", None)
-        if fn is not None:
-            await fn(dst, text)
+        sm = getattr(client, "send_message", None)
+        if sm is not None:
+            await sm(dst, text)
 
 
 # ── 工具 ────────────────────────────────────────────────────────────────
+def _is_pyrogram(client):
+    """判断客户端是 pyrogram/kurigram 还是 telethon。
+
+    不能看模块名 —— 测试里的假客户端、平台可能的包装类都不在
+    pyrogram 命名空间下。改用能力探测：看 forward_messages 的
+    参数名，chat_id 是 pyrogram 风格，entity 是 telethon 风格。
+    """
+    fn = getattr(client, "forward_messages", None)
+    if fn is None:
+        # 没有 forward 时看 copy_message（只有 pyrogram 有）
+        return getattr(client, "copy_message", None) is not None
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return getattr(client, "copy_message", None) is not None
+    if "chat_id" in params:
+        return True
+    if "entity" in params or "messages" in params:
+        return False
+    return getattr(client, "copy_message", None) is not None
+
+
 def _msg_peer_id(msg, peer=None):
     """取消息所属会话的 ID。
 
@@ -536,23 +605,33 @@ async def _iter_history(client, peer, limit=None, min_id=0, max_id=0, reverse=Fa
     """统一的历史迭代入口，兼容 pyrogram / telethon。
 
     pyrogram: get_chat_history(chat_id, limit, min_id, max_id, reverse)
-              —— 必须 reverse=True 才是"由旧到新"，否则返回最新的一批
-    telethon: iter_messages(entity, limit, min_id, max_id, reverse)
-              —— 语义相同，参数名一致
+              —— min_id 是闭区间（含 min_id 本身）
+              —— 必须 reverse=True 才是"由旧到新"
+    telethon : iter_messages(entity, limit, min_id, max_id, reverse)
+              —— min_id 是**开区间**（不含 min_id 本身，见
+                 _MessagesIter._message_in_range: id <= min_id 即丢弃）
+              故调用时要减 1，否则会漏掉 min_id 那条消息。
+
+    两者都可用 offset_id 精确指定起点，但为了少踩坑，这里统一走
+    min_id 语义并对 telethon 做 -1 补偿。
     """
     peer = await _resolve_peer(client, peer)
-    kwargs = {"limit": limit, "min_id": min_id, "max_id": max_id, "reverse": reverse}
-    for attr in ("get_chat_history", "iter_messages"):
-        fn = getattr(client, attr, None)
-        if fn is None:
-            continue
-        try:
+    if _is_pyrogram(client):
+        fn = getattr(client, "get_chat_history", None)
+        if fn is not None:
+            kwargs = {"limit": limit, "min_id": min_id,
+                      "max_id": max_id, "reverse": reverse}
             async for msg in fn(peer, **kwargs):
                 yield msg
             return
-        except TypeError:
-            # 参数名不完全一致时退化为最小参数集
-            async for msg in fn(peer, limit=limit, reverse=reverse):
+    else:
+        # telethon：min_id 为开区间，减 1 使其包含目标消息
+        t_min = min_id - 1 if min_id > 0 else 0
+        fn = getattr(client, "iter_messages", None)
+        if fn is not None:
+            kwargs = {"limit": limit, "min_id": t_min,
+                      "max_id": max_id, "reverse": reverse}
+            async for msg in fn(peer, **kwargs):
                 yield msg
             return
     raise AttributeError(
