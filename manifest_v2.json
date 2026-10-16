@@ -230,6 +230,20 @@
         "关键词",
         "自动回复"
       ]
+    },
+    "channel_mover": {
+      "name": "频道全量搬运",
+      "version": "1.0.0",
+      "author": "凹凸曼",
+      "description": "把源频道/群的历史消息从最早开始匀速搬到目标群，支持媒体与相册、断点续传、进度查询。",
+      "scope": "user",
+      "path": "plugins/channel_mover/",
+      "tags": [
+        "搬运",
+        "频道",
+        "历史",
+        "同步"
+      ]
     }
   }
 }
