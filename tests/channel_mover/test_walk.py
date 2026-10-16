@@ -535,6 +535,138 @@ async def test_status_and_resume_without_args():
     cm._TASKS.clear()
     print("✓ status 无需参数即可查进度")
 
+# ── Telethon 客户端兼容（v1.2.0）────────────────────────────────────────
+# 平台实际给插件的是 telethon 的 TelegramClient，曾因此报
+# "'TelegramClient' object has no attribute 'get_chat'"。
+# 这几个用例保证 pyrogram / telethon 两种客户端都能跑完搬运。
+
+class TelethonStyleClient:
+    """只有 telethon API 的假客户端。
+
+    没有 get_chat_history / get_chat / copy_message /
+    copy_media_group / resolve_peer —— 插件必须自动降级：
+      遍历  -> iter_messages
+      取名字 -> get_entity
+      发送  -> send_message（连 copy 都没有时的兜底）
+    """
+
+    def __init__(self, messages, src, dst):
+        self.messages = sorted(messages, key=lambda m: m.id)
+        self.src, self.dst = src, dst
+        self.sent = []
+        self.history_calls = []
+
+    async def get_entity(self, entity):
+        return SimpleNamespace(title=f"实体:{entity}")
+
+    async def iter_messages(self, entity, limit=None, min_id=0,
+                            max_id=0, reverse=False, **kw):
+        self.history_calls.append(
+            {"entity": entity, "min_id": min_id, "reverse": reverse}
+        )
+        hi = max_id or 10**12
+        if reverse:
+            picked = [m for m in self.messages if min_id <= m.id <= hi]
+        else:
+            picked = [m for m in self.messages if m.id <= hi]
+            picked = list(reversed(picked))
+        if limit:
+            picked = picked[:limit]
+        for m in picked:
+            yield m
+
+    async def send_message(self, chat, text):
+        self.sent.append((chat, text))
+
+
+def _tmsg(i, text=""):
+    """telethon 风格消息：无 .chat，ID 藏在 peer_id.channel_id 里。"""
+    return SimpleNamespace(
+        id=i, text=text, caption=None, media=None, service=None,
+        peer_id=SimpleNamespace(channel_id=-100111, user_id=None, chat_id=None),
+        document=None, reply_to_message_id=None, grouped_id=None,
+    )
+
+
+async def test_telethon_client_can_walk_and_send():
+    """telethon 客户端：能遍历、能发（降级到 send_message）。"""
+    msgs = [_tmsg(i, f"msg{i}") for i in range(1, 6)]
+    client = TelethonStyleClient(msgs, -100111, -100222)
+    ctx = FakeCtx({"send_interval": 0})
+    state = _base_state()
+    state.update({"min_id": 1, "max_id": 5, "next_id": 1, "total": 5})
+
+    await cm._run_copy(ctx, "tele1", client, -100111, -100222, state,
+                       {"send_interval": 0, "batch_size": 20})
+
+    assert len(client.sent) == 5, client.sent
+    assert state["next_id"] == 6, state["next_id"]
+    assert state["finished"] is True, state
+    print("✓ telethon 客户端可正常遍历与降级发送")
+
+
+async def test_telethon_peer_resolution_uses_get_entity():
+    """telethon 客户端：解析走 get_entity，没有 get_chat 也能取到名字。"""
+    client = TelethonStyleClient([], -100111, -100222)
+    peer = await cm._resolve_peer(client, -100111)
+    assert getattr(peer, "title", "") == "实体:-100111", peer
+    title = await cm._peer_title(client, -100111)
+    assert title == "实体:-100111", title
+    print("✓ telethon 客户端 peer 解析与取名正常")
+
+
+async def test_iter_history_prefers_get_chat_history():
+    """有 get_chat_history 时优先用它，不退回 iter_messages。"""
+    used = []
+
+    def _agen():
+        async def _g():
+            if False:
+                yield None
+        return _g()
+
+    class PyroStyle:
+        def get_chat_history(self, peer, **kw):
+            used.append("get_chat_history")
+            return _agen()
+
+        def iter_messages(self, peer, **kw):
+            used.append("iter_messages")
+            return _agen()
+
+    async for _ in cm._iter_history(PyroStyle(), 1, limit=1):
+        pass
+    assert used == ["get_chat_history"], used
+    print("✓ 优先使用 get_chat_history")
+
+
+async def test_missing_both_history_apis_raises():
+    """两个遍历 API 都没有时明确报错，而不是静默失败。"""
+    class Empty:
+        pass
+
+    try:
+        async for _ in cm._iter_history(Empty(), 1, limit=1):
+            pass
+        raise AssertionError("应该抛 AttributeError")
+    except AttributeError as exc:
+        assert "iter_messages" in str(exc), exc
+    print("✓ 无遍历 API 时明确报错")
+
+
+async def test_telethon_peer_id_extraction():
+    """telethon 消息无 .chat，from_chat_id 必须从 peer_id 提取。"""
+    m = _tmsg(3)
+    assert cm._msg_peer_id(m) == -100111, cm._msg_peer_id(m)
+    # pyrogram 消息有 .chat.id，应优先用它
+    m2 = SimpleNamespace(id=3, chat=SimpleNamespace(id=-999))
+    assert cm._msg_peer_id(m2) == -999
+    # 都取不到时用传入的 peer 兜底
+    m3 = SimpleNamespace(id=3)
+    assert cm._msg_peer_id(m3, 12345) == 12345
+    print("✓ 两种消息格式的会话 ID 提取均正确")
+
+
 
 # 供上面测试占位用（避免误触发）
 _reg_ctx_holder = [None]
@@ -564,3 +696,161 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# 供上面测试占位用（避免误触发）
+_reg_ctx_holder = [None]
+
+_TEST_TIMEOUT = 30  # 单项测试超时（秒），防止死循环拖垮整轮
+
+
+def main():
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    failed = 0
+    for t in tests:
+        try:
+            asyncio.run(asyncio.wait_for(t(), timeout=_TEST_TIMEOUT))
+        except asyncio.TimeoutError:
+            failed += 1
+            print(f"✗ {t.__name__} 超时 {_TEST_TIMEOUT}s（疑似死循环）")
+        except AssertionError as e:
+            failed += 1
+            print(f"✗ {t.__name__} 失败: {e}")
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            print(f"✗ {t.__name__} 异常: {e!r}")
+    print()
+    print(f"共 {len(tests)} 项，失败 {failed}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+# ── Telethon 客户端兼容（v1.2.0）────────────────────────────────────────
+# 平台实际给插件的是 telethon 的 TelegramClient（曾因此报
+# "'TelegramClient' object has no attribute 'get_chat'"），
+# 这几个用例保证两种客户端都能跑。
+class TelethonStyleClient:
+    """只有 telethon API 的假客户端：iter_messages / get_entity。
+
+    没有 get_chat_history / get_chat / copy_message / copy_media_group /
+    resolve_peer —— 插件必须能自动降级。
+    """
+
+    def __init__(self, messages, src, dst):
+        self.messages = sorted(messages, key=lambda m: m.id)
+        self.src = src
+        self.dst = dst
+        self.sent = []
+        self.history_calls = []
+
+    async def get_entity(self, entity):
+        return SimpleNamespace(title=f"实体:{entity}")
+
+    async def iter_messages(self, entity, limit=None, min_id=0,
+                            max_id=0, reverse=False, **kw):
+        self.history_calls.append(
+            {"entity": entity, "min_id": min_id, "reverse": reverse}
+        )
+        hi = max_id or 10**12
+        if reverse:
+            picked = [m for m in self.messages if min_id <= m.id <= hi]
+        else:
+            picked = [m for m in self.messages if m.id <= hi]
+            picked = list(reversed(picked))
+        if limit:
+            picked = picked[:limit]
+        for m in picked:
+            yield m
+
+    async def send_message(self, chat, text):
+        self.sent.append((chat, text))
+
+
+def _tmsg(i, text="", service=None):
+    """telethon 风格消息：无 .chat，ID 藏在 peer_id.channel_id 里。"""
+    return SimpleNamespace(
+        id=i, text=text, caption=None, media=None,
+        service=service,
+        peer_id=SimpleNamespace(channel_id=-100111, user_id=None, chat_id=None),
+        document=None,
+        reply_to_message_id=None,
+        grouped_id=None,
+    )
+
+
+async def test_telethon_client_can_walk_and_send():
+    """telethon 客户端：能遍历、能发（降级到 send_message）。"""
+    msgs = [_tmsg(i, f"msg{i}") for i in range(1, 6)]
+    src, dst = -100111, -100222
+    client = TelethonStyleClient(msgs, src, dst)
+    state = {"min_id": 1, "max_id": 5, "next_id": 1, "total": 5}
+    cfg = {"batch_size": 20, "send_interval": 0, "copy_media": True,
+           "mode": "copy", "keep_albums": True, "keep_replies": False,
+           "skip_service": True, "drops": [], "replaces": []}
+
+    class Ctx:
+        storage = SimpleNamespace(
+            get=_aget({"min_id": 1, "max_id": 5, "next_id": 1, "total": 5}),
+            set=_aset(state),
+        )
+
+    task = asyncio.create_task(
+        cm._run_copy(Ctx(), client, src, dst, cfg, "k1", event=None,
+                     stop_checker=_never_stop)
+    )
+    await _drain_tasks()
+    assert len(client.sent) == 5, client.sent
+    assert state["next_id"] == 6, state["next_id"]
+    task.cancel()
+
+
+async def test_telethon_peer_resolution_uses_get_entity():
+    """telethon 客户端：解析 peer 走 get_entity，不碰 resolve_peer。"""
+    client = TelethonStyleClient([], -100111, -100222)
+    peer = await cm._resolve_peer(client, -100111)
+    assert getattr(peer, "title", "") == "实体:-100111", peer
+    # 没有 get_chat 也能取到名字（走 get_entity）
+    title = await cm._peer_title(client, -100111)
+    assert title == "实体:-100111", title
+
+
+async def test_iter_history_prefers_get_chat_history():
+    """有 get_chat_history 时优先用它（不退回 iter_messages）。"""
+    used = []
+
+    class PyroClient:
+        async def get_chat_history(self, peer, **kw):
+            used.append("get_chat_history")
+
+            async def _g():
+                if False:
+                    yield None
+            return _g()
+
+        async def iter_messages(self, peer, **kw):
+            used.append("iter_messages")
+
+            async def _g():
+                if False:
+                    yield None
+            return _g()
+
+    async for _ in cm._iter_history(PyroClient(), 1, limit=1):
+        pass
+    assert used == ["get_chat_history"], used
+
+
+async def test_missing_both_history_apis_raises():
+    """两个遍历 API 都没有时，明确报错而不是静默失败。"""
+    class Empty:
+        pass
+
+    try:
+        async for _ in cm._iter_history(Empty(), 1, limit=1):
+            pass
+        raise AssertionError("应该抛 AttributeError")
+    except AttributeError as exc:
+        assert "iter_messages" in str(exc), exc

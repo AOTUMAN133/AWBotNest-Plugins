@@ -36,7 +36,7 @@ from ._core import (
 __plugin__ = {
     "name": "频道全量搬运",
     "id": "channel_mover",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "author": "凹凸曼",
     "description": "把源频道/群的历史消息从最早开始匀速搬到目标群，支持媒体与相册、断点续传、进度查询。",
     "tags": ["搬运", "频道", "历史", "同步"],
@@ -226,7 +226,8 @@ async def setup(ctx):
 
         # 先确认两个会话都可达，避免起了任务才失败
         try:
-            src_name, dst_name = await _peer_names(client, src, dst)
+            src_name = await _peer_title(client, src)
+            dst_name = await _peer_title(client, dst)
         except Exception as exc:  # noqa: BLE001
             return await event.reply(f"找不到频道/群：{exc!r}\n确认账号已加入且参数正确。")
 
@@ -302,12 +303,12 @@ async def _run_copy(ctx, task_id, client, src, dst, state, cfg):
                 )
                 return
 
-            # 从 next_id 起取一批（get_chat_history 用 min_id，含边界）
-            # 必须 reverse=True：否则它返回的是整个频道「最新」的 batch 条，
+            # 从 next_id 起取一批（min_id 为闭区间边界）
+            # 必须 reverse=True：否则拿到的是整个频道「最新」的 batch 条，
             # 而不是从 next_id 往后由旧到新的 batch 条。
             page = []
-            async for msg in client.get_chat_history(
-                src, limit=batch_size, min_id=next_id, reverse=True,
+            async for msg in _iter_history(
+                client, src, limit=batch_size, min_id=next_id, reverse=True,
             ):
                 page.append(msg)
                 if len(page) >= batch_size:
@@ -398,13 +399,32 @@ async def _send_group(ctx, client, group, dst, cfg, drops, replaces,
     if len(group) > 1:
         if not copy_media:
             return
-        # copy_media_group 按相册首条 message_id 整组复制
-        await client.copy_media_group(
-            chat_id=dst, from_chat_id=group[0].chat.id, message_id=group[0].id,
-        )
+        fn = getattr(client, "copy_media_group", None)
+        if fn is not None:
+            # copy_media_group 按相册首条 message_id 整组复制
+            await fn(
+                chat_id=dst, from_chat_id=_msg_peer_id(group[0], None),
+                message_id=group[0].id,
+            )
+            return
+        for m in group:  # 没有整组 API 时逐条发
+            await _send_one(client, m, dst, drops, replaces, copy_media,
+                            mode, keep_replies, id_map)
         return
 
-    msg = group[0]
+    await _send_one(client, group[0], dst, drops, replaces, copy_media,
+                    mode, keep_replies, id_map)
+
+
+async def _send_one(client, msg, dst, drops, replaces, copy_media,
+                    mode, keep_replies, id_map):
+    """发单条，兼容 pyrogram / telethon 两套 API。"""
+    reply_to = None
+    if keep_replies:
+        src_reply = getattr(msg, "reply_to_message_id", None)
+        if src_reply and src_reply in id_map:
+            reply_to = id_map[src_reply]
+
     text = msg.text or msg.caption or ""
     file_name = ""
     doc = getattr(msg, "document", None)
@@ -421,31 +441,122 @@ async def _send_group(ctx, client, group, dst, cfg, drops, replaces,
     if not has_media and not text.strip():
         return
 
+    src_peer = _msg_peer_id(msg, None)
+
     if mode == "forward" and not drops and not replaces:
-        await client.forward_messages(
-            chat_id=dst, from_chat_id=msg.chat.id, message_ids=[msg.id],
-        )
-    else:
-        await client.copy_message(
-            chat_id=dst, from_chat_id=msg.chat.id, message_id=msg.id,
+        fn = getattr(client, "forward_messages", None)
+        if fn is not None:
+            await fn(chat_id=dst, from_chat_id=src_peer, message_ids=[msg.id])
+            return
+
+    fn = getattr(client, "copy_message", None)
+    if fn is not None:
+        await fn(
+            chat_id=dst, from_chat_id=src_peer, message_id=msg.id,
             caption=text or None, reply_to_message_id=reply_to,
         )
+        return
+
+    # 连 copy 都没有（理论上不会）：退回纯文本
+    if text.strip():
+        fn = getattr(client, "send_message", None)
+        if fn is not None:
+            await fn(dst, text)
 
 
 # ── 工具 ────────────────────────────────────────────────────────────────
+def _msg_peer_id(msg, peer=None):
+    """取消息所属会话的 ID。
+
+    pyrogram 消息：msg.chat.id（int）
+    telethon 消息：无 msg.chat，需从 msg.peer_id 转；取不到就用 peer 本身
+    """
+    chat = getattr(msg, "chat", None)
+    cid = getattr(chat, "id", None)
+    if cid is not None:
+        return cid
+    if peer is not None:
+        return peer
+    # telethon: 从 peer_id 取（Channel/PeerUser/PeerChat 都有 channel_id/user_id/chat_id）
+    for attr in ("channel_id", "user_id", "chat_id"):
+        v = getattr(msg, attr, None)
+        if v is not None:
+            return v
+    pid = getattr(msg, "peer_id", None)
+    for attr in ("channel_id", "user_id", "chat_id"):
+        v = getattr(pid, attr, None)
+        if v is not None:
+            return v
+    return None
+
+
 async def _get_extreme(client, peer, reverse: bool):
     """取最早（reverse=True）或最新（reverse=False）一条消息。"""
-    async for msg in client.get_chat_history(peer, limit=1, reverse=reverse):
+    async for msg in _iter_history(client, peer, limit=1, reverse=reverse):
         return msg
     return None
 
 
-async def _peer_names(client, src, dst):
-    src_chat = await client.get_chat(src)
-    dst_chat = await client.get_chat(dst)
-    return (
-        getattr(src_chat, "title", None) or str(src),
-        getattr(dst_chat, "title", None) or str(dst),
+async def _resolve_peer(client, peer):
+    """解析 peer 为平台/库可接受的形态。
+
+    平台可能是 kurigram(pyrogram) 或 telethon，两者的入口不同：
+      pyrogram: resolve_peer(peer_id) -> InputPeer；get_chat(chat_id) -> Chat
+      telethon: get_entity(entity)   -> User/Chat/Channel
+    先试库自带解析，失败再用原值（数字 ID 两种库都能直接吃）。
+    """
+    for attr in ("resolve_peer", "get_entity", "get_input_entity"):
+        fn = getattr(client, attr, None)
+        if fn is None:
+            continue
+        try:
+            return await fn(peer)
+        except Exception:  # noqa: BLE001 - 换下一种方式试
+            continue
+    return peer
+
+
+async def _peer_title(client, peer):
+    """取会话显示名，取不到就退回原始 peer 字符串。"""
+    for attr in ("get_chat", "get_entity"):
+        fn = getattr(client, attr, None)
+        if fn is None:
+            continue
+        try:
+            chat = await fn(peer)
+            title = getattr(chat, "title", None) or getattr(chat, "first_name", None)
+            if title:
+                return title
+        except Exception:  # noqa: BLE001 - 换下一种方式试
+            continue
+    return str(peer)
+
+
+async def _iter_history(client, peer, limit=None, min_id=0, max_id=0, reverse=False):
+    """统一的历史迭代入口，兼容 pyrogram / telethon。
+
+    pyrogram: get_chat_history(chat_id, limit, min_id, max_id, reverse)
+              —— 必须 reverse=True 才是"由旧到新"，否则返回最新的一批
+    telethon: iter_messages(entity, limit, min_id, max_id, reverse)
+              —— 语义相同，参数名一致
+    """
+    peer = await _resolve_peer(client, peer)
+    kwargs = {"limit": limit, "min_id": min_id, "max_id": max_id, "reverse": reverse}
+    for attr in ("get_chat_history", "iter_messages"):
+        fn = getattr(client, attr, None)
+        if fn is None:
+            continue
+        try:
+            async for msg in fn(peer, **kwargs):
+                yield msg
+            return
+        except TypeError:
+            # 参数名不完全一致时退化为最小参数集
+            async for msg in fn(peer, limit=limit, reverse=reverse):
+                yield msg
+            return
+    raise AttributeError(
+        "客户端既无 get_chat_history 也无 iter_messages，无法读取历史"
     )
 
 
