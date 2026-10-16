@@ -36,7 +36,7 @@ from ._core import (
 __plugin__ = {
     "name": "频道全量搬运",
     "id": "channel_mover",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "凹凸曼",
     "description": "把源频道/群的历史消息从最早开始匀速搬到目标群，支持媒体与相册、断点续传、进度查询。",
     "tags": ["搬运", "频道", "历史", "同步"],
@@ -50,31 +50,42 @@ __plugin__ = {
         "recovery_seconds": 30,
     },
     "config_schema": {
+        # ── 搬运目标（填这里，之后发命令不用带参数）──
+        "source_chat": {
+            "type": "string", "default": "", "label": "源频道/群",
+            "section": "搬运目标", "order": 1,
+            "help": "留空则每次用命令指定。支持 @username、t.me/xxx、t.me/c/xxx、-100xxxxxxxxxx",
+        },
+        "target_chat": {
+            "type": "string", "default": "", "label": "目标群组",
+            "section": "搬运目标", "order": 2,
+            "help": "留空则每次用命令指定。你的账号必须已在该群内。",
+        },
         # ── 速率控制 ──
         "send_interval": {
             "type": "slider", "default": 1.0, "label": "每条间隔(秒)",
-            "min": 0.2, "max": 30, "step": 0.1, "section": "速率控制", "order": 1,
+            "min": 0.2, "max": 30, "step": 0.1, "section": "速率控制", "order": 11,
             "help": "匀速搬运的节奏。Telegram 用户账号建议不低于 1 秒，过快会触发 FloodWait。",
         },
         "batch_size": {
             "type": "number", "default": 50, "label": "每批拉取条数",
-            "min": 10, "max": 100, "section": "速率控制", "order": 2,
+            "min": 10, "max": 100, "section": "速率控制", "order": 12,
             "help": "每次向 Telegram 拉取多少条历史。pyrogram 单次上限 100。",
         },
         "flood_wait_max": {
             "type": "number", "default": 300, "label": "FloodWait 最长等待(秒)",
-            "min": 10, "max": 3600, "section": "速率控制", "order": 3,
+            "min": 10, "max": 3600, "section": "速率控制", "order": 13,
             "help": "触发限流时的等待上限，超过则暂停任务，发 resume 继续。",
         },
         # ── 内容选择 ──
         "copy_media": {
             "type": "boolean", "default": True, "label": "搬运媒体（图片/视频/文件/语音/贴纸）",
-            "section": "内容选择", "order": 10,
+            "section": "内容选择", "order": 21,
             "help": "关闭则只搬文字消息，媒体跳过并计数。",
         },
         "keep_albums": {
             "type": "boolean", "default": True, "label": "保持相册分组",
-            "section": "内容选择", "order": 11,
+            "section": "内容选择", "order": 22,
             "help": "开=同一相册作为一组发送；关=相册拆成单条。",
         },
         "send_mode": {
@@ -83,33 +94,33 @@ __plugin__ = {
                 {"value": "copy", "label": "复制（不带转发来源，最干净）"},
                 {"value": "forward", "label": "原生转发（带「转发自」标注）"},
             ],
-            "section": "内容选择", "order": 12,
+            "section": "内容选择", "order": 23,
             "help": "复制模式不显示来源；原生转发会显示「转发自 源频道」。",
         },
         "keep_replies": {
             "type": "boolean", "default": True, "label": "保留回复关系",
-            "section": "内容选择", "order": 13,
+            "section": "内容选择", "order": 24,
             "help": "源消息是回复某条的，在目标群也回复对应消息（需该条已搬运）。",
         },
         # ── 过滤规则 ──
         "drop_regex": {
             "type": "text", "default": "", "label": "丢弃正则（命中则跳过）",
-            "section": "过滤规则", "order": 20,
+            "section": "过滤规则", "order": 31,
             "help": "每行一条 Python 正则。命中文字或文件名就跳过该消息。留空不过滤。",
         },
         "replace_regex": {
             "type": "text", "default": "", "label": "替换正则",
-            "section": "过滤规则", "order": 21,
+            "section": "过滤规则", "order": 32,
             "help": "格式：原正则|替换内容，每行一条。例：广告|***",
         },
         "skip_service": {
             "type": "boolean", "default": True, "label": "跳过入群/退群等系统消息",
-            "section": "过滤规则", "order": 22,
+            "section": "过滤规则", "order": 33,
         },
         # ── 命令 ──
         "command": {
             "type": "string", "default": "/chcopy", "label": "触发命令",
-            "section": "命令", "order": 30, "help": "自己发出、以此开头的消息会触发。/chcopy 与 .chcopy 等价。",
+            "section": "命令", "order": 41, "help": "自己发出、以此开头的消息会触发。/chcopy 与 .chcopy 等价。",
         },
     },
 }
@@ -137,7 +148,8 @@ async def setup(ctx):
             return
 
         parts = text.split()
-        sub = (parts[1].lower() if len(parts) >= 2 else "status")
+        # 裸命令（无子命令）走新任务分支，由配置或参数提供源/目标
+        sub = (parts[1].lower() if len(parts) >= 2 else "")
         client = event.client
         task_id = str(event.sender_id or event.chat_id)
         key = f"task_{task_id}"
@@ -181,22 +193,34 @@ async def setup(ctx):
 
         # ── 新任务 ──
         if len(parts) < 3:
-            cmd = cfg.get("command", "/chcopy")
-            return await event.reply(
-                "用法：\n"
-                f"  {cmd} <源> <目标>   开始搬运\n"
-                f"  {cmd} status        看进度\n"
-                f"  {cmd} stop          停止\n"
-                f"  {cmd} resume        断点续传\n"
-                f"  {cmd} reset         清除进度\n\n"
-                "源/目标支持 @username、t.me/xxx、t.me/c/xxx、-100xxxxxxxxxx"
-            )
+            # 配置里填了源和目标，裸命令即可开搬
+            cfg_src = (cfg.get("source_chat", "") or "").strip()
+            cfg_dst = (cfg.get("target_chat", "") or "").strip()
+            if cfg_src and cfg_dst:
+                parts = [parts[0], cfg_src, cfg_dst]
+            else:
+                cmd = cfg.get("command", "/chcopy")
+                missing = "源" if not cfg_src else "目标"
+                return await event.reply(
+                    "用法：\n"
+                    f"  {cmd} <源> <目标>   开始搬运\n"
+                    f"  {cmd} status        看进度\n"
+                    f"  {cmd} stop          停止\n"
+                    f"  {cmd} resume        断点续传\n"
+                    f"  {cmd} reset         清除进度\n\n"
+                    f"也可以在插件配置里填「{missing}」，之后直接发 {cmd} 即可。\n\n"
+                    "源/目标支持 @username、t.me/xxx、t.me/c/xxx、-100xxxxxxxxxx"
+                )
 
         if task_id in _TASKS and not _TASKS[task_id].done():
             return await event.reply("已有任务在跑，先 stop 或看 status。")
 
-        src = resolve_peer(parts[1])
-        dst = resolve_peer(parts[2])
+        # 命令参数优先，缺的用配置补
+        arg_src = parts[1] if len(parts) >= 3 else (cfg.get("source_chat", "") or "").strip()
+        arg_dst = parts[2] if len(parts) >= 4 else (cfg.get("target_chat", "") or "").strip()
+
+        src = resolve_peer(arg_src)
+        dst = resolve_peer(arg_dst)
         if not src or not dst:
             return await event.reply("源或目标解析失败，检查一下格式。")
 

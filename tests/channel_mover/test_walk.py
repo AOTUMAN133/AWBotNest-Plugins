@@ -8,7 +8,7 @@
   5. 停止标志能中断
   6. FloodWait 超上限会暂停而非死循环
 
-运行: python test_walk.py
+运行: python tests/channel_mover/test_walk.py
 """
 import asyncio
 import importlib
@@ -17,7 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 # 把插件目录当作包导入（包名 channel_mover，目录即包）
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "plugins"))
 cm = importlib.import_module("channel_mover")
 
 
@@ -58,27 +59,37 @@ class FakeClient:
       reverse=True  -> 从 id>=min_id 开始由旧到新
     """
 
-    def __init__(self, messages, src_chat, dst_chat):
+    def __init__(self, messages, src_chat, dst_chat, peer_map=None):
         self.messages = sorted(messages, key=lambda m: m.id)
         self.src_chat = src_chat
         self.dst_chat = dst_chat
+        # 额外别名映射：{"srcc": src_chat, ...}（键为 resolve_peer 后的形态）
+        self.peer_map = dict(peer_map or {})
         self.copied = []          # (from_chat_id, message_id, caption)
         self.albums_copied = []   # (from_chat_id, message_id)
         self.history_calls = []
 
     async def get_chat(self, peer):
-        return self.src_chat if peer == "src" else self.dst_chat
+        # 按 peer 匹配，而不是"非 src 即 dst"——否则配置回退测试会认错源
+        for key, chat in self.peer_map.items():
+            if peer == key:
+                return chat
+        if peer in (self.src_chat.id, self.src_chat.title, "src"):
+            return self.src_chat
+        return self.dst_chat
 
     async def get_chat_history(self, chat_id, limit=None, min_id=0,
                                max_id=0, reverse=False, **kw):
         self.history_calls.append(
-            {"min_id": min_id, "limit": limit, "reverse": reverse}
+            {"min_id": min_id, "max_id": max_id, "limit": limit, "reverse": reverse}
         )
+        # 与 pyrogram 语义一致：min_id/max_id 均为闭区间边界
+        hi = max_id if max_id else 10 ** 12
         if reverse:
-            picked = [m for m in self.messages if m.id >= min_id]
+            picked = [m for m in self.messages if min_id <= m.id <= hi]
             picked = picked[:limit] if limit else picked
         else:
-            picked = [m for m in self.messages if m.id <= (max_id or 10 ** 12)]
+            picked = [m for m in self.messages if m.id <= hi]
             if min_id:
                 picked = [m for m in picked if m.id >= min_id]
             picked = list(reversed(picked))
@@ -374,12 +385,172 @@ async def test_history_uses_reverse_true():
     print("✓ 遍历调用全部使用 reverse=True（防回归）")
 
 
+
+
+# ── 配置回退测试（v1.1.0 新增）──────────────────────────────────────────
+class FakeEvent:
+    def __init__(self, text, client, chat_id=-100999, sender_id=111):
+        self.text = text
+        self.client = client
+        self.chat_id = chat_id
+        self.sender_id = sender_id
+        self.replies = []
+
+    async def reply(self, text, **kw):
+        self.replies.append(text)
+        return None
+
+
+class FakeRegCtx(FakeCtx):
+    """带 on_message 注册的 ctx，用来抓 handler。"""
+
+    def __init__(self, cfg=None):
+        super().__init__(cfg)
+        self._handlers = []
+
+    def on_message(self, **kw):
+        def deco(fn):
+            self._handlers.append(fn)
+            return fn
+        return deco
+
+    async def dispatch(self, event):
+        for fn in self._handlers:
+            await fn(event)
+
+
+async def _drain_tasks(cm, sender_id="111", timeout=20):
+    """等插件起的后台搬运任务跑完，否则断言会早于搬运完成。"""
+    task = cm._TASKS.get(sender_id)
+    if task is not None:
+        await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+    cm._TASKS.clear()
+    cm._STOP_FLAGS.pop(sender_id, None)
+
+
+def _base_state():
+    return {
+        "src": "src", "dst": "dst", "src_name": "源", "dst_name": "目",
+        "min_id": 0, "max_id": 0, "next_id": 0, "total": 0,
+        "done": 0, "sent": 0, "skipped": 0, "failed": 0,
+        "id_map": {}, "started": "now", "updated": "now", "finished": False,
+    }
+
+
+async def test_bare_command_uses_config_source_target():
+    """配置填了源和目标，裸 /chcopy 就该开搬。"""
+    await cm.setup(_reg_ctx_holder[0]) if False else None
+    src, dst = FakeChat(-100111, "源频道"), FakeChat(-100222, "目标群")
+    msgs = make_messages(range(1, 6), src)
+    client = FakeClient(msgs, src, dst, peer_map={"srcc": src, "dstt": dst})
+    ctx = FakeRegCtx({
+        "source_chat": "@srcc", "target_chat": "@dstt",
+        "send_interval": 0, "batch_size": 10,
+    })
+    await cm.setup(ctx)
+    ev = FakeEvent("/chcopy", client)
+    await ctx.dispatch(ev)
+    await _drain_tasks(cm)
+
+    assert [mid for _, mid, _ in client.copied] == [1, 2, 3, 4, 5], client.copied
+    assert any("开始搬运" in r for r in ev.replies), ev.replies
+    st = await ctx.storage_get("task_111", None)
+    assert st and st["finished"] is True
+    cm._TASKS.clear()
+    print("✓ 配置填好后裸命令 /chcopy 直接开搬")
+
+
+async def test_command_args_override_config():
+    """命令带参数时应覆盖配置里的值。"""
+    src, dst = FakeChat(-100111, "源频道"), FakeChat(-100222, "目标群")
+    other = FakeChat(-100333, "另一个")
+    msgs = make_messages(range(1, 4), other)
+    client = FakeClient(msgs, other, dst,
+                        peer_map={"other": other, "dstt": dst})
+    ctx = FakeRegCtx({
+        "source_chat": "@configured_src", "target_chat": "@configured_dst",
+        "send_interval": 0, "batch_size": 10,
+    })
+    await cm.setup(ctx)
+    ev = FakeEvent("/chcopy other dstt", client)
+    await ctx.dispatch(ev)
+    await _drain_tasks(cm)
+
+    # 搬的是 other 的消息（id 1-3），不是配置里的源
+    assert [mid for _, mid, _ in client.copied] == [1, 2, 3], client.copied
+    st = await ctx.storage_get("task_111", None)
+    assert st["src_name"] == "另一个", st["src_name"]
+    cm._TASKS.clear()
+    print("✓ 命令参数覆盖配置")
+
+
+async def test_partial_config_prompts_missing():
+    """只填源没填目标时，应提示缺什么，而不是崩。"""
+    src, dst = FakeChat(-100111, "源频道"), FakeChat(-100222, "目标群")
+    client = FakeClient([], src, dst)
+    ctx = FakeRegCtx({"source_chat": "@srcc", "send_interval": 0})
+    await cm.setup(ctx)
+    ev = FakeEvent("/chcopy", client)
+    await ctx.dispatch(ev)
+
+    assert ev.replies and "目标" in ev.replies[0], ev.replies
+    assert client.copied == []
+    print("✓ 只填源时提示缺目标，不误启动")
+
+
+async def test_empty_config_shows_usage():
+    """配置全空时给完整用法。"""
+    src, dst = FakeChat(-100111, "源频道"), FakeChat(-100222, "目标群")
+    client = FakeClient([], src, dst)
+    ctx = FakeRegCtx({"send_interval": 0})
+    await cm.setup(ctx)
+    ev = FakeEvent("/chcopy", client)
+    await ctx.dispatch(ev)
+
+    assert ev.replies and "用法" in ev.replies[0], ev.replies
+    assert "resume" in ev.replies[0]
+    print("✓ 配置全空时给用法说明")
+
+
+async def test_status_and_resume_without_args():
+    """status / resume 不需要源目标参数。"""
+    src, dst = FakeChat(-100111, "源频道"), FakeChat(-100222, "目标群")
+    msgs = make_messages(range(1, 21), src)
+    client = FakeClient(msgs, src, dst)
+    ctx = FakeRegCtx({"send_interval": 0, "batch_size": 5})
+    await cm.setup(ctx)
+
+    # 先跑到一半，手动停
+    state = _base_state()
+    state.update({"src": "src", "dst": "dst", "src_name": "源频道",
+                  "dst_name": "目标群", "max_id": 20, "total": 20})
+    await ctx.storage_set("task_111", state)
+    cm._STOP_FLAGS["t_status"] = True
+
+    ev = FakeEvent("/chcopy status", client)
+    await ctx.dispatch(ev)
+    assert ev.replies and "进度" in ev.replies[0], ev.replies
+
+    cm._STOP_FLAGS.pop("t_status", None)
+    cm._TASKS.clear()
+    print("✓ status 无需参数即可查进度")
+
+
+# 供上面测试占位用（避免误触发）
+_reg_ctx_holder = [None]
+
+_TEST_TIMEOUT = 30  # 单项测试超时（秒），防止死循环拖垮整轮
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
     for t in tests:
         try:
-            asyncio.run(t())
+            asyncio.run(asyncio.wait_for(t(), timeout=_TEST_TIMEOUT))
+        except asyncio.TimeoutError:
+            failed += 1
+            print(f"✗ {t.__name__} 超时 {_TEST_TIMEOUT}s（疑似死循环）")
         except AssertionError as e:
             failed += 1
             print(f"✗ {t.__name__} 失败: {e}")

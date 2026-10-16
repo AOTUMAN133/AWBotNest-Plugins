@@ -1,24 +1,26 @@
 """channel_mover 核心逻辑测试 —— 用假消息对象，不碰 Telegram。
 
-运行: python test_core.py
+运行: python tests/channel_mover/test_core.py
 """
 import asyncio
+import importlib
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+# 测试在 tests/ 下，被测模块在 plugins/channel_mover/ 下，按包导入
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "plugins"))
 
-from _core import (  # noqa: E402
-    apply_filters,
-    build_progress_text,
-    compile_filters,
-    group_albums,
-    is_finished,
-    is_service_message,
-    next_id_after,
-    resolve_peer,
-    trailing_open_album,
-)
+_core = importlib.import_module("channel_mover._core")
+apply_filters = _core.apply_filters
+build_progress_text = _core.build_progress_text
+compile_filters = _core.compile_filters
+group_albums = _core.group_albums
+is_finished = _core.is_finished
+is_service_message = _core.is_service_message
+next_id_after = _core.next_id_after
+resolve_peer = _core.resolve_peer
+trailing_open_album = _core.trailing_open_album
 
 
 class FakeMsg:
@@ -180,7 +182,6 @@ async def _fake_agen(items):
 
 async def test_pagination_walk():
     """模拟分页遍历：跨批相册必须靠 pending 拼回完整，不能拆散。"""
-    from _core import group_albums, next_id_after, trailing_open_album
 
     all_msgs = [
         FakeMsg(1), FakeMsg(2, mgid=100), FakeMsg(3, mgid=100),
@@ -215,7 +216,6 @@ async def test_pagination_walk():
 
 async def test_no_duplicate_no_gap():
     """分页推进必须既不重复也不漏：每条消息恰好出现一次。"""
-    from _core import group_albums, next_id_after, trailing_open_album
 
     all_msgs = [FakeMsg(i) for i in range(1, 51)]
     batch_size = 7
