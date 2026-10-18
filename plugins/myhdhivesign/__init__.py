@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "re0签到",
     "id": "myhdhivesign",
-    "version": "2.4.0",
+    "version": "2.5.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成 re0.me 每日签到，支持多账号、赌狗签到、失败重试。",
@@ -112,134 +112,149 @@ async def _fetch_action_hash(base_url: str, ctx=None) -> str | None:
     if ctx:
         _log_debug(ctx, "获取action hash...")
     from urllib.parse import quote
+
+    # 必须走平台浏览器：re0.me 有 Cloudflare 交互式挑战，裸 httpx 拿到的
+    # 是挑战页而非真实 HTML，hash 永远抓不到。
+    browser_svc = getattr(ctx, "browser", None) if ctx else None
+    html = None
+    if browser_svc is not None:
+        try:
+            html = await browser_svc.page_source(base_url, timeout=45)
+        except Exception as e:
+            if ctx:
+                _log_debug(ctx, f"平台浏览器取首页失败: {type(e).__name__}: {e}")
+    if not html:
+        # 兜底：浏览器不可用时仍试一次 httpx（多数内网站点够用）
+        try:
+            async with httpx.AsyncClient(
+                timeout=15, verify=False,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
+            ) as cli:
+                r = await cli.get(f"{base_url}/")
+                if r.status_code == 200:
+                    html = r.text
+        except Exception:
+            return None
+    if not html:
+        return None
+
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
-        async with httpx.AsyncClient(timeout=15, verify=False, headers=headers) as cli:
-            r = await cli.get(f"{base_url}/")
-            if r.status_code != 200:
-                return None
-            html = r.text
-            chunk_urls = set()
-            for m in re.finditer(r'(/_next/static/chunks/[^"\'\\s]+\.js)', html):
-                chunk_urls.add(m.group(1))
-            try:
-                rsc = await cli.get(base_url, headers={"User-Agent": headers["User-Agent"], "Accept": "text/x-component"})
-                if rsc.status_code == 200:
-                    for m in re.finditer(r'static/chunks/([^"\'\\,]+\.js)', rsc.text):
-                        chunk_rel = "/_next/static/chunks/" + m.group(1)
-                        chunk_urls.add(chunk_rel)
-            except Exception:
-                pass
-            for chunk_rel in sorted(chunk_urls):
-                if "layout" not in chunk_rel:
-                    continue
-                encoded = quote(chunk_rel, safe='/:')
-                chunk_url = f"{base_url}{encoded}"
-                try:
-                    cr = await cli.get(chunk_url, timeout=15)
-                    if cr.status_code != 200:
-                        continue
-                    text = cr.text
-                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
-                    if m:
-                        _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
-                        return m.group(1)
-                except Exception:
-                    continue
-            for chunk_rel in chunk_urls:
-                encoded = quote(chunk_rel, safe='/:')
-                chunk_url = f"{base_url}{encoded}"
-                try:
-                    cr = await cli.get(chunk_url, timeout=15)
-                    if cr.status_code != 200:
-                        continue
-                    text = cr.text
-                    m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
-                    if m:
-                        _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
-                        return m.group(1)
-                except Exception:
-                    continue
+        chunk_urls = set()
+        for m in re.finditer(r'(/_next/static/chunks/[^"\'\s]+\.js)', html):
+            chunk_urls.add(m.group(1))
+        # RSC 流里的 chunk 列表只有浏览器能拿到，httpx 兜底路径下跳过
+        for chunk_rel in sorted(chunk_urls):
+            if "layout" not in chunk_rel:
+                continue
+            encoded = quote(chunk_rel, safe='/:')
+            chunk_url = f"{base_url}{encoded}"
+            text = await _fetch_chunk(base_url, chunk_rel, ctx)
+            if not text:
+                continue
+            m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
+            if m:
+                if ctx:
+                    _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
+                return m.group(1)
+        for chunk_rel in sorted(chunk_urls):
+            text = await _fetch_chunk(base_url, chunk_rel, ctx)
+            if not text:
+                continue
+            m = re.search(r'createServerReference\)\s*\(\s*["\']([0-9a-f]{40,})["\'][^"\']*["\']checkIn["\']', text)
+            if m:
+                if ctx:
+                    _log_debug(ctx, f"checkIn hash: {m.group(1)[:16]}...")
+                return m.group(1)
+        if ctx:
             _log_debug(ctx, "使用已知 fallback hash")
-            return "40ca031f4e08ca31564fb6889587933a9bb5bdea39"
+        return "40ca031f4e08ca31564fb6889587933a9bb5bdea39"
     except Exception:
         return None
 
-async def _login_with_playwright(base_url: str, username: str, password: str) -> str | None:
+
+async def _fetch_chunk(base_url: str, chunk_rel: str, ctx=None) -> str | None:
+    """取一个 JS chunk：优先平台浏览器（过 Cloudflare），失败则 httpx。"""
+    from urllib.parse import quote
+    encoded = quote(chunk_rel, safe='/:')
+    chunk_url = f"{base_url}{encoded}"
+    browser_svc = getattr(ctx, "browser", None) if ctx else None
+    if browser_svc is not None:
+        try:
+            src = await browser_svc.page_source(chunk_url, timeout=30)
+            if src:
+                return src
+        except Exception:
+            pass
     try:
-        from playwright.async_api import async_playwright
-    except ImportError:
+        async with httpx.AsyncClient(
+            timeout=15, verify=False,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
+        ) as cli:
+            cr = await cli.get(chunk_url)
+            if cr.status_code == 200:
+                return cr.text
+    except Exception:
+        pass
+    return None
+
+async def _login_with_playwright(ctx, base_url: str, username: str, password: str) -> str | None:
+    """用平台浏览器能力(ctx.browser)登录 re0.me。
+
+    不自建 playwright/cloakbrowser：平台 BrowserService 统一负责
+    引擎选择(cloakbrowser/chromium)、代理(settings.proxy_url)、
+    UA、串行队列与依赖安装，反检测能力比裸 playwright 强得多。
+    """
+    browser_svc = getattr(ctx, "browser", None)
+    if browser_svc is None:
+        _log_debug(ctx, "平台未提供 browser 能力，无法登录")
         return None
 
-    # 优先用 cloakbrowser（更强，二进制级补丁），没有则用我们的 stealth 模块兜底
-    has_cloak = False
-    try:
-        import cloakbrowser
-        has_cloak = True
-    except ImportError:
-        pass
-
-    if not has_cloak:
-        try:
-            from ._playwright_stealth import create_stealth_context, STEALTH_LAUNCH_ARGS
-        except ImportError:
-            return None
-
-    try:
-        async with async_playwright() as p:
-            if has_cloak:
-                browser = await cloakbrowser.launch_async(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-                    locale="zh-CN",
-                    timezone="Asia/Shanghai",
-                )
-                ctx = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    viewport={"width": 1920, "height": 1080},
-                    locale="zh-CN",
-                    timezone_id="Asia/Shanghai",
-                )
-            else:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=STEALTH_LAUNCH_ARGS,
-                )
-                ctx = await create_stealth_context(browser)
-            page = await ctx.new_page()
-            page.set_default_timeout(60000)
-            await page.goto(f"{base_url}/login", wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(3)
-            max_wait = 60
-            start = time.time()
-            while time.time() - start < max_wait:
+    async def _login(page):
+        page.set_default_timeout(60000)
+        await page.goto(f"{base_url}/login", wait_until="domcontentloaded", timeout=60000)
+        await asyncio.sleep(3)
+        # 等 Cloudflare 挑战过去或登录表单出现
+        start = time.time()
+        while time.time() - start < 60:
+            try:
                 content = await page.content()
                 if "Checking your browser" in content or "Just a moment" in content:
                     await asyncio.sleep(3)
                     continue
-                try:
-                    if await page.locator('input[name="username"]').count() > 0:
-                        break
-                except Exception:
-                    pass
-                await asyncio.sleep(3)
-            try:
-                await page.fill('input[name="username"]', username, timeout=30000)
-                await asyncio.sleep(1)
-                await page.fill('input[type="password"]', password, timeout=30000)
-                await asyncio.sleep(1)
-                await page.click('button[type="submit"]', timeout=30000)
-                await asyncio.sleep(5)
+                if await page.locator('input[name="username"]').count() > 0:
+                    break
             except Exception:
                 pass
-            cookies = await ctx.cookies()
-            cookie_parts = []
-            for c in cookies:
-                cookie_parts.append(f"{c['name']}={c['value']}")
-            await browser.close()
-            return "; ".join(cookie_parts) if "token" in "; ".join(cookie_parts) else None
-    except Exception:
+            await asyncio.sleep(3)
+        try:
+            await page.fill('input[name="username"]', username, timeout=30000)
+            await asyncio.sleep(1)
+            await page.fill('input[type="password"]', password, timeout=30000)
+            await asyncio.sleep(1)
+            await page.click('button[type="submit"]', timeout=30000)
+            await asyncio.sleep(5)
+        except Exception:
+            pass
+        return await page.context.cookies()
+
+    try:
+        cookies = await browser_svc.run(
+            f"{base_url}/login",
+            _login,
+            timeout=90,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            ),
+        )
+    except Exception as e:
+        _log_debug(ctx, f"平台浏览器登录失败: {type(e).__name__}: {e}")
         return None
+
+    if not cookies:
+        _log_debug(ctx, "未取到 Cookie")
+        return None
+    return "; ".join(f"{c['name']}={c['value']}" for c in cookies)
 
 async def _login_get_token(base_url: str, username: str, password: str) -> str | None:
     apis = ["/api/customer/user/login", "/api/customer/auth/login"]
@@ -526,7 +541,7 @@ async def setup(ctx):
                     _log_debug(ctx, f"{name}: 使用已保存的Cookie")
                 else:
                     _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
-                    cookie = await _login_with_playwright(acc_url, username, password)
+                    cookie = await _login_with_playwright(ctx, acc_url, username, password)
                     if cookie:
                         acc["cookie"] = cookie
                         await ctx.storage.set(f"cookie:{acc.get('name', '')}", cookie)
@@ -552,7 +567,7 @@ async def setup(ctx):
                 )
             ):
                 _log_debug(ctx, f"{name}: Cookie/token 失效，尝试重新登录")
-                new_cookie = await _login_with_playwright(acc_url, username, password)
+                new_cookie = await _login_with_playwright(ctx, acc_url, username, password)
                 if new_cookie:
                     acc["cookie"] = new_cookie
                     cookie = new_cookie
