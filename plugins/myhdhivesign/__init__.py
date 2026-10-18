@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -35,8 +35,9 @@ __plugin__ = {
             "section": "账号", "help": "无需手动填写，在界面中添加账号后自动保存"
         },
         "action_hash": {
-            "type": "string", "default": "", "label": "Action Hash(留空自动获取)",
-            "section": "哈希", "help": "如果自动获取失败，可打开浏览器F12→网络→点签到→找next-action请求头，复制值填这里"
+            "type": "string", "default": "4055877e0a65fb183d3aa623de450ded197271fb60",
+            "label": "Action Hash(留空自动获取)",
+            "section": "哈希", "help": "影巢前端 next-action 指纹，站点改版后会变。留空则自动抓取；自动抓取失败时用这个值。当前内置值对应 re0.me"
         },
         "sign_now": {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
