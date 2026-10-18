@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# AWBotNest 插件：影巢签到 (myhdhivesign)
+# AWBotNest 插件：re0签到 (myhdhivesign)
 
 import asyncio
 import json
@@ -13,15 +13,15 @@ from datetime import datetime, timezone, timedelta
 TZ = timezone(timedelta(hours=8))
 
 __plugin__ = {
-    "name": "影巢签到",
+    "name": "re0签到",
     "id": "myhdhivesign",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
-    "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
+    "description": "自动完成 re0.me 每日签到，支持多账号、赌狗签到、失败重试。",
     "scope": "user",
     "plugin_api_version": 2,
-    "tags": ["签到", "HDHive"],
+    "tags": ["签到", "re0"],
     "resources": {
         "timeout_seconds": 120,
         "max_concurrency": 8,
@@ -37,7 +37,7 @@ __plugin__ = {
         "action_hash": {
             "type": "string", "default": "4055877e0a65fb183d3aa623de450ded197271fb60",
             "label": "Action Hash(留空自动获取)",
-            "section": "哈希", "help": "影巢前端 next-action 指纹，站点改版后会变。留空则自动抓取；自动抓取失败时用这个值。当前内置值对应 re0.me"
+            "section": "哈希", "help": "re0.me 前端 next-action 指纹，站点改版后会变。留空则自动抓取；自动抓取失败时用这个值。当前内置值对应 re0.me"
         },
         "sign_now": {
             "type": "action", "label": "▶ 立即签到", "section": "操作",
@@ -442,12 +442,23 @@ async def setup(ctx):
             await ctx.storage.set(f"signed_today:{cookie[:20]}", datetime.now(TZ).strftime("%Y-%m-%d"))
         return {"name": name, "mode": mode, "success": result["success"], "message": msg}
 
+    _DEFAULT_ACTION_HASH = "4055877e0a65fb183d3aa623de450ded197271fb60"
+
     async def _get_action_hash(ctx, base_url):
-        """获取 action hash（按地址缓存，多域名账号不互相覆盖）"""
+        """获取 action hash（按地址缓存，多域名账号不互相覆盖）
+
+        优先级: 自动抓取 -> 内置默认值 -> 用户配置 -> storage。
+        内置值放第二级而非最后，是因为 storage 里可能残留旧域名
+        (hdhive.com)的 hash，会盖掉代码里的 default 让换域名后失效。
+        """
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
-            _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
-            action_hash = ctx.config.get("action_hash", "") or await ctx.storage.get(_KV_HASH, "")
+            _log_debug(ctx, "自动获取hash失败，改用内置默认hash")
+            action_hash = _DEFAULT_ACTION_HASH
+        cfg_hash = (ctx.config.get("action_hash") or "").strip()
+        if cfg_hash:
+            # 用户显式填过就以用户为准
+            action_hash = cfg_hash
         if action_hash:
             await ctx.storage.set(_KV_HASH, action_hash)
             _log_debug(ctx, f"使用hash: {action_hash[:16]}...")
@@ -547,7 +558,7 @@ async def setup(ctx):
         if ctx.config.get("notify_on_sign", True):
             has_errors = any("❌" in l for l in notify_lines)
             level = "error" if all("❌" in l for l in notify_lines) else ("warning" if has_errors else "success")
-            await ctx.notify(f"📋 影巢签到结果\n" + "\n".join(notify_lines), level=level, category="影巢签到")
+            await ctx.notify(f"📋 re0签到结果\n" + "\n".join(notify_lines), level=level, category="re0签到")
 
         return {"ok": True, "message": "\n".join(f"{l['status']} {l['name']}({l.get('mode','')}): {l['message']}" for l in logs)}
 
@@ -560,7 +571,7 @@ async def setup(ctx):
         await _do_sign_all("定时")
 
     ctx.schedule_cron(
-        "影巢签到-每日签到",
+        "re0签到-每日签到",
         _scheduled_checkin,
         hour=checkin_hour,
         minute=checkin_minute,

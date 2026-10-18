@@ -126,16 +126,16 @@
       ]
     },
     "myhdhivesign": {
-      "name": "影巢签到",
-      "version": "2.2.0",
+      "name": "re0签到",
+      "version": "2.3.0",
       "author": "凹凸曼",
-      "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
+      "description": "自动完成 re0.me 每日签到，支持多账号、赌狗签到、失败重试。",
       "scope": "user",
       "path": "plugins/myhdhivesign/",
       "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
       "tags": [
         "签到",
-        "HDHive"
+        "re0"
       ]
     },
     "mymusic": {
