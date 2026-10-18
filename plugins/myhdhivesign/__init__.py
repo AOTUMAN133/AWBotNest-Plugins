@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "re0签到",
     "id": "myhdhivesign",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成 re0.me 每日签到，支持多账号、赌狗签到、失败重试。",
@@ -70,8 +70,25 @@ _LOG_FILE = "/tmp/hdhive_sign.log"
 _run_lock = None
 
 def _log_debug(ctx, msg: str):
-    # 只写日志文件, 不刷平台运行日志
+    """三通道日志：平台运行日志 + 本地文件 + 内存环形缓冲(前端「🔍 日志」页)。
+
+    ctx.log 不可用时降级为本地文件，不抛异常 —— 日志绝不能阻断主流程。
+    """
+    try:
+        ctx.log.info(msg)
+    except Exception:
+        pass
     _log_file(msg)
+    _log_kv(msg)
+
+
+_DEBUG_RING: list = []   # 内存环形缓冲，_log_debug 时追加，签到流程落 KV
+
+
+def _log_kv(msg: str):
+    """写前端「🔍 日志」页读的环形缓冲。"""
+    _DEBUG_RING.append({"t": _now()[11:19], "m": msg})
+    del _DEBUG_RING[:-100]
 
 def _log_file(msg: str):
     try:
@@ -447,9 +464,10 @@ async def setup(ctx):
     async def _get_action_hash(ctx, base_url):
         """获取 action hash（按地址缓存，多域名账号不互相覆盖）
 
-        优先级: 自动抓取 -> 内置默认值 -> 用户配置 -> storage。
-        内置值放第二级而非最后，是因为 storage 里可能残留旧域名
-        (hdhive.com)的 hash，会盖掉代码里的 default 让换域名后失效。
+        优先级: 自动抓取 -> 内置默认值 -> 用户显式配置。
+        内置值排第二级，是因为 storage 里可能残留旧域名(hdhive.com)的
+        hash，若让它参与读取会盖掉代码默认值，导致换域名后失效。
+        用户填了非空值仍以用户为准。
         """
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
@@ -654,7 +672,9 @@ async def setup(ctx):
 
     @ctx.on_api("/get_debug_logs", methods=["GET"])
     async def _api_get_debug_logs(req):
-        return {"logs": await ctx.storage.get(_KV_DEBUG, [])}
+        # 内存环形缓冲优先(实时)，KV 兜底
+        logs = list(_DEBUG_RING) or await ctx.storage.get(_KV_DEBUG, [])
+        return {"logs": logs}
 
     @ctx.on_api("/save_accounts", methods=["POST"])
     async def _api_save_accounts(req):
