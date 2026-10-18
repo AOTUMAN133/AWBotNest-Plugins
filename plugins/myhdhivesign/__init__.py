@@ -15,7 +15,7 @@ TZ = timezone(timedelta(hours=8))
 __plugin__ = {
     "name": "影巢签到",
     "id": "myhdhivesign",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "icon": "https://raw.githubusercontent.com/AOTUMAN133/AWBotNest-Plugins/main/plugins/icons/myhdhivesign_v2.svg",
     "author": "凹凸曼",
     "description": "自动完成影巢(HDHive)每日签到，支持多账号、赌狗签到、失败重试。",
@@ -442,7 +442,7 @@ async def setup(ctx):
         return {"name": name, "mode": mode, "success": result["success"], "message": msg}
 
     async def _get_action_hash(ctx, base_url):
-        """获取 action hash"""
+        """获取 action hash（按地址缓存，多域名账号不互相覆盖）"""
         action_hash = await _fetch_action_hash(base_url, ctx)
         if not action_hash:
             _log_debug(ctx, "自动获取hash失败，使用配置中的hash")
@@ -455,23 +455,27 @@ async def setup(ctx):
     async def _do_sign_all(source="定时"):
         """签到所有账号，source 为 '定时' 或 '手动'"""
         _log_debug(ctx, f"开始{source}签到")
-        base_url = ctx.config.get("base_url", "https://hdhive.com")
+        base_url = ctx.config.get("base_url", "https://re0.me")
         accounts = _get_accounts(ctx)
         if not accounts:
             _log_debug(ctx, "无账号配置")
             return {"ok": False, "message": "未配置账号"}
 
-        action_hash = await _get_action_hash(ctx, base_url)
-        if not action_hash:
-            return {"ok": False, "message": "无法获取 action hash，请手动填写"}
-
         logs = []
         notify_lines = []
+        hash_cache = {}          # 地址 -> action_hash，同域多个账号只抓一次
         for i, acc in enumerate(accounts):
             name = acc.get("name", f"账号{i+1}")
             cookie = acc.get("cookie", "")
             username = acc.get("username", "")
             password = acc.get("password", "")
+            # 账号级地址优先，没填则用全局(站点换域名时只改默认值即可)
+            acc_url = (acc.get("base_url") or base_url).rstrip("/")
+            if acc_url not in hash_cache:
+                hash_cache[acc_url] = await _get_action_hash(ctx, acc_url)
+            action_hash = hash_cache[acc_url]
+            if not action_hash:
+                return {"ok": False, "message": "无法获取 action hash，请手动填写"}
 
             # 检查今日是否已签到
             today_str = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -492,7 +496,7 @@ async def setup(ctx):
                     _log_debug(ctx, f"{name}: 使用已保存的Cookie")
                 else:
                     _log_debug(ctx, f"{name}: 用 Playwright 模拟登录")
-                    cookie = await _login_with_playwright(base_url, username, password)
+                    cookie = await _login_with_playwright(acc_url, username, password)
                     if cookie:
                         acc["cookie"] = cookie
                         await ctx.storage.set(f"cookie:{acc.get('name', '')}", cookie)
@@ -505,7 +509,7 @@ async def setup(ctx):
                 notify_lines.append(f"❌ {name}: 缺少Cookie")
                 continue
 
-            r = await _sign_account(ctx, acc, base_url, action_hash)
+            r = await _sign_account(ctx, acc, acc_url, action_hash)
 
             # Cookie / token 失效时自动重新登录
             if (
@@ -518,7 +522,7 @@ async def setup(ctx):
                 )
             ):
                 _log_debug(ctx, f"{name}: Cookie/token 失效，尝试重新登录")
-                new_cookie = await _login_with_playwright(base_url, username, password)
+                new_cookie = await _login_with_playwright(acc_url, username, password)
                 if new_cookie:
                     acc["cookie"] = new_cookie
                     cookie = new_cookie
@@ -528,7 +532,7 @@ async def setup(ctx):
                         _log_debug(ctx, f"{name}: update_config 保存新Cookie失败: {e}")
                     await ctx.storage.set(f"cookie:{acc.get('name', '')}", new_cookie)
                     _log_debug(ctx, f"{name}: 重新登录成功，重试签到")
-                    r = await _sign_account(ctx, acc, base_url, action_hash)
+                    r = await _sign_account(ctx, acc, acc_url, action_hash)
                 else:
                     _log_debug(ctx, f"{name}: 重新登录失败")
 
@@ -585,7 +589,7 @@ async def setup(ctx):
         _log_debug(ctx, "获取账号状态")
         accounts = _get_accounts(ctx)
         results = []
-        base_url = ctx.config.get("base_url", "https://hdhive.com")
+        base_url = ctx.config.get("base_url", "https://re0.me")
         for acc in accounts:
             cookie = acc.get("cookie", "")
             if not cookie:
