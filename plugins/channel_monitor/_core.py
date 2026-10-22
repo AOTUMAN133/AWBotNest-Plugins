@@ -237,6 +237,23 @@ def should_skip(msg_id, last_id) -> bool:
     return int(msg_id) <= int(last_id)
 
 
+def truthy(value, default: bool = False) -> bool:
+    """配置里的布尔值可能是 True / "true" / "0" / "" 等形态。
+
+    平台存表单值时可能落成字符串，bool("false") 是 True，必须显式判定。
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    return text not in ("0", "false", "no", "off", "none", "null")
+
+
 # ── 链接 ────────────────────────────────────────────────────────────────
 def build_link(src_id, msg_id) -> str:
     """构造源消息链接。

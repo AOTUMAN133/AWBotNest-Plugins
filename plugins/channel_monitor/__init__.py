@@ -31,13 +31,14 @@ from ._core import (
     render_status,
     resolve_peer,
     should_skip,
+    truthy,
 )
 from ._sender import Paused, append_link, forward_album, forward_one, with_flood_retry
 
 __plugin__ = {
     "name": "频道监控转发",
     "id": "channel_monitor",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "凹凸曼",
     "description": "实时监控多个源频道，把新消息转发到对应目标群，支持相册、关键词过滤、启用时补历史。",
     "tags": ["监控", "转发", "频道", "同步"],
@@ -269,7 +270,7 @@ async def _accept(rt, rule, slot, obj, now: float) -> None:
     if not msg_id:
         return
 
-    if bool(rt.cfg.get("skip_service", True)) and is_service_message(obj):
+    if truthy(rt.cfg.get("skip_service"), True) and is_service_message(obj):
         slot.state["skipped"] += 1
         return
 
@@ -284,7 +285,7 @@ async def _accept(rt, rule, slot, obj, now: float) -> None:
         return
 
     media = _attr(obj, "media", None)
-    if not bool(rt.cfg.get("copy_media", True)) and media is not None:
+    if not truthy(rt.cfg.get("copy_media"), True) and media is not None:
         slot.state["skipped"] += 1
         return
     if not text.strip() and media is None:
@@ -292,7 +293,7 @@ async def _accept(rt, rule, slot, obj, now: float) -> None:
         return
 
     gid = _attr(obj, "media_group_id", None)
-    if gid and bool(rt.cfg.get("keep_albums", True)):
+    if gid and truthy(rt.cfg.get("keep_albums"), True):
         slot.buffer.add(_Ref(msg_id, gid), now)
         return
 
@@ -327,7 +328,7 @@ async def _send_item(rt, rule, slot, item) -> None:
             max_wait, rt.ctx.log,
         )
 
-    if bool(rt.cfg.get("attach_source", False)):
+    if truthy(rt.cfg.get("attach_source"), False):
         await append_link(sent, build_link(rule.src_id, ids[-1]))
 
     slot.state["last_id"] = max(int(slot.state.get("last_id", 0) or 0), item["last_id"])
@@ -403,7 +404,7 @@ async def _backfill(rt, rule, slot) -> None:
         return
 
     count = int(rt.cfg.get("backfill_count", 20) or 0)
-    enabled = bool(rt.cfg.get("backfill_enable", True)) and count > 0
+    enabled = truthy(rt.cfg.get("backfill_enable"), True) and count > 0
     prev = int(slot.state.get("last_id", 0) or 0)
 
     # 取一次源频道最新 ID。拿不到说明频道不可达，直接放过，不阻塞实时。
@@ -422,25 +423,41 @@ async def _backfill(rt, rule, slot) -> None:
 
     try:
         if enabled:
+            # 取最近 count 条（接口返回最新在前，反转为旧→新）
             msgs = []
-            if prev == 0:
-                # 首次启用：补最近 N 条（含最新），从旧到新
-                async for m in client.iter_messages(rule.src_id, limit=count):
-                    msgs.append(m)
-                msgs.reverse()
-                slot.state["last_id"] = newest_id
-            else:
-                # 已有进度：只补断档期间漏掉的（id > prev），避免重载后重复转发
-                async for m in client.iter_messages(rule.src_id, limit=count):
-                    if int(m.id) <= prev:
-                        break
-                    msgs.append(m)
-                msgs.reverse()
-                slot.state["last_id"] = max(newest_id, prev)
+            async for m in client.iter_messages(rule.src_id, limit=count):
+                msgs.append(m)
+            msgs.reverse()
+
+            # floor = 历史上已经补到过的最旧一条 ID。
+            # 只有 [floor, last_id] 这段是「补过的」，窗口往外扩时才补新增部分。
+            floor = int(slot.state.get("backfill_floor", 0) or 0)
+            if floor <= 0 and prev > 0:
+                # 从旧版本升级：没有 floor 记录，把 last_id 当成已覆盖下界
+                floor = prev
+
+            todo = []
             for m in msgs:
+                mid = int(m.id)
+                if floor and floor <= mid <= prev:
+                    continue
+                todo.append(m)
+
+            for m in todo:
                 await _accept(rt, rule, slot, m, time.monotonic())
                 await asyncio.sleep(0)
-            rt.ctx.log.info("[监控] %s 补历史 %d 条", rule.key, len(msgs))
+
+            if todo:
+                lo = min(int(m.id) for m in todo)
+                slot.state["backfill_floor"] = min(lo, floor) if floor else lo
+            elif floor:
+                slot.state["backfill_floor"] = floor
+
+            slot.state["last_id"] = max(newest_id, prev)
+            rt.ctx.log.info(
+                "[监控] %s 补历史 %d 条（窗口 %d 条，已补过跳过 %d 条）",
+                rule.key, len(todo), len(msgs), len(msgs) - len(todo),
+            )
         else:
             # 不补：直接把进度推到最新，只接之后的新消息
             slot.state["last_id"] = max(newest_id, prev)

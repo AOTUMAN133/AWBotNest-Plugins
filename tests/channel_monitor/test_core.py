@@ -209,3 +209,16 @@ def test_render_status():
     assert "源A" in text and "群A" in text and "成功 8" in text
     assert "解析失败" in text
     assert render_status([]) == "还没有配置转发规则"
+
+
+# ── 配置布尔解析 ────────────────────────────────────────────────────────
+def test_truthy():
+    from channel_monitor._core import truthy
+    assert truthy(True) is True
+    assert truthy(False) is False
+    assert truthy("true") is True
+    assert truthy("false") is False, 'bool("false") 是 True，必须显式判定'
+    assert truthy("0") is False
+    assert truthy("1") is True
+    assert truthy("") is False
+    assert truthy(None, True) is True

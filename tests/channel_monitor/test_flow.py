@@ -325,3 +325,74 @@ async def test_teardown_clears_runtime():
     await asyncio.sleep(0.05)
     alive = [t for t in ctx.tasks if not t.cancelled() and not t.done()]
     assert alive == [], f"停用后仍有 {len(alive)} 个任务存活"
+
+
+async def test_raising_backfill_count_backfills_older():
+    """把 5 改成 10，应该往前补 5 条，已补过的 5 条不重复。"""
+    src, dst = Channel(111, "源"), Channel(222, "目")
+    msgs = [Msg(i, f"历史{i}") for i in range(1, 11)]
+    client = FakeClient(msgs, src, dst)
+    ctx = make_ctx(client, backfill_enable=True, backfill_count=10)
+
+    # 模拟：之前已经补过 6..10 这 5 条
+    key = cm._state_key(cm.__dict__.get("_x") or type("R", (), {
+        "key": "-100111|-100222"})())
+    ctx._store[key] = {"last_id": 10, "sent": 5, "skipped": 0,
+                       "failed": 0, "backfill_floor": 6}
+
+    await cm.setup(ctx)
+    rt = cm._RT
+    try:
+        rule = rt.rules[0]
+        slot = rt.slots[rule.key]
+        assert await wait_until(lambda: slot.state["sent"] == 10), slot.state
+        ids = [f["ids"][0] for f in client.forwarded]
+        assert ids == [1, 2, 3, 4, 5], f"应该只补新增的 1~5，实际 {ids}"
+        assert slot.state["backfill_floor"] == 1
+        assert slot.state["last_id"] == 10
+    finally:
+        await cm.teardown(ctx)
+
+
+async def test_upgrade_without_floor_does_not_duplicate_much():
+    """老版本没有 backfill_floor 记录：只把 last_id 本身当已覆盖，其余按窗口补。"""
+    src, dst = Channel(111, "源"), Channel(222, "目")
+    msgs = [Msg(i, f"历史{i}") for i in range(1, 11)]
+    client = FakeClient(msgs, src, dst)
+    ctx = make_ctx(client, backfill_enable=True, backfill_count=5)
+    key = cm._state_key(type("R", (), {"key": "-100111|-100222"})())
+    ctx._store[key] = {"last_id": 10, "sent": 0, "skipped": 0, "failed": 0}
+
+    await cm.setup(ctx)
+    rt = cm._RT
+    try:
+        rule = rt.rules[0]
+        slot = rt.slots[rule.key]
+        assert await wait_until(lambda: slot.state["sent"] >= 4), slot.state
+        ids = [f["ids"][0] for f in client.forwarded]
+        assert 10 not in ids, f"last_id 那条不该重发，实际 {ids}"
+        assert ids == [6, 7, 8, 9], f"实际 {ids}"
+    finally:
+        await cm.teardown(ctx)
+
+
+async def test_same_count_reload_does_not_duplicate():
+    """重载但数字没变：窗口内全是补过的，一条都不该重发。"""
+    src, dst = Channel(111, "源"), Channel(222, "目")
+    msgs = [Msg(i, f"历史{i}") for i in range(1, 11)]
+    client = FakeClient(msgs, src, dst)
+    ctx = make_ctx(client, backfill_enable=True, backfill_count=5)
+    key = cm._state_key(type("R", (), {"key": "-100111|-100222"})())
+    ctx._store[key] = {"last_id": 10, "sent": 5, "skipped": 0,
+                       "failed": 0, "backfill_floor": 6}
+
+    await cm.setup(ctx)
+    rt = cm._RT
+    try:
+        rule = rt.rules[0]
+        slot = rt.slots[rule.key]
+        assert await wait_until(lambda: slot.ready)
+        await asyncio.sleep(0.3)
+        assert client.forwarded == [], f"不该重发，实际 {client.forwarded}"
+    finally:
+        await cm.teardown(ctx)
