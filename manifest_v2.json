@@ -244,6 +244,20 @@
         "历史",
         "同步"
       ]
+    },
+    "channel_monitor": {
+      "name": "频道监控转发",
+      "version": "1.0.0",
+      "author": "凹凸曼",
+      "description": "实时监控多个源频道，把新消息转发到对应目标群，支持相册、关键词过滤、启用时补历史。",
+      "scope": "user",
+      "path": "plugins/channel_monitor/",
+      "tags": [
+        "监控",
+        "转发",
+        "频道",
+        "同步"
+      ]
     }
   }
 }
